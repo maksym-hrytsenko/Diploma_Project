@@ -5,13 +5,13 @@ import scipy.io.wavfile as wav
 import time
 import os
 
+# ====== FIX для ffmpeg ======
 os.environ["PATH"] += ";C:\\ffmpeg\\bin"
 
 # ====== Налаштування ======
-MODEL_NAME = "base"   # tiny / base / small (можеш змінювати)
+MODEL_NAME = "base"   # tiny / base / small
 SAMPLE_RATE = 16000
-DURATION = 5  # секунд запису
-
+DURATION = 5
 AUDIO_FILE = "test_audio.wav"
 
 # ====== Завантаження моделі ======
@@ -19,47 +19,61 @@ print("Loading Whisper model...")
 model = whisper.load_model(MODEL_NAME)
 print("Model loaded.\n")
 
-# ====== Запис аудіо ======
-print(f"Recording for {DURATION} seconds... Speak now!")
+print("Whisper continuous mode started...")
+print("Press Ctrl+C to stop\n")
 
-audio = sd.rec(int(DURATION * SAMPLE_RATE),
-               samplerate=SAMPLE_RATE,
-               channels=1,
-               dtype='int16')
+while True:
+    try:
+        # ====== Запис ======
+        print(f"\nRecording for {DURATION} seconds... Speak now!")
 
-sd.wait()
+        audio = sd.rec(int(DURATION * SAMPLE_RATE),
+                       samplerate=SAMPLE_RATE,
+                       channels=1,
+                       dtype='int16')
 
-print("Recording finished.\n")
+        sd.wait()
 
-# ====== Збереження ======
-wav.write(AUDIO_FILE, SAMPLE_RATE, audio)
+        print("Recording finished.")
 
-# ====== Розпізнавання ======
-print("Processing audio...")
+        # ====== Збереження ======
+        wav.write(AUDIO_FILE, SAMPLE_RATE, audio)
 
-start_time = time.time()
+        # ====== Розпізнавання ======
+        print("Processing audio...")
 
-result = model.transcribe(AUDIO_FILE)
+        start_time = time.time()
 
-end_time = time.time()
-latency = end_time - start_time
+        result = model.transcribe(AUDIO_FILE)
 
-# ====== Результат ======
-text = result["text"]
+        end_time = time.time()
+        latency = end_time - start_time
 
-print("\n=== RESULT ===")
-print("Recognized:", text)
-print(f"Latency: {latency:.2f} sec")
+        # ====== Результат ======
+        text = result["text"].strip()
 
-# ====== Прості команди ======
-if "open browser" in text.lower():
-    print("COMMAND DETECTED: OPEN BROWSER")
+        print("\n=== RESULT ===")
+        print("Recognized:", text)
+        print(f"Latency: {latency:.2f} sec")
 
-elif "close window" in text.lower():
-    print("COMMAND DETECTED: CLOSE WINDOW")
+        # ====== Команди ======
+        text_lower = text.lower()
 
-elif "scroll down" in text.lower():
-    print("COMMAND DETECTED: SCROLL DOWN")
+        if "open browser" in text_lower:
+            print("COMMAND DETECTED: OPEN BROWSER")
 
-elif "scroll up" in text.lower():
-    print("COMMAND DETECTED: SCROLL UP")
+        elif "close window" in text_lower:
+            print("COMMAND DETECTED: CLOSE WINDOW")
+
+        elif "scroll down" in text_lower:
+            print("COMMAND DETECTED: SCROLL DOWN")
+
+        elif "scroll up" in text_lower:
+            print("COMMAND DETECTED: SCROLL UP")
+
+    except KeyboardInterrupt:
+        print("\nStopped by user")
+        break
+
+    except Exception as e:
+        print(f"Error: {e}")

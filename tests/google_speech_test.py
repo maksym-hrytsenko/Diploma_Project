@@ -9,58 +9,68 @@ SAMPLE_RATE = 16000
 DURATION = 5  # секунд запису
 AUDIO_FILE = "google_test.wav"
 
-# ====== Запис аудіо ======
-print(f"Recording for {DURATION} seconds... Speak now!")
-
-audio = sd.rec(int(DURATION * SAMPLE_RATE),
-               samplerate=SAMPLE_RATE,
-               channels=1,
-               dtype='int16')
-
-sd.wait()
-
-print("Recording finished.\n")
-
-# ====== Збереження ======
-wav.write(AUDIO_FILE, SAMPLE_RATE, audio)
-
-# ====== Розпізнавання ======
 recognizer = sr.Recognizer()
 
-with sr.AudioFile(AUDIO_FILE) as source:
-    audio_data = recognizer.record(source)
+print("Google Speech Recognition started...")
+print("Press Ctrl+C to stop\n")
 
-print("Processing with Google Speech Recognition...")
+while True:
+    try:
+        # ====== Запис аудіо ======
+        print(f"\nRecording for {DURATION} seconds... Speak now!")
 
-start_time = time.time()
+        audio = sd.rec(int(DURATION * SAMPLE_RATE),
+                       samplerate=SAMPLE_RATE,
+                       channels=1,
+                       dtype='int16')
 
-try:
-    text = recognizer.recognize_google(audio_data)
+        sd.wait()
 
-    end_time = time.time()
-    latency = end_time - start_time
+        print("Recording finished.")
 
-    print("\n=== RESULT ===")
-    print("Recognized:", text)
-    print(f"Latency: {latency:.2f} sec")
+        # ====== Збереження ======
+        wav.write(AUDIO_FILE, SAMPLE_RATE, audio)
 
-    # ====== Команди ======
-    text_lower = text.lower()
+        # ====== Завантаження ======
+        with sr.AudioFile(AUDIO_FILE) as source:
+            audio_data = recognizer.record(source)
 
-    if "open browser" in text_lower:
-        print("COMMAND DETECTED: OPEN BROWSER")
+        print("Processing with Google Speech Recognition...")
 
-    elif "close window" in text_lower:
-        print("COMMAND DETECTED: CLOSE WINDOW")
+        start_time = time.time()
 
-    elif "scroll down" in text_lower:
-        print("COMMAND DETECTED: SCROLL DOWN")
+        # ====== Розпізнавання ======
+        text = recognizer.recognize_google(audio_data)
 
-    elif "scroll up" in text_lower:
-        print("COMMAND DETECTED: SCROLL UP")
+        end_time = time.time()
+        latency = end_time - start_time
 
-except sr.UnknownValueError:
-    print("Could not understand audio")
+        # ====== Результат ======
+        print("\n=== RESULT ===")
+        print("Recognized:", text)
+        print(f"Latency: {latency:.2f} sec")
 
-except sr.RequestError as e:
-    print(f"API error: {e}")
+        # ====== Команди ======
+        text_lower = text.lower()
+
+        if "open browser" in text_lower:
+            print("COMMAND DETECTED: OPEN BROWSER")
+
+        elif "close window" in text_lower:
+            print("COMMAND DETECTED: CLOSE WINDOW")
+
+        elif "scroll down" in text_lower:
+            print("COMMAND DETECTED: SCROLL DOWN")
+
+        elif "scroll up" in text_lower:
+            print("COMMAND DETECTED: SCROLL UP")
+
+    except sr.UnknownValueError:
+        print("Could not understand audio")
+
+    except sr.RequestError as e:
+        print(f"API error: {e}")
+
+    except KeyboardInterrupt:
+        print("\nStopped by user")
+        break
