@@ -1,44 +1,42 @@
+import json
+import os
+
+
 class CommandInterpreter:
     def __init__(self, event_bus):
-        # Store event bus
         self.event_bus = event_bus
-
-        # Key to command mapping
-        self.key_map = {
-            "a": "MOVE_LEFT",
-            "d": "MOVE_RIGHT",
-            "w": "MOVE_UP",
-            "s": "MOVE_DOWN",
-            "Key.esc": "STOP"
-        }
+        self.mapping = self._load_mapping()
 
     def start(self):
-        # Subscribe to keyboard events
-        self.event_bus.subscribe("keyboard_event", self._handle_keyboard)
+        self.event_bus.subscribe("fusion_signal", self._handle_signal)
 
     def stop(self):
-        # Unsubscribe
-        self.event_bus.unsubscribe("keyboard_event", self._handle_keyboard)
+        self.event_bus.unsubscribe("fusion_signal", self._handle_signal)
 
-    def _handle_keyboard(self, event):
+    def _load_mapping(self):
         try:
-            key = event.get("data", {}).get("key")
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-            # Debug input
-            print(f"[Interpreter] Received key: {key}")
+            config_path = os.path.join(base_dir, "config", "mapping.json")
 
-            command = self.key_map.get(key)
-
-            if not command:
-                return
-
-            # Debug command
-            print(f"[Interpreter] Command: {command}")
-
-            # Send command дальше
-            self.event_bus.publish("command_event", {
-                "command": command
-            })
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("keyboard", {})
 
         except Exception as e:
-            print(f"[Interpreter ERROR] {e}")
+            print("JSON ERROR:", e)
+            return {}
+
+    def _handle_signal(self, event):
+        signal = event.get("data", {}).get("signal")
+
+        if not signal:
+            return
+
+        command = self.mapping.get(signal)
+
+        if not command:
+            return
+
+        self.event_bus.publish("command_event", {
+            "command": command
+        })

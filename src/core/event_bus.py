@@ -29,7 +29,7 @@ class EventBus:
         }
 
         # Debug: show event in terminal
-        print(f"[EventBus] Event: {event}")
+        #print(f"[EventBus] Event: {event}")
 
         # Send to subscribers
         if event_type in self._subscribers:

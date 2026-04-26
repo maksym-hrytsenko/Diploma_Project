@@ -1,0 +1,7 @@
+{
+  "keyboard": {
+    "a": "MOVE_LEFT",
+    "d": "MOVE_RIGHT",
+    "ctrl+a": "SPECIAL_ACTION"
+  }
+}
