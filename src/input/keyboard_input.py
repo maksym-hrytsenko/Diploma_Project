@@ -4,14 +4,14 @@ import time
 
 class KeyboardInput:
     def __init__(self, event_bus):
-        # Store event bus
+        # Store event bus reference
         self.event_bus = event_bus
 
-        # Listener placeholder
+        # Listener instance
         self.listener = None
 
     def start(self):
-        # Start listener in background
+        # Start listener in background thread
         self.listener = keyboard.Listener(on_press=self._on_press)
         self.listener.start()
 
@@ -23,24 +23,20 @@ class KeyboardInput:
 
     def _on_press(self, key):
         try:
-            # Get key value
+            # Extract key value
             if hasattr(key, 'char') and key.char is not None:
                 key_value = key.char
             else:
                 key_value = str(key)
 
-            # Create event
-            event = {
-                "type": "keyboard_event",
-                "data": {
-                    "key": key_value
-                },
-                "timestamp": time.time()
-            }
+            # Debug output
+            print(f"[Keyboard] Key pressed: {key_value}")
 
-            # Publish event
-            self.event_bus.publish("keyboard_event", event)
+            # Send only data to event bus
+            self.event_bus.publish("keyboard_event", {
+                "key": key_value
+            })
 
-        except Exception:
-            # Prevent listener crash
-            pass
+        except Exception as e:
+            # Prevent crash and show error
+            print(f"[Keyboard ERROR] {e}")

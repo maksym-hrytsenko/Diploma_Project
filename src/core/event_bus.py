@@ -1,55 +1,40 @@
 import time
-import logging
-from typing import Callable, Dict, List, Any
-
-logger = logging.getLogger(__name__)
 
 
 class EventBus:
-    def __init__(self) -> None:
+    def __init__(self):
         # {event_type: [callbacks]}
-        self._subscribers: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
+        self._subscribers = {}
 
-    def subscribe(self, event_type: str, callback: Callable[[Dict[str, Any]], None]) -> None:
+    def subscribe(self, event_type, callback):
+        # Add subscriber
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
 
-        # prevent duplicate subscriptions
         if callback not in self._subscribers[event_type]:
             self._subscribers[event_type].append(callback)
 
-    def unsubscribe(self, event_type: str, callback: Callable[[Dict[str, Any]], None]) -> None:
-        callbacks = self._subscribers.get(event_type)
-        if not callbacks:
-            return
+    def unsubscribe(self, event_type, callback):
+        # Remove subscriber
+        if event_type in self._subscribers:
+            if callback in self._subscribers[event_type]:
+                self._subscribers[event_type].remove(callback)
 
-        try:
-            callbacks.remove(callback)
-        except ValueError:
-            pass  # callback not found
-
-        # cleanup empty lists
-        if not callbacks:
-            del self._subscribers[event_type]
-
-    def publish(self, event_type: str, data: Dict[str, Any]) -> None:
+    def publish(self, event_type, data):
+        # Create full event
         event = {
             "type": event_type,
             "data": data,
-            "timestamp": time.time(),
+            "timestamp": time.time()
         }
 
-        callbacks = self._subscribers.get(event_type, [])
-        if not callbacks:
-            return
+        # Debug: show event in terminal
+        print(f"[EventBus] Event: {event}")
 
-        # iterate over copy to avoid mutation issues
-        for callback in list(callbacks):
-            try:
-                callback(event)
-            except Exception as e:
-                logger.error(f"Error in callback for '{event_type}': {e}", exc_info=True)
-
-    def get_subscribers(self, event_type: str) -> List[Callable[[Dict[str, Any]], None]]:
-        # return copy to prevent external mutation
-        return list(self._subscribers.get(event_type, []))
+        # Send to subscribers
+        if event_type in self._subscribers:
+            for callback in self._subscribers[event_type]:
+                try:
+                    callback(event)
+                except Exception as e:
+                    print(f"[EventBus ERROR] {e}")

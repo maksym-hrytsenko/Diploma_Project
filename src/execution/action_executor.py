@@ -1,27 +1,23 @@
 class ActionExecutor:
     def __init__(self, event_bus):
-        # Store event bus reference
+        # Store event bus
         self.event_bus = event_bus
-        self._is_running = False
 
     def start(self):
         # Subscribe to command events
-        if not self._is_running:
-            self.event_bus.subscribe("command_event", self.handle_command_event)
-            self._is_running = True
+        self.event_bus.subscribe("command_event", self._handle_command)
 
     def stop(self):
-        # Unsubscribe from command events
-        if self._is_running:
-            self.event_bus.unsubscribe("command_event", self.handle_command_event)
-            self._is_running = False
+        # Unsubscribe
+        self.event_bus.unsubscribe("command_event", self._handle_command)
 
-    def handle_command_event(self, event):
+    def _handle_command(self, event):
         try:
-            # Extract command
             command = event.get("data", {}).get("command")
 
-            # Ignore invalid command
+            # Debug input
+            print(f"[Executor] Received command: {command}")
+
             if not command:
                 return
 
@@ -37,6 +33,5 @@ class ActionExecutor:
             elif command == "STOP":
                 print("Action: STOP")
 
-        except Exception:
-            # Prevent crash
-            pass
+        except Exception as e:
+            print(f"[Executor ERROR] {e}")

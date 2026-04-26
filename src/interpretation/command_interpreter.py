@@ -1,42 +1,44 @@
 class CommandInterpreter:
     def __init__(self, event_bus):
-        # Store event bus reference
+        # Store event bus
         self.event_bus = event_bus
 
-        # Map keys to commands
+        # Key to command mapping
         self.key_map = {
             "a": "MOVE_LEFT",
             "d": "MOVE_RIGHT",
             "w": "MOVE_UP",
             "s": "MOVE_DOWN",
-            "esc": "STOP"
+            "Key.esc": "STOP"
         }
 
     def start(self):
         # Subscribe to keyboard events
-        self.event_bus.subscribe("keyboard_event", self.handle_keyboard_event)
+        self.event_bus.subscribe("keyboard_event", self._handle_keyboard)
 
     def stop(self):
-        # Unsubscribe from keyboard events
-        self.event_bus.unsubscribe("keyboard_event", self.handle_keyboard_event)
+        # Unsubscribe
+        self.event_bus.unsubscribe("keyboard_event", self._handle_keyboard)
 
-    def handle_keyboard_event(self, event):
+    def _handle_keyboard(self, event):
         try:
-            # Extract key
             key = event.get("data", {}).get("key")
 
-            # Get command
+            # Debug input
+            print(f"[Interpreter] Received key: {key}")
+
             command = self.key_map.get(key)
 
-            # Ignore unsupported keys
             if not command:
                 return
 
-            # Publish command event
+            # Debug command
+            print(f"[Interpreter] Command: {command}")
+
+            # Send command дальше
             self.event_bus.publish("command_event", {
                 "command": command
             })
 
-        except Exception:
-            # Prevent crash on any error
-            pass
+        except Exception as e:
+            print(f"[Interpreter ERROR] {e}")
