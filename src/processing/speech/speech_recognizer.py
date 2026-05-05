@@ -1,5 +1,3 @@
-# processing/speech/speech_recognizer.py
-
 from processing.speech.speech_model import VoskSpeechModel, WhisperSpeechModel
 
 
@@ -8,7 +6,7 @@ class SpeechRecognizer:
         self.event_bus = event_bus
         self.state_manager = state_manager
 
-        # 🔹 моделі
+        # Models
         self.vosk_model = VoskSpeechModel()
 
         self.whisper_model = WhisperSpeechModel(
@@ -16,9 +14,18 @@ class SpeechRecognizer:
             api_key="YOUR_API_KEY"
         )
 
+    def start(self):
         self.event_bus.subscribe("audio_chunk", self.on_audio)
 
-    def on_audio(self, audio_chunk):
+    def stop(self):
+        self.event_bus.unsubscribe("audio_chunk", self.on_audio)
+
+    def on_audio(self, event):
+        audio_chunk = event.get("data")
+
+        if audio_chunk is None:
+            return
+
         mode = self.state_manager.get_mode()
 
         if mode == "offline":

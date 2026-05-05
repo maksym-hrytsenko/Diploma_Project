@@ -21,19 +21,14 @@ class EventBus:
                 self._subscribers[event_type].remove(callback)
 
     def publish(self, event_type, data):
-        # Create full event
         event = {
             "type": event_type,
             "data": data,
             "timestamp": time.time()
         }
 
-        # Debug: show event in terminal
-        #print(f"[EventBus] Event: {event}")
-
-        # Send to subscribers
         if event_type in self._subscribers:
-            for callback in self._subscribers[event_type]:
+            for callback in list(self._subscribers[event_type]):  # FIX
                 try:
                     callback(event)
                 except Exception as e:

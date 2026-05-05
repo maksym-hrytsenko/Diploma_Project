@@ -7,7 +7,7 @@ from vosk import Model, KaldiRecognizer
 
 # 🔹 OFFLINE (Vosk)
 class VoskSpeechModel:
-    def __init__(self, model_path="models/vosk"):
+    def __init__(self, model_path="models/vosk-model-small-en-us-0.15"):
         self.model = Model(model_path)
         self.recognizer = KaldiRecognizer(self.model, 16000)
 

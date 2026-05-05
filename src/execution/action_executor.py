@@ -9,12 +9,16 @@ class ActionExecutor:
         self.event_bus.unsubscribe("command_event", self._handle_command)
 
     def _handle_command(self, event):
-        command = event.get("data", {}).get("command")
+        data = event.get("data", {})
+
+        command = data.get("command")
+        source = data.get("source")
 
         if not command:
             return
 
-        # For now: just pass through
+        # Pass-through (extended)
         self.event_bus.publish("execution_event", {
-            "command": command
+            "command": command,
+            "source": source
         })
