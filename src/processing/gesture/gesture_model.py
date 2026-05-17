@@ -26,7 +26,6 @@ class GestureModel:
         if frame is None:
             return None
 
-        # Convert OpenCV frame to RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         mp_image = mp.Image(
@@ -37,3 +36,24 @@ class GestureModel:
         result = self.recognizer.recognize(mp_image)
 
         return result
+
+    def draw_landmarks(self, frame, hand_landmarks):
+        if frame is None or hand_landmarks is None:
+            return frame
+
+        height, width, _ = frame.shape
+
+        # Draw points
+        for landmark in hand_landmarks:
+            x = int(landmark.x * width)
+            y = int(landmark.y * height)
+
+            cv2.circle(
+                frame,
+                (x, y),
+                5,
+                (0, 255, 0),
+                -1
+            )
+
+        return frame
