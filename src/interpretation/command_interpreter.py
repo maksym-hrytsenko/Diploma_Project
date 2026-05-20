@@ -3,61 +3,156 @@ import os
 
 
 class CommandInterpreter:
+
     def __init__(self, event_bus):
+
         self.event_bus = event_bus
-        self.keyboard_mapping, self.voice_commands = self._load_mapping()
+
+        (
+            self.keyboard_mapping,
+            self.voice_mapping,
+            self.gesture_mapping
+        ) = self._load_mapping()
+
+    # ---------------------------------
+    # Start / Stop
+    # ---------------------------------
 
     def start(self):
-        self.event_bus.subscribe("fusion_signal", self._handle_signal)
+
+        self.event_bus.subscribe(
+            "fusion_signal",
+            self._handle_signal
+        )
 
     def stop(self):
-        self.event_bus.unsubscribe("fusion_signal", self._handle_signal)
+
+        self.event_bus.unsubscribe(
+            "fusion_signal",
+            self._handle_signal
+        )
+
+    # ---------------------------------
+    # Load Mapping
+    # ---------------------------------
 
     def _load_mapping(self):
-        try:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_path = os.path.join(base_dir, "config", "mapping.json")
 
-            with open(config_path, "r", encoding="utf-8") as f:
+        try:
+
+            base_dir = os.path.dirname(
+                os.path.dirname(
+                    os.path.abspath(__file__)
+                )
+            )
+
+            config_path = os.path.join(
+                base_dir,
+                "config",
+                "mapping.json"
+            )
+
+            with open(
+                config_path,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
                 data = json.load(f)
 
-                keyboard = data.get("keyboard", {})
-                voice = data.get("voice", {})
+                keyboard = data.get(
+                    "keyboard",
+                    {}
+                )
 
-                return keyboard, voice
+                voice = data.get(
+                    "voice",
+                    {}
+                )
 
-        except Exception as e:
-            print("JSON ERROR:", e)
-            return {}, {}
+                gesture = data.get(
+                    "gesture",
+                    {}
+                )
+
+                return (
+                    keyboard,
+                    voice,
+                    gesture
+                )
+
+        except Exception:
+
+            return {}, {}, {}
+
+    # ---------------------------------
+    # Handle Signal
+    # ---------------------------------
 
     def _handle_signal(self, event):
+
         data = event.get("data", {})
 
         signal = data.get("signal")
+
         source = data.get("source")
 
         if not signal:
             return
 
-        # 🔹 KEYBOARD LOGIC (unchanged behavior)
+        command = None
+
+        # ---------------------------------
+        # Keyboard
+        # ---------------------------------
+
         if source == "keyboard":
-            command = self.keyboard_mapping.get(signal)
 
-            if not command:
-                return
+            command = (
+                self.keyboard_mapping.get(
+                    signal
+                )
+            )
 
-        # 🔹 VOICE LOGIC (NEW)
+        # ---------------------------------
+        # Voice
+        # ---------------------------------
+
         elif source == "voice":
-            # signal is already a command from intent_model
-            if signal not in self.voice_commands:
-                return
 
-            command = signal
+            command = (
+                self.voice_mapping.get(
+                    signal
+                )
+            )
 
-        else:
+        # ---------------------------------
+        # Gesture
+        # ---------------------------------
+
+        elif source == "gesture":
+
+            command = (
+                self.gesture_mapping.get(
+                    signal
+                )
+            )
+
+        # ---------------------------------
+        # Invalid Command
+        # ---------------------------------
+
+        if not command:
             return
 
-        self.event_bus.publish("command_event", {
-            "command": command,
-            "source": source
-        })
+        # ---------------------------------
+        # Publish Semantic Command
+        # ---------------------------------
+
+        self.event_bus.publish(
+            "command_event",
+            {
+                "command": command,
+                "source": source
+            }
+        )

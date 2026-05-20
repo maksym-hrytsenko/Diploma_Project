@@ -1,47 +1,125 @@
-# input/microphone_input.py
-
-import sounddevice as sd
 import queue
 import threading
 
+import sounddevice as sd
+
 
 class MicrophoneInput:
-    def __init__(self, event_bus, samplerate=16000, channels=1):
+
+    def __init__(
+        self,
+        event_bus,
+        samplerate=16000,
+        channels=1
+    ):
+
         self.event_bus = event_bus
+
         self.samplerate = samplerate
+
         self.channels = channels
 
         self.audio_queue = queue.Queue()
+
         self.running = False
 
-    def _audio_callback(self, indata, frames, time, status):
+        self.stream = None
+
+        # MacBook Air microphone
+        self.device = 3
+
+    # ---------------------------------
+    # Audio Callback
+    # ---------------------------------
+
+    def _audio_callback(
+        self,
+        indata,
+        frames,
+        time_info,
+        status
+    ):
+
         if status:
-            print("Audio status:", status)
-        self.audio_queue.put(indata.copy())
+            return
+
+        self.audio_queue.put(
+            bytes(indata)
+        )
+
+    # ---------------------------------
+    # Start
+    # ---------------------------------
 
     def start(self):
+
         self.running = True
 
-        self.stream = sd.InputStream(
+        self.stream = sd.RawInputStream(
+
             samplerate=self.samplerate,
+
+            blocksize=8000,
+
+            dtype="int16",
+
             channels=self.channels,
+
+            device=self.device,
+
             callback=self._audio_callback
         )
 
         self.stream.start()
 
-        threading.Thread(target=self._process_audio, daemon=True).start()
-        print("[MicrophoneInput] Started")
+        threading.Thread(
+            target=self._process_audio,
+            daemon=True
+        ).start()
+
+        print(
+            "[MicrophoneInput] Started"
+        )
+
+    # ---------------------------------
+    # Stop
+    # ---------------------------------
 
     def stop(self):
+
         self.running = False
-        self.stream.stop()
-        self.stream.close()
-        print("[MicrophoneInput] Stopped")
+
+        if self.stream:
+
+            self.stream.stop()
+
+            self.stream.close()
+
+        print(
+            "[MicrophoneInput] Stopped"
+        )
+
+    # ---------------------------------
+    # Audio Processing Loop
+    # ---------------------------------
 
     def _process_audio(self):
-        while self.running:
-            audio_chunk = self.audio_queue.get()
 
-            # 🔥 відправляємо далі
-            self.event_bus.publish("audio_chunk", audio_chunk)
+        while self.running:
+
+            try:
+
+                audio_chunk = (
+                    self.audio_queue.get(
+                        timeout=0.1
+                    )
+                )
+
+            except queue.Empty:
+
+                continue
+
+            self.event_bus.publish(
+                "audio_chunk",
+                audio_chunk
+            )

@@ -1,11 +1,154 @@
 {
-  "keyboard": {
-    "a": "MOVE_LEFT",
-    "d": "MOVE_RIGHT",
-    "ctrl+a": "SPECIAL_ACTION"
-  },
-  "voice": {
-    "OPEN_BROWSER": "open browser",
-    "CLOSE_WINDOW": "close window"
-  }
+    "keyboard": {
+
+        "ctrl+shift": "ctrl+shift",
+        "ctrl+alt": "ctrl+alt",
+        "alt+shift": "alt+shift",
+
+        "ctrl+shift+q": "ctrl+shift+q",
+        "ctrl+shift+w": "ctrl+shift+w",
+        "ctrl+shift+e": "ctrl+shift+e",
+        "ctrl+shift+r": "ctrl+shift+r",
+        "ctrl+shift+t": "ctrl+shift+t",
+
+        "ctrl+shift+a": "ctrl+shift+a",
+        "ctrl+shift+s": "ctrl+shift+s",
+        "ctrl+shift+d": "ctrl+shift+d",
+        "ctrl+shift+f": "ctrl+shift+f",
+        "ctrl+shift+g": "ctrl+shift+g",
+
+        "ctrl+alt+q": "ctrl+alt+q",
+        "ctrl+alt+w": "ctrl+alt+w",
+        "ctrl+alt+e": "ctrl+alt+e",
+        "ctrl+alt+r": "ctrl+alt+r",
+
+        "alt+shift+q": "alt+shift+q",
+        "alt+shift+w": "alt+shift+w",
+        "alt+shift+e": "alt+shift+e",
+        "alt+shift+r": "alt+shift+r"
+    },
+
+    "voice": {
+
+        "PLAY": "play",
+        "PAUSE": "pause",
+        "STOP": "stop",
+
+        "NEXT": "next",
+        "PREVIOUS": "previous",
+
+        "OPEN_BROWSER": "open browser",
+        "CLOSE_WINDOW": "close window",
+
+        "SCROLL_UP": "scroll up",
+        "SCROLL_DOWN": "scroll down",
+
+        "VOLUME_UP": "volume up",
+        "VOLUME_DOWN": "volume down",
+
+        "MUTE": "mute",
+
+        "CONFIRM": "confirm",
+        "CANCEL": "cancel",
+
+        "START": "start"
+    },
+
+    "gesture": {
+
+        "HAND_LEFT": "HAND_LEFT",
+        "HAND_RIGHT": "HAND_RIGHT",
+
+        "HAND_UP": "HAND_UP",
+        "HAND_DOWN": "HAND_DOWN",
+
+        "Open_Palm": "Open_Palm",
+        "Closed_Fist": "Closed_Fist",
+
+        "Victory": "Victory",
+        "Pointing_Up": "Pointing_Up",
+
+        "Thumb_Up": "Thumb_Up",
+        "Thumb_Down": "Thumb_Down",
+
+        "ILoveYou": "ILoveYou"
+    },
+
+    "valid_signals": {
+
+        "keyboard": [
+
+            "ctrl+shift",
+            "ctrl+alt",
+            "alt+shift",
+
+            "ctrl+shift+q",
+            "ctrl+shift+w",
+            "ctrl+shift+e",
+            "ctrl+shift+r",
+            "ctrl+shift+t",
+
+            "ctrl+shift+a",
+            "ctrl+shift+s",
+            "ctrl+shift+d",
+            "ctrl+shift+f",
+            "ctrl+shift+g",
+
+            "ctrl+alt+q",
+            "ctrl+alt+w",
+            "ctrl+alt+e",
+            "ctrl+alt+r",
+
+            "alt+shift+q",
+            "alt+shift+w",
+            "alt+shift+e",
+            "alt+shift+r"
+        ],
+
+        "voice": [
+
+            "PLAY",
+            "PAUSE",
+            "STOP",
+
+            "NEXT",
+            "PREVIOUS",
+
+            "OPEN_BROWSER",
+            "CLOSE_WINDOW",
+
+            "SCROLL_UP",
+            "SCROLL_DOWN",
+
+            "VOLUME_UP",
+            "VOLUME_DOWN",
+
+            "MUTE",
+
+            "CONFIRM",
+            "CANCEL",
+
+            "START"
+        ],
+
+        "gesture": [
+
+            "HAND_LEFT",
+            "HAND_RIGHT",
+
+            "HAND_UP",
+            "HAND_DOWN",
+
+            "Open_Palm",
+            "Closed_Fist",
+
+            "Victory",
+            "Pointing_Up",
+
+            "Thumb_Up",
+            "Thumb_Down",
+
+            "ILoveYou"
+        ]
+    }
 }
