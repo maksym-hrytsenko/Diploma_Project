@@ -253,6 +253,30 @@ class GestureRecognizer:
             gesture_category.category_name
         )
 
+        # ---------------------------------
+        # Pointer Tracking
+        # ---------------------------------
+
+        if (
+            gesture_name == "Pointing_Up"
+            and result.hand_landmarks
+        ):
+
+            hand_landmarks = (
+                result.hand_landmarks[0]
+            )
+
+            index_tip = hand_landmarks[8]
+
+            self.event_bus.publish(
+                "pointer_position",
+                {
+                    "x": index_tip.x,
+                    "y": index_tip.y,
+                    "source": "gesture"
+                }
+            )
+
         confidence = (
             gesture_category.score
         )

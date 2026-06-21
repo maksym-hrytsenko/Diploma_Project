@@ -15,6 +15,11 @@ class ActionExecutor:
             self._handle_command
         )
 
+        self.event_bus.subscribe(
+            "pointer_position",
+            self._handle_pointer
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(
@@ -22,8 +27,13 @@ class ActionExecutor:
             self._handle_command
         )
 
+        self.event_bus.unsubscribe(
+            "pointer_position",
+            self._handle_pointer
+        )
+
     # ---------------------------------
-    # Handle Command
+    # Handle Commands
     # ---------------------------------
 
     def _handle_command(self, event):
@@ -37,19 +47,11 @@ class ActionExecutor:
         if not command:
             return
 
-        # ---------------------------------
-        # Terminal Output
-        # ---------------------------------
-
         print(
             f"[EXECUTION] "
             f"{command} "
             f"(source={source})"
         )
-
-        # ---------------------------------
-        # Publish Execution Event
-        # ---------------------------------
 
         self.event_bus.publish(
             "execution_event",
@@ -57,4 +59,24 @@ class ActionExecutor:
                 "command": command,
                 "source": source
             }
+        )
+
+    # ---------------------------------
+    # Handle Pointer Position
+    # ---------------------------------
+
+    def _handle_pointer(self, event):
+
+        data = event.get("data", {})
+
+        x = data.get("x")
+        y = data.get("y")
+
+        if x is None or y is None:
+            return
+
+        print(
+            f"[POINTER] "
+            f"x={x:.3f} "
+            f"y={y:.3f}"
         )
