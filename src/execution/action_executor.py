@@ -1,82 +1,111 @@
+from os_controller import OSController
+
+
 class ActionExecutor:
 
-    def __init__(self, event_bus):
+    def __init__(self):
 
-        self.event_bus = event_bus
+        self.os = OSController()
+
+        self.actions = {
+
+            # Mouse
+            "CLICK":
+                self.os.click,
+
+            # Cursor
+            "MOVE_CURSOR_LEFT":
+                self.os.move_cursor_left,
+
+            "MOVE_CURSOR_RIGHT":
+                self.os.move_cursor_right,
+
+            "MOVE_CURSOR_UP":
+                self.os.move_cursor_up,
+
+            "MOVE_CURSOR_DOWN":
+                self.os.move_cursor_down,
+
+            # Scroll
+            "SCROLL_UP":
+                self.os.scroll_up,
+
+            "SCROLL_DOWN":
+                self.os.scroll_down,
+
+            # Window Management
+            "MAXIMIZE_WINDOW":
+                self.os.maximize_window,
+
+            "MINIMIZE_WINDOW":
+                self.os.minimize_window,
+
+            "MOVE_WINDOW_LEFT":
+                self.os.move_window_left,
+
+            "MOVE_WINDOW_RIGHT":
+                self.os.move_window_right,
+
+            # Applications
+            "OPEN_BROWSER":
+                self.os.open_browser,
+
+            "OPEN_CHATGPT":
+                self.os.open_chatgpt,
+
+            "OPEN_VSCODE":
+                self.os.open_vscode,
+
+            "OPEN_TERMINAL":
+                self.os.open_terminal,
+
+            # Keyboard Shortcuts
+            "ALT_TAB":
+                self.os.alt_tab,
+
+            "CTRL_C":
+                self.os.ctrl_c,
+
+            "CTRL_V":
+                self.os.ctrl_v,
+
+            # Screenshot
+            "SCREENSHOT":
+                self.os.take_screenshot,
+        }
 
     # ---------------------------------
-    # Start / Stop
+    # Execute Command
     # ---------------------------------
 
-    def start(self):
+    def execute(self, command):
 
-        self.event_bus.subscribe(
-            "command_event",
-            self._handle_command
-        )
+        action = self.actions.get(command)
 
-        self.event_bus.subscribe(
-            "pointer_position",
-            self._handle_pointer
-        )
+        if action is None:
 
-    def stop(self):
+            print(
+                f"[UNKNOWN COMMAND] {command}"
+            )
 
-        self.event_bus.unsubscribe(
-            "command_event",
-            self._handle_command
-        )
-
-        self.event_bus.unsubscribe(
-            "pointer_position",
-            self._handle_pointer
-        )
-
-    # ---------------------------------
-    # Handle Commands
-    # ---------------------------------
-
-    def _handle_command(self, event):
-
-        data = event.get("data", {})
-
-        command = data.get("command")
-
-        source = data.get("source")
-
-        if not command:
             return
 
         print(
-            f"[EXECUTION] "
-            f"{command} "
-            f"(source={source})"
+            f"[EXECUTION] {command}"
         )
 
-        self.event_bus.publish(
-            "execution_event",
-            {
-                "command": command,
-                "source": source
-            }
-        )
+        try:
 
-    # ---------------------------------
-    # Handle Pointer Position
-    # ---------------------------------
+            result = action()
 
-    def _handle_pointer(self, event):
+            if result:
 
-        data = event.get("data", {})
+                print(
+                    f"[RESULT] {result}"
+                )
 
-        x = data.get("x")
-        y = data.get("y")
+        except Exception as e:
 
-        if x is None or y is None:
-            return
-
-        print(
-            f"[POINTER] "
-            f"x={x:.3f} "
-            f"y={y:.3f}"
-        )
+            print(
+                f"[ERROR] {command}: {e}"
+            )
