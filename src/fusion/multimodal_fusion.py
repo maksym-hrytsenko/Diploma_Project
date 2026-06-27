@@ -1,5 +1,4 @@
-import json
-import os
+from fusion.temporal_sync import TemporalSync
 
 
 class MultimodalFusion:
@@ -8,9 +7,7 @@ class MultimodalFusion:
 
         self.event_bus = event_bus
 
-        self.valid_signals = (
-            self._load_valid_signals()
-        )
+        self.sync = TemporalSync()
 
     # ---------------------------------
     # Start / Stop
@@ -18,190 +15,99 @@ class MultimodalFusion:
 
     def start(self):
 
-        # Keyboard
         self.event_bus.subscribe(
-            "keyboard_signal",
-            self._handle_keyboard
+            "normalized_signal",
+            self._handle_signal
         )
 
-        # Voice
         self.event_bus.subscribe(
-            "intent_detected",
-            self._handle_voice
-        )
-
-        # Gesture
-        self.event_bus.subscribe(
-            "gesture_signal",
-            self._handle_gesture
+            "clear_fusion_signals",
+            self._clear_signals
         )
 
     def stop(self):
 
-        # Keyboard
         self.event_bus.unsubscribe(
-            "keyboard_signal",
-            self._handle_keyboard
+            "normalized_signal",
+            self._handle_signal
         )
 
-        # Voice
         self.event_bus.unsubscribe(
-            "intent_detected",
-            self._handle_voice
-        )
-
-        # Gesture
-        self.event_bus.unsubscribe(
-            "gesture_signal",
-            self._handle_gesture
+            "clear_fusion_signals",
+            self._clear_signals
         )
 
     # ---------------------------------
-    # Load Valid Signals
+    # Handle Signal
     # ---------------------------------
 
-    def _load_valid_signals(self):
+    def _handle_signal(self, event):
 
-        try:
-
-            base_dir = os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
-            )
-
-            config_path = os.path.join(
-                base_dir,
-                "config",
-                "mapping.json"
-            )
-
-            with open(
-                config_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
-                data = json.load(f)
-
-                return data.get(
-                    "valid_signals",
-                    {}
-                )
-
-        except Exception:
-
-            return {}
-
-    # ---------------------------------
-    # Validation
-    # ---------------------------------
-
-    def _is_valid_signal(
-        self,
-        source,
-        signal
-    ):
-
-        valid = self.valid_signals.get(
-            source,
-            []
+        data = event.get(
+            "data",
+            {}
         )
 
-        return signal in valid
-
-    # ---------------------------------
-    # Keyboard
-    # ---------------------------------
-
-    def _handle_keyboard(self, event):
-
-        signal = (
-            event.get("data", {})
-            .get("signal")
+        source = data.get(
+            "source"
         )
 
-        if not signal:
+        signal = data.get(
+            "signal"
+        )
+
+        confidence = data.get(
+            "confidence",
+            1.0
+        )
+
+        if source is None:
             return
 
-        if not self._is_valid_signal(
-            "keyboard",
-            signal
-        ):
+        if signal is None:
             return
+
+        self.sync.store_signal(
+
+            source=source,
+
+            signal=signal,
+
+            confidence=confidence
+
+        )
 
         self.event_bus.publish(
+
             "fusion_signal",
+
             {
+
+                "source": source,
+
                 "signal": signal,
-                "source": "keyboard"
+
+                "signals": self.sync.get_signals()
+
             }
+
         )
-
     # ---------------------------------
-    # Voice
-    # ---------------------------------
-
-    def _handle_voice(self, event):
-
-        intent = event.get("data")
-
-        if not intent:
-            return
-
-        signal = intent.get("command")
-
-        if not signal:
-            return
-
-        if not self._is_valid_signal(
-            "voice",
-            signal
-        ):
-            return
-
-        self.event_bus.publish(
-            "fusion_signal",
-            {
-                "signal": signal,
-                "source": "voice",
-                "confidence": intent.get(
-                    "confidence",
-                    1.0
-                )
-            }
-        )
-
-    # ---------------------------------
-    # Gesture
+    # Clear Signals
     # ---------------------------------
 
-    def _handle_gesture(self, event):
+    def _clear_signals(self, event):
 
-        data = event.get("data")
+        self.sync.clear_all()
 
-        if not data:
-            return
+    # ---------------------------------
+    # Public API
+    # ---------------------------------
 
-        signal = data.get("signal")
+    def get_active_signals(self):
 
-        if not signal:
-            return
+        return self.sync.get_signals()
 
-        if not self._is_valid_signal(
-            "gesture",
-            signal
-        ):
-            return
+    def clear_signals(self):
 
-        self.event_bus.publish(
-            "fusion_signal",
-            {
-                "signal": signal,
-                "source": "gesture",
-                "confidence": data.get(
-                    "confidence",
-                    1.0
-                )
-            }
-        )
+        self.sync.clear_all()

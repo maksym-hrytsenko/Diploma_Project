@@ -13,10 +13,11 @@ from interpretation.intent_model import IntentModel
 from input.camera_input import CameraInput
 from processing.gesture.gesture_recognizer import GestureRecognizer
 
+from interpretation.command_interpreter import CommandInterpreter
+
 from fusion.multimodal_fusion import MultimodalFusion
-from interpretation.command_interpreter import (
-    CommandInterpreter
-)
+from fusion.signal_mapper import SignalMapper
+
 from execution.action_executor import ActionExecutor
 
 
@@ -72,11 +73,15 @@ def main():
     # Core Pipeline
     # ---------------------------------
 
+    interpreter = CommandInterpreter(
+        event_bus
+    )
+
     fusion = MultimodalFusion(
         event_bus
     )
 
-    interpreter = CommandInterpreter(
+    signal_mapper = SignalMapper(
         event_bus
     )
 
@@ -102,9 +107,11 @@ def main():
 
     gesture_recognizer.start()
 
+    interpreter.start()
+
     fusion.start()
 
-    interpreter.start()
+    signal_mapper.start()
 
     executor.start()
 
@@ -136,9 +143,11 @@ def main():
 
         gesture_recognizer.stop()
 
+        interpreter.stop()
+
         fusion.stop()
 
-        interpreter.stop()
+        signal_mapper.stop()
 
         executor.stop()
 

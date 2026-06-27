@@ -1,57 +1,26 @@
 {
     "keyboard": {
 
-        "ctrl+shift": "ctrl+shift",
-        "ctrl+alt": "ctrl+alt",
-        "alt+shift": "alt+shift",
-
-        "ctrl+shift+q": "ctrl+shift+q",
-        "ctrl+shift+w": "ctrl+shift+w",
-        "ctrl+shift+e": "ctrl+shift+e",
-        "ctrl+shift+r": "ctrl+shift+r",
-        "ctrl+shift+t": "ctrl+shift+t",
-
-        "ctrl+shift+a": "ctrl+shift+a",
-        "ctrl+shift+s": "ctrl+shift+s",
-        "ctrl+shift+d": "ctrl+shift+d",
-        "ctrl+shift+f": "ctrl+shift+f",
-        "ctrl+shift+g": "ctrl+shift+g",
-
-        "ctrl+alt+q": "ctrl+alt+q",
-        "ctrl+alt+w": "ctrl+alt+w",
-        "ctrl+alt+e": "ctrl+alt+e",
-        "ctrl+alt+r": "ctrl+alt+r",
-
-        "alt+shift+q": "alt+shift+q",
-        "alt+shift+w": "alt+shift+w",
-        "alt+shift+e": "alt+shift+e",
-        "alt+shift+r": "alt+shift+r"
+        "ctrl+alt": "CTRL_ALT",
+        "ctrl+shift": "CTRL_SHIFT",
+        "alt+shift": "ALT_SHIFT"
     },
 
     "voice": {
 
-        "PLAY": "play",
-        "PAUSE": "pause",
-        "STOP": "stop",
+        "PRESENTATION_MODE": "presentation mode",
 
-        "NEXT": "next",
-        "PREVIOUS": "previous",
+        "NEXT_SLIDE": "next slide",
+        "PREVIOUS_SLIDE": "previous slide",
+
+        "TAKE_SCREENSHOT": "take screenshot",
 
         "OPEN_BROWSER": "open browser",
-        "CLOSE_WINDOW": "close window",
+        "OPEN_CHATGPT": "open chatgpt",
+        "OPEN_GITHUB": "open github",
 
-        "SCROLL_UP": "scroll up",
-        "SCROLL_DOWN": "scroll down",
-
-        "VOLUME_UP": "volume up",
-        "VOLUME_DOWN": "volume down",
-
-        "MUTE": "mute",
-
-        "CONFIRM": "confirm",
-        "CANCEL": "cancel",
-
-        "START": "start"
+        "STUDY_MODE": "study mode",
+        "CODING_MODE": "coding mode"
     },
 
     "gesture": {
@@ -71,64 +40,37 @@
         "Thumb_Up": "Thumb_Up",
         "Thumb_Down": "Thumb_Down",
 
-        "ILoveYou": "ILoveYou"
+        "ILoveYou": "ILoveYou",
+
+        "OK": "OK",
+        "PINCH": "PINCH",
+        "DOUBLE_BLINK": "DOUBLE_BLINK"
     },
 
     "valid_signals": {
 
         "keyboard": [
 
-            "ctrl+shift",
             "ctrl+alt",
-            "alt+shift",
-
-            "ctrl+shift+q",
-            "ctrl+shift+w",
-            "ctrl+shift+e",
-            "ctrl+shift+r",
-            "ctrl+shift+t",
-
-            "ctrl+shift+a",
-            "ctrl+shift+s",
-            "ctrl+shift+d",
-            "ctrl+shift+f",
-            "ctrl+shift+g",
-
-            "ctrl+alt+q",
-            "ctrl+alt+w",
-            "ctrl+alt+e",
-            "ctrl+alt+r",
-
-            "alt+shift+q",
-            "alt+shift+w",
-            "alt+shift+e",
-            "alt+shift+r"
+            "ctrl+shift",
+            "alt+shift"
         ],
 
         "voice": [
 
-            "PLAY",
-            "PAUSE",
-            "STOP",
+            "PRESENTATION_MODE",
 
-            "NEXT",
-            "PREVIOUS",
+            "NEXT_SLIDE",
+            "PREVIOUS_SLIDE",
+
+            "TAKE_SCREENSHOT",
 
             "OPEN_BROWSER",
-            "CLOSE_WINDOW",
+            "OPEN_CHATGPT",
+            "OPEN_GITHUB",
 
-            "SCROLL_UP",
-            "SCROLL_DOWN",
-
-            "VOLUME_UP",
-            "VOLUME_DOWN",
-
-            "MUTE",
-
-            "CONFIRM",
-            "CANCEL",
-
-            "START"
+            "STUDY_MODE",
+            "CODING_MODE"
         ],
 
         "gesture": [
@@ -148,7 +90,11 @@
             "Thumb_Up",
             "Thumb_Down",
 
-            "ILoveYou"
+            "ILoveYou",
+
+            "OK",
+            "PINCH",
+            "DOUBLE_BLINK"
         ]
     }
 }

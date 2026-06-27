@@ -2,21 +2,15 @@ import json
 import os
 
 
-class CommandInterpreter:
+class MultimodalFusion:
 
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
 
-        self.keyboard_mapping = {}
-
-        self.voice_mapping = {}
-
-        self.gesture_mapping = {}
-
-        self.valid_signals = {}
-
-        self._load_mapping()
+        self.valid_signals = (
+            self._load_valid_signals()
+        )
 
     # ---------------------------------
     # Start / Stop
@@ -24,16 +18,19 @@ class CommandInterpreter:
 
     def start(self):
 
+        # Keyboard
         self.event_bus.subscribe(
             "keyboard_signal",
             self._handle_keyboard
         )
 
+        # Voice
         self.event_bus.subscribe(
             "intent_detected",
             self._handle_voice
         )
 
+        # Gesture
         self.event_bus.subscribe(
             "gesture_signal",
             self._handle_gesture
@@ -41,26 +38,29 @@ class CommandInterpreter:
 
     def stop(self):
 
+        # Keyboard
         self.event_bus.unsubscribe(
             "keyboard_signal",
             self._handle_keyboard
         )
 
+        # Voice
         self.event_bus.unsubscribe(
             "intent_detected",
             self._handle_voice
         )
 
+        # Gesture
         self.event_bus.unsubscribe(
             "gesture_signal",
             self._handle_gesture
         )
 
     # ---------------------------------
-    # Load mapping.json
+    # Load Valid Signals
     # ---------------------------------
 
-    def _load_mapping(self):
+    def _load_valid_signals(self):
 
         try:
 
@@ -84,80 +84,58 @@ class CommandInterpreter:
 
                 data = json.load(f)
 
-            self.keyboard_mapping = data.get(
-                "keyboard",
-                {}
-            )
-
-            self.voice_mapping = data.get(
-                "voice",
-                {}
-            )
-
-            self.gesture_mapping = data.get(
-                "gesture",
-                {}
-            )
-
-            self.valid_signals = data.get(
-                "valid_signals",
-                {}
-            )
+                return data.get(
+                    "valid_signals",
+                    {}
+                )
 
         except Exception:
 
-            self.keyboard_mapping = {}
+            return {}
 
-            self.voice_mapping = {}
+    # ---------------------------------
+    # Validation
+    # ---------------------------------
 
-            self.gesture_mapping = {}
+    def _is_valid_signal(
+        self,
+        source,
+        signal
+    ):
 
-            self.valid_signals = {}
+        valid = self.valid_signals.get(
+            source,
+            []
+        )
+
+        return signal in valid
+
     # ---------------------------------
     # Keyboard
     # ---------------------------------
 
     def _handle_keyboard(self, event):
 
-        data = event.get(
-            "data",
-            {}
+        signal = (
+            event.get("data", {})
+            .get("signal")
         )
 
-        signal = data.get(
-            "signal"
-        )
-
-        if signal is None:
+        if not signal:
             return
 
-        if signal not in self.valid_signals.get(
+        if not self._is_valid_signal(
             "keyboard",
-            []
+            signal
         ):
             return
 
-        mapped_signal = self.keyboard_mapping.get(
-            signal
-        )
-
-        if mapped_signal is None:
-            return
-
         self.event_bus.publish(
-
-            "normalized_signal",
-
+            "fusion_signal",
             {
-
-                "source": "keyboard",
-
-                "signal": mapped_signal,
-
-                "confidence": 1.0
-
+                "signal": signal,
+                "source": "keyboard"
             }
-
         )
 
     # ---------------------------------
@@ -166,48 +144,32 @@ class CommandInterpreter:
 
     def _handle_voice(self, event):
 
-        data = event.get(
-            "data",
-            {}
-        )
+        intent = event.get("data")
 
-        signal = data.get(
-            "command"
-        )
-
-        if signal is None:
+        if not intent:
             return
 
-        if signal not in self.valid_signals.get(
+        signal = intent.get("command")
+
+        if not signal:
+            return
+
+        if not self._is_valid_signal(
             "voice",
-            []
+            signal
         ):
             return
 
-        mapped_signal = self.voice_mapping.get(
-            signal
-        )
-
-        if mapped_signal is None:
-            return
-
         self.event_bus.publish(
-
-            "normalized_signal",
-
+            "fusion_signal",
             {
-
+                "signal": signal,
                 "source": "voice",
-
-                "signal": mapped_signal,
-
-                "confidence": data.get(
+                "confidence": intent.get(
                     "confidence",
                     1.0
                 )
-
             }
-
         )
 
     # ---------------------------------
@@ -216,46 +178,30 @@ class CommandInterpreter:
 
     def _handle_gesture(self, event):
 
-        data = event.get(
-            "data",
-            {}
-        )
+        data = event.get("data")
 
-        signal = data.get(
-            "signal"
-        )
-
-        if signal is None:
+        if not data:
             return
 
-        if signal not in self.valid_signals.get(
+        signal = data.get("signal")
+
+        if not signal:
+            return
+
+        if not self._is_valid_signal(
             "gesture",
-            []
+            signal
         ):
             return
 
-        mapped_signal = self.gesture_mapping.get(
-            signal
-        )
-
-        if mapped_signal is None:
-            return
-
         self.event_bus.publish(
-
-            "normalized_signal",
-
+            "fusion_signal",
             {
-
+                "signal": signal,
                 "source": "gesture",
-
-                "signal": mapped_signal,
-
                 "confidence": data.get(
                     "confidence",
                     1.0
                 )
-
             }
-
         )

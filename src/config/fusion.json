@@ -1,0 +1,76 @@
+{
+    "settings": {
+        "signal_timeout": 2.0,
+        "clear_signals_after_match": true
+    },
+
+    "rules": [
+
+        {
+            "name": "open_chatgpt",
+
+            "conditions": {
+                "keyboard": "CTRL_ALT",
+                "gesture": "Victory"
+            },
+
+            "action": "OPEN_CHATGPT"
+        },
+
+        {
+            "name": "open_browser",
+
+            "conditions": {
+                "keyboard": "CTRL_SHIFT",
+                "voice": "OPEN_BROWSER"
+            },
+
+            "action": "OPEN_BROWSER"
+        },
+
+        {
+            "name": "open_github",
+
+            "conditions": {
+                "keyboard": "ALT_SHIFT",
+                "voice": "OPEN_GITHUB"
+            },
+
+            "action": "OPEN_GITHUB"
+        },
+
+        {
+            "name": "take_screenshot",
+
+            "conditions": {
+                "voice": "TAKE_SCREENSHOT",
+                "gesture": "Closed_Fist"
+            },
+
+            "action": "TAKE_SCREENSHOT"
+        },
+
+        {
+            "name": "presentation_next",
+
+            "conditions": {
+                "voice": "PRESENTATION_MODE",
+                "gesture": "HAND_RIGHT"
+            },
+
+            "action": "NEXT_SLIDE"
+        },
+
+        {
+            "name": "presentation_previous",
+
+            "conditions": {
+                "voice": "PRESENTATION_MODE",
+                "gesture": "HAND_LEFT"
+            },
+
+            "action": "PREVIOUS_SLIDE"
+        }
+
+    ]
+}

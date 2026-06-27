@@ -1,111 +1,159 @@
-from os_controller import OSController
-
-
 class ActionExecutor:
 
-    def __init__(self):
+    def __init__(self, event_bus):
 
-        self.os = OSController()
-
-        self.actions = {
-
-            # Mouse
-            "CLICK":
-                self.os.click,
-
-            # Cursor
-            "MOVE_CURSOR_LEFT":
-                self.os.move_cursor_left,
-
-            "MOVE_CURSOR_RIGHT":
-                self.os.move_cursor_right,
-
-            "MOVE_CURSOR_UP":
-                self.os.move_cursor_up,
-
-            "MOVE_CURSOR_DOWN":
-                self.os.move_cursor_down,
-
-            # Scroll
-            "SCROLL_UP":
-                self.os.scroll_up,
-
-            "SCROLL_DOWN":
-                self.os.scroll_down,
-
-            # Window Management
-            "MAXIMIZE_WINDOW":
-                self.os.maximize_window,
-
-            "MINIMIZE_WINDOW":
-                self.os.minimize_window,
-
-            "MOVE_WINDOW_LEFT":
-                self.os.move_window_left,
-
-            "MOVE_WINDOW_RIGHT":
-                self.os.move_window_right,
-
-            # Applications
-            "OPEN_BROWSER":
-                self.os.open_browser,
-
-            "OPEN_CHATGPT":
-                self.os.open_chatgpt,
-
-            "OPEN_VSCODE":
-                self.os.open_vscode,
-
-            "OPEN_TERMINAL":
-                self.os.open_terminal,
-
-            # Keyboard Shortcuts
-            "ALT_TAB":
-                self.os.alt_tab,
-
-            "CTRL_C":
-                self.os.ctrl_c,
-
-            "CTRL_V":
-                self.os.ctrl_v,
-
-            # Screenshot
-            "SCREENSHOT":
-                self.os.take_screenshot,
-        }
+        self.event_bus = event_bus
 
     # ---------------------------------
-    # Execute Command
+    # Start / Stop
     # ---------------------------------
 
-    def execute(self, command):
+    def start(self):
 
-        action = self.actions.get(command)
+        self.event_bus.subscribe(
+            "command_event",
+            self._handle_command
+        )
 
-        if action is None:
+        self.event_bus.subscribe(
+            "pointer_position",
+            self._handle_pointer
+        )
 
-            print(
-                f"[UNKNOWN COMMAND] {command}"
-            )
+        # Debug SignalMapper
+        self.event_bus.subscribe(
+            "fusion_signal",
+            self._debug_event
+        )
 
+        self.event_bus.subscribe(
+            "command_event",
+            self._debug_event
+        )
+
+    def stop(self):
+
+        self.event_bus.unsubscribe(
+            "command_event",
+            self._handle_command
+        )
+
+        self.event_bus.unsubscribe(
+            "pointer_position",
+            self._handle_pointer
+        )
+
+        self.event_bus.unsubscribe(
+            "fusion_signal",
+            self._debug_event
+        )
+
+        self.event_bus.unsubscribe(
+            "command_event",
+            self._debug_event
+        )
+
+    # ---------------------------------
+    # Handle Commands
+    # ---------------------------------
+
+    def _handle_command(self, event):
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        command = data.get(
+            "command"
+        )
+
+        if command is None:
             return
 
         print(
-            f"[EXECUTION] {command}"
+            f"[EXECUTOR] {command}"
         )
 
-        try:
+    # ---------------------------------
+    # Handle Pointer
+    # ---------------------------------
 
-            result = action()
+    def _handle_pointer(self, event):
 
-            if result:
+        data = event.get(
+            "data",
+            {}
+        )
 
-                print(
-                    f"[RESULT] {result}"
-                )
+        x = data.get("x")
+        y = data.get("y")
 
-        except Exception as e:
+        if x is None or y is None:
+            return
+
+        print(
+            f"[POINTER] x={x:.3f} y={y:.3f}"
+        )
+
+    # ---------------------------------
+    # Debug SignalMapper
+    # ---------------------------------
+
+    def _debug_event(self, event):
+
+        event_type = event.get(
+            "type"
+        )
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        if event_type == "fusion_signal":
+
+            print("\n========== SIGNAL MAPPER INPUT ==========")
+
+            signals = data.get(
+                "signals",
+                {}
+            )
+
+            if not signals:
+
+                print("No active signals")
+
+            else:
+
+                for source, value in signals.items():
+
+                    print(
+                        f"{source.upper():10} : {value['signal']}"
+                    )
+
+            print("=========================================")
+
+        elif event_type == "command_event":
+
+            print("========== SIGNAL MAPPER OUTPUT ==========")
 
             print(
-                f"[ERROR] {command}: {e}"
+                f"COMMAND    : {data.get('command')}"
             )
+
+            print(
+                f"SOURCE     : {data.get('source')}"
+            )
+
+            mode = data.get(
+                "mode"
+            )
+
+            if mode:
+
+                print(
+                    f"MODE       : {mode}"
+                )
+
+            print("==========================================\n")
