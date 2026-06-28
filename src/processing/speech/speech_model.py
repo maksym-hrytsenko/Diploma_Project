@@ -1,4 +1,5 @@
 import json
+import os
 
 from vosk import (
     Model,
@@ -16,20 +17,67 @@ class VoskSpeechModel:
         )
     ):
 
-        self.model = Model(model_path)
+        self.model = Model(
+            model_path
+        )
 
-        self.recognizer = (
-            KaldiRecognizer(
-                self.model,
-                16000
+        grammar = self._load_grammar()
+
+        self.recognizer = KaldiRecognizer(
+            self.model,
+            16000,
+            grammar
+        )
+
+    # ---------------------------------
+    # Load Grammar
+    # ---------------------------------
+
+    def _load_grammar(self):
+
+        base_dir = os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(
+                    os.path.abspath(__file__)
+                )
             )
         )
+
+        mapping_path = os.path.join(
+            base_dir,
+            "config",
+            "mapping.json"
+        )
+
+        with open(
+            mapping_path,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            mapping = json.load(f)
+
+        grammar = list(
+            mapping.get(
+                "voice",
+                {}
+            ).values()
+        )
+
+        grammar.append(
+            "[unk]"
+        )
+
+        return json.dumps(grammar)
 
     # ---------------------------------
     # Process Audio
     # ---------------------------------
 
-    def process_audio(self, audio_chunk):
+    def process_audio(
+        self,
+        audio_chunk
+    ):
 
         if audio_chunk is None:
             return None
@@ -52,7 +100,14 @@ class VoskSpeechModel:
             ).strip()
 
             if text:
-                return text
+
+                return {
+
+                    "text": text,
+
+                    "is_final": True
+
+                }
 
         # ---------------------------------
         # Partial Result
@@ -68,6 +123,13 @@ class VoskSpeechModel:
         ).strip()
 
         if partial_text:
-            return partial_text
+
+            return {
+
+                "text": partial_text,
+
+                "is_final": False
+
+            }
 
         return None

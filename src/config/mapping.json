@@ -8,16 +8,33 @@
 
     "voice": {
 
-        "PRESENTATION_MODE": "presentation mode",
+        "START": "start",
+        "STOP": "stop",
 
-        "NEXT_SLIDE": "next slide",
-        "PREVIOUS_SLIDE": "previous slide",
-
-        "TAKE_SCREENSHOT": "take screenshot",
+        "YES": "yes",
+        "NO": "no",
 
         "OPEN_BROWSER": "open browser",
         "OPEN_CHATGPT": "open chatgpt",
         "OPEN_GITHUB": "open github",
+        "OPEN_TERMINAL": "open terminal",
+        "OPEN_VSCODE": "open vscode",
+
+        "TAKE_SCREENSHOT": "take screenshot",
+
+        "PRESENTATION_MODE": "presentation mode",
+        "NEXT_SLIDE": "next slide",
+        "PREVIOUS_SLIDE": "previous slide",
+
+        "SCROLL_UP": "scroll up",
+        "SCROLL_DOWN": "scroll down",
+
+        "MOVE_LEFT": "move left",
+        "MOVE_RIGHT": "move right",
+        "MOVE_UP": "move up",
+        "MOVE_DOWN": "move down",
+
+        "CLICK": "click",
 
         "STUDY_MODE": "study mode",
         "CODING_MODE": "coding mode"
@@ -58,16 +75,33 @@
 
         "voice": [
 
-            "PRESENTATION_MODE",
+            "START",
+            "STOP",
 
-            "NEXT_SLIDE",
-            "PREVIOUS_SLIDE",
-
-            "TAKE_SCREENSHOT",
+            "YES",
+            "NO",
 
             "OPEN_BROWSER",
             "OPEN_CHATGPT",
             "OPEN_GITHUB",
+            "OPEN_TERMINAL",
+            "OPEN_VSCODE",
+
+            "TAKE_SCREENSHOT",
+
+            "PRESENTATION_MODE",
+            "NEXT_SLIDE",
+            "PREVIOUS_SLIDE",
+
+            "SCROLL_UP",
+            "SCROLL_DOWN",
+
+            "MOVE_LEFT",
+            "MOVE_RIGHT",
+            "MOVE_UP",
+            "MOVE_DOWN",
+
+            "CLICK",
 
             "STUDY_MODE",
             "CODING_MODE"

@@ -184,13 +184,6 @@ class CommandInterpreter:
         ):
             return
 
-        mapped_signal = self.voice_mapping.get(
-            signal
-        )
-
-        if mapped_signal is None:
-            return
-
         self.event_bus.publish(
 
             "normalized_signal",
@@ -199,7 +192,7 @@ class CommandInterpreter:
 
                 "source": "voice",
 
-                "signal": mapped_signal,
+                "signal": signal,
 
                 "confidence": data.get(
                     "confidence",

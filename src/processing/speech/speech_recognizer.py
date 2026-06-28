@@ -47,21 +47,30 @@ class SpeechRecognizer:
 
     def on_audio(self, event):
 
-        audio_chunk = event.get("data")
-
-        if audio_chunk is None:
-            return
-
-        text = (
-            self.vosk_model.process_audio(
-                audio_chunk
-            )
+        data = event.get(
+            "data"
         )
 
-        if not text:
+        if data is None:
+            return
+
+        result = self.vosk_model.process_audio(
+            data
+        )
+
+        if result is None:
+            return
+
+        # Ignore partial recognition
+        if not result.get(
+            "is_final",
+            False
+        ):
             return
 
         self.event_bus.publish(
             "text_ready",
-            text
+            result.get(
+                "text"
+            )
         )
