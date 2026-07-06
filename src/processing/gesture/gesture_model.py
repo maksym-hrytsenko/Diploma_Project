@@ -1,3 +1,5 @@
+import time
+
 import cv2
 import mediapipe as mp
 
@@ -18,7 +20,11 @@ class GestureModel:
 
         options = vision.GestureRecognizerOptions(
             base_options=base_options,
-            num_hands=1
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.5,
+            min_hand_presence_confidence=0.5,
+            min_tracking_confidence=0.5
         )
 
         self.recognizer = (
@@ -26,6 +32,8 @@ class GestureModel:
                 options
             )
         )
+
+        self.start_time = time.time()
 
     def process_frame(self, frame):
 
@@ -42,8 +50,17 @@ class GestureModel:
             data=rgb_frame
         )
 
-        result = self.recognizer.recognize(
-            mp_image
+        # VIDEO mode lets MediaPipe track the hand across
+        # frames instead of re-detecting the palm from
+        # scratch every time, which is what made tracking
+        # drop out on less palm-like shapes like a fist
+        timestamp_ms = int(
+            (time.time() - self.start_time) * 1000
+        )
+
+        result = self.recognizer.recognize_for_video(
+            mp_image,
+            timestamp_ms
         )
 
         return result

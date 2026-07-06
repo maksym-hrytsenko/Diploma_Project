@@ -10,7 +10,8 @@ class MicrophoneInput:
         self,
         event_bus,
         samplerate=16000,
-        channels=1
+        channels=1,
+        device=None
     ):
 
         self.event_bus = event_bus
@@ -25,8 +26,8 @@ class MicrophoneInput:
 
         self.stream = None
 
-        # MacBook Air microphone
-        self.device = 3
+        # None means: use the OS default input device
+        self.device = device
 
     # ---------------------------------
     # Audio Callback
@@ -41,7 +42,9 @@ class MicrophoneInput:
     ):
 
         if status:
-            return
+            print(
+                f"[MicrophoneInput] Stream status: {status}"
+            )
 
         self.audio_queue.put(
             bytes(indata)
@@ -54,6 +57,15 @@ class MicrophoneInput:
     def start(self):
 
         self.running = True
+
+        device_info = sd.query_devices(
+            self.device,
+            "input"
+        )
+
+        print(
+            f"[MicrophoneInput] Using input device: {device_info['name']}"
+        )
 
         self.stream = sd.RawInputStream(
 

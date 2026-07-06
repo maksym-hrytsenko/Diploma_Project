@@ -4,6 +4,25 @@
         "clear_signals_after_match": true
     },
 
+    "modes": [
+
+        {
+            "mode": "presentation",
+            "trigger": "PRESENTATION_MODE"
+        },
+
+        {
+            "mode": "study",
+            "trigger": "STUDY_MODE"
+        },
+
+        {
+            "mode": "coding",
+            "trigger": "CODING_MODE"
+        }
+
+    ],
+
     "rules": [
 
         {
@@ -12,6 +31,17 @@
             "conditions": {
                 "keyboard": "CTRL_ALT",
                 "gesture": "Victory"
+            },
+
+            "action": "OPEN_CHATGPT"
+        },
+
+        {
+            "name": "open_chatgpt_ok",
+
+            "conditions": {
+                "keyboard": "CTRL_ALT",
+                "gesture": "OK"
             },
 
             "action": "OPEN_CHATGPT"
@@ -40,7 +70,7 @@
         },
 
         {
-            "name": "take_screenshot",
+            "name": "take_screenshot_voice",
 
             "conditions": {
                 "voice": "TAKE_SCREENSHOT",
@@ -51,10 +81,87 @@
         },
 
         {
-            "name": "presentation_next",
+            "name": "take_screenshot_blink",
 
             "conditions": {
-                "voice": "PRESENTATION_MODE",
+                "gesture": "DOUBLE_BLINK"
+            },
+
+            "action": "TAKE_SCREENSHOT"
+        },
+
+        {
+            "name": "cursor_click",
+
+            "conditions": {
+                "gesture": "PINCH"
+            },
+
+            "action": "CLICK"
+        },
+
+        {
+            "name": "window_snap_left",
+
+            "conditions": {
+                "keyboard": "ALT_SHIFT",
+                "gesture": "HAND_LEFT"
+            },
+
+            "action": "MOVE_WINDOW_LEFT"
+        },
+
+        {
+            "name": "window_snap_right",
+
+            "conditions": {
+                "keyboard": "ALT_SHIFT",
+                "gesture": "HAND_RIGHT"
+            },
+
+            "action": "MOVE_WINDOW_RIGHT"
+        },
+
+        {
+            "name": "window_maximize",
+
+            "conditions": {
+                "keyboard": "ALT_SHIFT", 
+                "gesture": "HAND_UP"
+            },
+
+            "action": "MAXIMIZE_WINDOW"
+        },
+
+        {
+            "name": "enter_study_mode",
+
+            "conditions": {
+                "voice": "STUDY_MODE"
+            },
+
+            "action": "ENTER_STUDY_MODE"
+        },
+
+        {
+            "name": "enter_coding_mode",
+
+            "conditions": {
+                "voice": "CODING_MODE"
+            },
+
+            "action": "ENTER_CODING_MODE"
+        }
+
+    ],
+
+    "mode_rules": [
+
+        {
+            "name": "presentation_next",
+            "mode": "presentation",
+
+            "conditions": {
                 "gesture": "HAND_RIGHT"
             },
 
@@ -63,9 +170,9 @@
 
         {
             "name": "presentation_previous",
+            "mode": "presentation",
 
             "conditions": {
-                "voice": "PRESENTATION_MODE",
                 "gesture": "HAND_LEFT"
             },
 

@@ -1,3 +1,4 @@
+import sys
 import time
 
 from core.event_bus import EventBus
@@ -12,6 +13,7 @@ from interpretation.intent_model import IntentModel
 
 from input.camera_input import CameraInput
 from processing.gesture.gesture_recognizer import GestureRecognizer
+from processing.gesture.gesture_debug_view import GestureDebugView
 
 from interpretation.command_interpreter import CommandInterpreter
 
@@ -22,6 +24,11 @@ from execution.action_executor import ActionExecutor
 
 
 def main():
+
+    # Calibration helper: opens a window showing the
+    # camera feed with the anchor point, tracked finger
+    # and current zone drawn on top
+    debug_gesture = "--debug-gesture" in sys.argv
 
     event_bus = EventBus()
 
@@ -69,6 +76,14 @@ def main():
         event_bus
     )
 
+    gesture_debug_view = None
+
+    if debug_gesture:
+
+        gesture_debug_view = GestureDebugView(
+            event_bus
+        )
+
     # ---------------------------------
     # Core Pipeline
     # ---------------------------------
@@ -107,6 +122,10 @@ def main():
 
     gesture_recognizer.start()
 
+    if gesture_debug_view is not None:
+
+        gesture_debug_view.start()
+
     interpreter.start()
 
     fusion.start()
@@ -123,7 +142,16 @@ def main():
 
         while True:
 
-            time.sleep(0.1)
+            # cv2.imshow / cv2.waitKey must run on the main
+            # thread, so the debug window is drawn here
+            # instead of from the camera capture thread
+            if gesture_debug_view is not None:
+
+                gesture_debug_view.render()
+
+            else:
+
+                time.sleep(0.1)
 
     except KeyboardInterrupt:
 
@@ -142,6 +170,10 @@ def main():
         camera_input.stop()
 
         gesture_recognizer.stop()
+
+        if gesture_debug_view is not None:
+
+            gesture_debug_view.stop()
 
         interpreter.stop()
 
