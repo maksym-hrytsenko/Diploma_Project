@@ -1,3 +1,6 @@
+import json
+import os
+
 from fusion.temporal_sync import TemporalSync
 
 
@@ -7,7 +10,51 @@ class MultimodalFusion:
 
         self.event_bus = event_bus
 
-        self.sync = TemporalSync()
+        signal_timeout = self._load_signal_timeout()
+
+        self.sync = TemporalSync(
+            timeout=signal_timeout
+        )
+
+    # ---------------------------------
+    # Load fusion.json settings
+    # ---------------------------------
+
+    def _load_signal_timeout(self):
+
+        try:
+
+            base_dir = os.path.dirname(
+                os.path.dirname(
+                    os.path.abspath(__file__)
+                )
+            )
+
+            config_path = os.path.join(
+                base_dir,
+                "config",
+                "fusion.json"
+            )
+
+            with open(
+                config_path,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
+                data = json.load(f)
+
+            return data.get(
+                "settings",
+                {}
+            ).get(
+                "signal_timeout",
+                2.0
+            )
+
+        except Exception:
+
+            return 2.0
 
     # ---------------------------------
     # Start / Stop

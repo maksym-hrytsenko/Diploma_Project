@@ -1,67 +1,72 @@
 {
     "keyboard": {
 
-        "ctrl+alt": "CTRL_ALT",
-        "ctrl+shift": "CTRL_SHIFT",
-        "alt+shift": "ALT_SHIFT"
+        "ctrl+alt": "PRESENTATION_MODE_KEY",
+        "alt+shift": "FLIP_MODE_KEY",
+        "ctrl+shift": "CURSOR_MODE_KEY",
+
+        "right": "KEY_RIGHT",
+        "left": "KEY_LEFT"
     },
 
     "voice": {
 
+        "YES": "yes",
+        "NO": "no",
+
         "START": "start",
         "STOP": "stop",
 
-        "YES": "yes",
-        "NO": "no",
+        "EXIT_MODE": "exit mode",
+
+        "PRESENTATION_MODE": "presentation mode",
+        "FLIP_MODE": "flip mode",
+        "CURSOR_MODE": "cursor mode",
+
+        "NEXT_SLIDE": "next slide",
+        "PREVIOUS_SLIDE": "previous slide",
+
+        "WORK_MODE": "work mode",
+        "STUDY_MODE": "study mode",
+        "MOVIE_MODE": "movie mode",
+        "NEWS_MODE": "news mode",
 
         "OPEN_BROWSER": "open browser",
         "OPEN_CHATGPT": "open chatgpt",
         "OPEN_GITHUB": "open github",
-        "OPEN_TERMINAL": "open terminal",
         "OPEN_VSCODE": "open vscode",
-
-        "TAKE_SCREENSHOT": "take screenshot",
-
-        "PRESENTATION_MODE": "presentation mode",
-        "NEXT_SLIDE": "next slide",
-        "PREVIOUS_SLIDE": "previous slide",
-
-        "SCROLL_UP": "scroll up",
-        "SCROLL_DOWN": "scroll down",
-
-        "MOVE_LEFT": "move left",
-        "MOVE_RIGHT": "move right",
-        "MOVE_UP": "move up",
-        "MOVE_DOWN": "move down",
-
-        "CLICK": "click",
-
-        "STUDY_MODE": "study mode",
-        "CODING_MODE": "coding mode"
+        "OPEN_TERMINAL": "open terminal",
+        "OPEN_SAFARI": "open safari",
+        "OPEN_CHROME": "open chrome",
+        "OPEN_SPOTIFY": "open spotify",
+        "OPEN_SLACK": "open slack",
+        "OPEN_DISCORD": "open discord",
+        "OPEN_ZOOM": "open zoom",
+        "OPEN_MAIL": "open mail",
+        "OPEN_CALENDAR": "open calendar",
+        "OPEN_NOTES": "open notes",
+        "OPEN_MESSAGES": "open messages",
+        "OPEN_WHATSAPP": "open whatsapp",
+        "OPEN_TELEGRAM": "open telegram",
+        "OPEN_FINDER": "open finder",
+        "OPEN_NOTION": "open notion",
+        "OPEN_FIGMA": "open figma",
+        "OPEN_PHOTOS": "open photos",
+        "OPEN_MUSIC": "open music",
+        "OPEN_PREVIEW": "open preview",
+        "OPEN_SETTINGS": "open settings"
     },
 
     "gesture": {
 
         "HAND_LEFT": "HAND_LEFT",
         "HAND_RIGHT": "HAND_RIGHT",
-
         "HAND_UP": "HAND_UP",
         "HAND_DOWN": "HAND_DOWN",
 
-        "Open_Palm": "Open_Palm",
-        "Closed_Fist": "Closed_Fist",
+        "HAND_SESSION_START": "HAND_SESSION_START",
 
-        "Victory": "Victory",
-        "Pointing_Up": "Pointing_Up",
-
-        "Thumb_Up": "Thumb_Up",
-        "Thumb_Down": "Thumb_Down",
-
-        "ILoveYou": "ILoveYou",
-
-        "OK": "OK",
-        "PINCH": "PINCH",
-        "DOUBLE_BLINK": "DOUBLE_BLINK"
+        "PINCH": "PINCH"
     },
 
     "valid_signals": {
@@ -69,66 +74,71 @@
         "keyboard": [
 
             "ctrl+alt",
+            "alt+shift",
             "ctrl+shift",
-            "alt+shift"
+
+            "right",
+            "left"
         ],
 
         "voice": [
 
+            "YES",
+            "NO",
+
             "START",
             "STOP",
 
-            "YES",
-            "NO",
+            "EXIT_MODE",
+
+            "PRESENTATION_MODE",
+            "FLIP_MODE",
+            "CURSOR_MODE",
+
+            "NEXT_SLIDE",
+            "PREVIOUS_SLIDE",
+
+            "WORK_MODE",
+            "STUDY_MODE",
+            "MOVIE_MODE",
+            "NEWS_MODE",
 
             "OPEN_BROWSER",
             "OPEN_CHATGPT",
             "OPEN_GITHUB",
-            "OPEN_TERMINAL",
             "OPEN_VSCODE",
-
-            "TAKE_SCREENSHOT",
-
-            "PRESENTATION_MODE",
-            "NEXT_SLIDE",
-            "PREVIOUS_SLIDE",
-
-            "SCROLL_UP",
-            "SCROLL_DOWN",
-
-            "MOVE_LEFT",
-            "MOVE_RIGHT",
-            "MOVE_UP",
-            "MOVE_DOWN",
-
-            "CLICK",
-
-            "STUDY_MODE",
-            "CODING_MODE"
+            "OPEN_TERMINAL",
+            "OPEN_SAFARI",
+            "OPEN_CHROME",
+            "OPEN_SPOTIFY",
+            "OPEN_SLACK",
+            "OPEN_DISCORD",
+            "OPEN_ZOOM",
+            "OPEN_MAIL",
+            "OPEN_CALENDAR",
+            "OPEN_NOTES",
+            "OPEN_MESSAGES",
+            "OPEN_WHATSAPP",
+            "OPEN_TELEGRAM",
+            "OPEN_FINDER",
+            "OPEN_NOTION",
+            "OPEN_FIGMA",
+            "OPEN_PHOTOS",
+            "OPEN_MUSIC",
+            "OPEN_PREVIEW",
+            "OPEN_SETTINGS"
         ],
 
         "gesture": [
 
             "HAND_LEFT",
             "HAND_RIGHT",
-
             "HAND_UP",
             "HAND_DOWN",
 
-            "Open_Palm",
-            "Closed_Fist",
+            "HAND_SESSION_START",
 
-            "Victory",
-            "Pointing_Up",
-
-            "Thumb_Up",
-            "Thumb_Down",
-
-            "ILoveYou",
-
-            "OK",
-            "PINCH",
-            "DOUBLE_BLINK"
+            "PINCH"
         ]
     }
 }

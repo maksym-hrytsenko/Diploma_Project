@@ -110,6 +110,29 @@ class GestureRecognizer:
 
         self.motion_cooldown = 0.5
 
+        # ---------------------------------
+        # Pinch / Hold-and-Drag Geometry
+        # ---------------------------------
+
+        # Distance (normalized coordinates) between thumb
+        # tip and index tip below which the two fingers
+        # count as "touching" — a pinch.
+        self.pinch_distance_threshold = 0.06
+
+        # A pinch held/moved past either of these
+        # thresholds stops being a quick tap (click) and
+        # becomes a hold-and-drag (scroll) instead.
+        self.drag_activation_seconds = 0.15
+        self.drag_activation_distance = 0.03
+
+        self.is_pinching = False
+        self.is_dragging = False
+
+        self.pinch_start_time = 0
+        self.pinch_start_x = None
+        self.pinch_start_y = None
+        self.pinch_previous_y = None
+
     def start(self):
 
         self.event_bus.subscribe(
@@ -175,6 +198,10 @@ class GestureRecognizer:
         )
 
         self._check_motion(
+            result
+        )
+
+        self._check_pinch(
             result
         )
 
@@ -333,6 +360,19 @@ class GestureRecognizer:
             # — leaving the start condition true on every
             # following frame and re-anchoring each time.
             self.last_gesture = "Open_Palm"
+
+            # A discrete, mode-agnostic marker for exactly
+            # this transition. SignalMapper decides what it
+            # means right now (e.g. opening the Quick
+            # Command Circle from idle) — this class stays
+            # unaware of modes.
+            self.event_bus.publish(
+                "gesture_signal",
+                {
+                    "signal": "HAND_SESSION_START",
+                    "source": "gesture"
+                }
+            )
 
         elif (
             self.last_gesture == "Open_Palm"
@@ -544,6 +584,135 @@ class GestureRecognizer:
         self.previous_y = current_y
 
         self.previous_time = current_time
+
+    # ---------------------------------
+    # Pinch / Hold-and-Drag Geometry
+    # ---------------------------------
+
+    # Computed directly from hand landmarks rather than the
+    # MediaPipe classifier, which does not produce a pinch
+    # category. A quick touch-and-release fires a single
+    # PINCH gesture_signal (used for click). A touch that is
+    # held or moved past a small threshold instead becomes a
+    # hold-and-drag, publishing continuous "pinch_drag"
+    # deltas (used for scroll) and firing no click on
+    # release — this class only computes the geometry, it
+    # does not know that Cursor mode is the only place any
+    # of this currently matters.
+
+    def _check_pinch(self, result):
+
+        hand_landmarks = (
+            result.hand_landmarks[0]
+        )
+
+        thumb_tip = hand_landmarks[4]
+        index_tip = hand_landmarks[8]
+
+        distance = math.hypot(
+            thumb_tip.x - index_tip.x,
+            thumb_tip.y - index_tip.y
+        )
+
+        currently_touching = (
+            distance < self.pinch_distance_threshold
+        )
+
+        current_time = time.time()
+
+        current_x = (thumb_tip.x + index_tip.x) / 2
+        current_y = (thumb_tip.y + index_tip.y) / 2
+
+        if currently_touching and not self.is_pinching:
+
+            self._start_pinch(
+                current_time,
+                current_x,
+                current_y
+            )
+
+            return
+
+        if currently_touching and self.is_pinching:
+
+            self._hold_pinch(
+                current_time,
+                current_x,
+                current_y
+            )
+
+            return
+
+        if not currently_touching and self.is_pinching:
+
+            self._release_pinch()
+
+    def _start_pinch(self, current_time, current_x, current_y):
+
+        self.is_pinching = True
+        self.is_dragging = False
+
+        self.pinch_start_time = current_time
+
+        self.pinch_start_x = current_x
+        self.pinch_start_y = current_y
+
+        self.pinch_previous_y = current_y
+
+    def _hold_pinch(self, current_time, current_x, current_y):
+
+        elapsed = current_time - self.pinch_start_time
+
+        moved = math.hypot(
+            current_x - self.pinch_start_x,
+            current_y - self.pinch_start_y
+        )
+
+        if (
+            not self.is_dragging
+            and (
+                elapsed > self.drag_activation_seconds
+                or moved > self.drag_activation_distance
+            )
+        ):
+
+            self.is_dragging = True
+
+        if self.is_dragging:
+
+            delta_y = current_y - self.pinch_previous_y
+
+            self.event_bus.publish(
+                "pinch_drag",
+                {
+                    "delta_y": delta_y,
+                    "source": "gesture"
+                }
+            )
+
+        self.pinch_previous_y = current_y
+
+    def _release_pinch(self):
+
+        # A quick tap (never became a drag) is a click.
+        # A completed drag ends silently — it already did
+        # its job as a scroll, it should not also click.
+        if not self.is_dragging:
+
+            self.event_bus.publish(
+                "gesture_signal",
+                {
+                    "signal": "PINCH",
+                    "source": "gesture"
+                }
+            )
+
+        self.is_pinching = False
+        self.is_dragging = False
+
+        self.pinch_start_x = None
+        self.pinch_start_y = None
+        self.pinch_previous_y = None
 
     # ---------------------------------
     # Pointer Tracking

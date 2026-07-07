@@ -8,17 +8,101 @@
 
         {
             "mode": "presentation",
-            "trigger": "PRESENTATION_MODE"
+
+            "triggers": [
+                { "source": "voice", "signal": "PRESENTATION_MODE" },
+                { "source": "keyboard", "signal": "PRESENTATION_MODE_KEY" }
+            ]
         },
 
         {
-            "mode": "study",
-            "trigger": "STUDY_MODE"
+            "mode": "flip",
+
+            "triggers": [
+                { "source": "voice", "signal": "FLIP_MODE" },
+                { "source": "keyboard", "signal": "FLIP_MODE_KEY" }
+            ]
         },
 
         {
-            "mode": "coding",
-            "trigger": "CODING_MODE"
+            "mode": "cursor",
+
+            "triggers": [
+                { "source": "voice", "signal": "CURSOR_MODE" },
+                { "source": "keyboard", "signal": "CURSOR_MODE_KEY" }
+            ]
+        },
+
+        {
+            "mode": "quick_circle",
+
+            "triggers": [
+                { "source": "gesture", "signal": "HAND_SESSION_START" }
+            ]
+        }
+
+    ],
+
+    "environments": [
+
+        {
+            "environment": "work",
+            "trigger": "WORK_MODE",
+
+            "enter_actions": [
+                "ENABLE_DO_NOT_DISTURB",
+                "OPEN_SLACK",
+                "OPEN_MAIL",
+                "OPEN_CALENDAR"
+            ],
+
+            "exit_actions": [
+                "DISABLE_DO_NOT_DISTURB"
+            ]
+        },
+
+        {
+            "environment": "study",
+            "trigger": "STUDY_MODE",
+
+            "enter_actions": [
+                "ENABLE_DO_NOT_DISTURB",
+                "OPEN_SAFARI",
+                "OPEN_PREVIEW",
+                "PLAY_FOCUS_MUSIC"
+            ],
+
+            "exit_actions": [
+                "DISABLE_DO_NOT_DISTURB",
+                "PAUSE_FOCUS_MUSIC"
+            ]
+        },
+
+        {
+            "environment": "movie",
+            "trigger": "MOVIE_MODE",
+
+            "enter_actions": [
+                "ENABLE_DO_NOT_DISTURB",
+                "PREVENT_DISPLAY_SLEEP",
+                "OPEN_TV"
+            ],
+
+            "exit_actions": [
+                "DISABLE_DO_NOT_DISTURB",
+                "ALLOW_DISPLAY_SLEEP"
+            ]
+        },
+
+        {
+            "environment": "news",
+            "trigger": "NEWS_MODE",
+
+            "enter_actions": [
+                "OPEN_NEWS"
+            ],
+
+            "exit_actions": []
         }
 
     ],
@@ -26,131 +110,159 @@
     "rules": [
 
         {
-            "name": "open_chatgpt",
-
-            "conditions": {
-                "keyboard": "CTRL_ALT",
-                "gesture": "Victory"
-            },
-
-            "action": "OPEN_CHATGPT"
-        },
-
-        {
-            "name": "open_chatgpt_ok",
-
-            "conditions": {
-                "keyboard": "CTRL_ALT",
-                "gesture": "OK"
-            },
-
-            "action": "OPEN_CHATGPT"
-        },
-
-        {
             "name": "open_browser",
-
-            "conditions": {
-                "keyboard": "CTRL_SHIFT",
-                "voice": "OPEN_BROWSER"
-            },
-
+            "conditions": { "voice": "OPEN_BROWSER" },
             "action": "OPEN_BROWSER"
         },
 
         {
+            "name": "open_chatgpt",
+            "conditions": { "voice": "OPEN_CHATGPT" },
+            "action": "OPEN_CHATGPT"
+        },
+
+        {
             "name": "open_github",
-
-            "conditions": {
-                "keyboard": "ALT_SHIFT",
-                "voice": "OPEN_GITHUB"
-            },
-
+            "conditions": { "voice": "OPEN_GITHUB" },
             "action": "OPEN_GITHUB"
         },
 
         {
-            "name": "take_screenshot_voice",
-
-            "conditions": {
-                "voice": "TAKE_SCREENSHOT",
-                "gesture": "Closed_Fist"
-            },
-
-            "action": "TAKE_SCREENSHOT"
+            "name": "open_vscode",
+            "conditions": { "voice": "OPEN_VSCODE" },
+            "action": "OPEN_VSCODE"
         },
 
         {
-            "name": "take_screenshot_blink",
-
-            "conditions": {
-                "gesture": "DOUBLE_BLINK"
-            },
-
-            "action": "TAKE_SCREENSHOT"
+            "name": "open_terminal",
+            "conditions": { "voice": "OPEN_TERMINAL" },
+            "action": "OPEN_TERMINAL"
         },
 
         {
-            "name": "cursor_click",
-
-            "conditions": {
-                "gesture": "PINCH"
-            },
-
-            "action": "CLICK"
+            "name": "open_safari",
+            "conditions": { "voice": "OPEN_SAFARI" },
+            "action": "OPEN_SAFARI"
         },
 
         {
-            "name": "window_snap_left",
-
-            "conditions": {
-                "keyboard": "ALT_SHIFT",
-                "gesture": "HAND_LEFT"
-            },
-
-            "action": "MOVE_WINDOW_LEFT"
+            "name": "open_chrome",
+            "conditions": { "voice": "OPEN_CHROME" },
+            "action": "OPEN_CHROME"
         },
 
         {
-            "name": "window_snap_right",
-
-            "conditions": {
-                "keyboard": "ALT_SHIFT",
-                "gesture": "HAND_RIGHT"
-            },
-
-            "action": "MOVE_WINDOW_RIGHT"
+            "name": "open_spotify",
+            "conditions": { "voice": "OPEN_SPOTIFY" },
+            "action": "OPEN_SPOTIFY"
         },
 
         {
-            "name": "window_maximize",
-
-            "conditions": {
-                "keyboard": "ALT_SHIFT", 
-                "gesture": "HAND_UP"
-            },
-
-            "action": "MAXIMIZE_WINDOW"
+            "name": "open_slack",
+            "conditions": { "voice": "OPEN_SLACK" },
+            "action": "OPEN_SLACK"
         },
 
         {
-            "name": "enter_study_mode",
-
-            "conditions": {
-                "voice": "STUDY_MODE"
-            },
-
-            "action": "ENTER_STUDY_MODE"
+            "name": "open_discord",
+            "conditions": { "voice": "OPEN_DISCORD" },
+            "action": "OPEN_DISCORD"
         },
 
         {
-            "name": "enter_coding_mode",
+            "name": "open_zoom",
+            "conditions": { "voice": "OPEN_ZOOM" },
+            "action": "OPEN_ZOOM"
+        },
 
-            "conditions": {
-                "voice": "CODING_MODE"
-            },
+        {
+            "name": "open_mail",
+            "conditions": { "voice": "OPEN_MAIL" },
+            "action": "OPEN_MAIL"
+        },
 
-            "action": "ENTER_CODING_MODE"
+        {
+            "name": "open_calendar",
+            "conditions": { "voice": "OPEN_CALENDAR" },
+            "action": "OPEN_CALENDAR"
+        },
+
+        {
+            "name": "open_notes",
+            "conditions": { "voice": "OPEN_NOTES" },
+            "action": "OPEN_NOTES"
+        },
+
+        {
+            "name": "open_messages",
+            "conditions": { "voice": "OPEN_MESSAGES" },
+            "action": "OPEN_MESSAGES"
+        },
+
+        {
+            "name": "open_whatsapp",
+            "conditions": { "voice": "OPEN_WHATSAPP" },
+            "action": "OPEN_WHATSAPP"
+        },
+
+        {
+            "name": "open_telegram",
+            "conditions": { "voice": "OPEN_TELEGRAM" },
+            "action": "OPEN_TELEGRAM"
+        },
+
+        {
+            "name": "open_finder",
+            "conditions": { "voice": "OPEN_FINDER" },
+            "action": "OPEN_FINDER"
+        },
+
+        {
+            "name": "open_notion",
+            "conditions": { "voice": "OPEN_NOTION" },
+            "action": "OPEN_NOTION"
+        },
+
+        {
+            "name": "open_figma",
+            "conditions": { "voice": "OPEN_FIGMA" },
+            "action": "OPEN_FIGMA"
+        },
+
+        {
+            "name": "open_photos",
+            "conditions": { "voice": "OPEN_PHOTOS" },
+            "action": "OPEN_PHOTOS"
+        },
+
+        {
+            "name": "open_music",
+            "conditions": { "voice": "OPEN_MUSIC" },
+            "action": "OPEN_MUSIC"
+        },
+
+        {
+            "name": "open_preview",
+            "conditions": { "voice": "OPEN_PREVIEW" },
+            "action": "OPEN_PREVIEW"
+        },
+
+        {
+            "name": "open_settings",
+            "conditions": { "voice": "OPEN_SETTINGS" },
+            "action": "OPEN_SETTINGS"
+        },
+
+        {
+            "name": "media_start",
+            "conditions": { "voice": "START" },
+            "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "media_stop",
+            "conditions": { "voice": "STOP" },
+            "action": "MEDIA_PLAY_PAUSE"
         }
 
     ],
@@ -158,25 +270,98 @@
     "mode_rules": [
 
         {
-            "name": "presentation_next",
+            "name": "presentation_next_voice",
             "mode": "presentation",
-
-            "conditions": {
-                "gesture": "HAND_RIGHT"
-            },
-
+            "conditions": { "voice": "NEXT_SLIDE" },
             "action": "NEXT_SLIDE"
         },
 
         {
-            "name": "presentation_previous",
+            "name": "presentation_previous_voice",
             "mode": "presentation",
-
-            "conditions": {
-                "gesture": "HAND_LEFT"
-            },
-
+            "conditions": { "voice": "PREVIOUS_SLIDE" },
             "action": "PREVIOUS_SLIDE"
+        },
+
+        {
+            "name": "presentation_next_key",
+            "mode": "presentation",
+            "conditions": { "keyboard": "KEY_RIGHT" },
+            "action": "NEXT_SLIDE"
+        },
+
+        {
+            "name": "presentation_previous_key",
+            "mode": "presentation",
+            "conditions": { "keyboard": "KEY_LEFT" },
+            "action": "PREVIOUS_SLIDE"
+        },
+
+        {
+            "name": "flip_up",
+            "mode": "flip",
+            "conditions": { "gesture": "HAND_UP" },
+            "action": "SCROLL_UP"
+        },
+
+        {
+            "name": "flip_down",
+            "mode": "flip",
+            "conditions": { "gesture": "HAND_DOWN" },
+            "action": "SCROLL_DOWN"
+        },
+
+        {
+            "name": "flip_right",
+            "mode": "flip",
+            "conditions": { "gesture": "HAND_RIGHT" },
+            "action": "FLIP_NEXT"
+        },
+
+        {
+            "name": "flip_left",
+            "mode": "flip",
+            "conditions": { "gesture": "HAND_LEFT" },
+            "action": "FLIP_PREVIOUS"
+        },
+
+        {
+            "name": "cursor_click",
+            "mode": "cursor",
+            "conditions": { "gesture": "PINCH" },
+            "action": "CLICK"
+        },
+
+        {
+            "name": "quick_circle_admin_terminal",
+            "mode": "quick_circle",
+            "conditions": { "gesture": "HAND_UP" },
+            "action": "OPEN_ADMIN_TERMINAL",
+            "exits_mode": true
+        },
+
+        {
+            "name": "quick_circle_lock_screen",
+            "mode": "quick_circle",
+            "conditions": { "gesture": "HAND_DOWN" },
+            "action": "LOCK_SCREEN",
+            "exits_mode": true
+        },
+
+        {
+            "name": "quick_circle_force_quit",
+            "mode": "quick_circle",
+            "conditions": { "gesture": "HAND_LEFT" },
+            "action": "FORCE_QUIT_APP",
+            "exits_mode": true
+        },
+
+        {
+            "name": "quick_circle_toggle_dnd",
+            "mode": "quick_circle",
+            "conditions": { "gesture": "HAND_RIGHT" },
+            "action": "TOGGLE_DO_NOT_DISTURB",
+            "exits_mode": true
         }
 
     ]

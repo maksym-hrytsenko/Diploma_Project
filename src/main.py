@@ -1,6 +1,8 @@
 import sys
 import time
 
+from PyQt6.QtWidgets import QApplication
+
 from core.event_bus import EventBus
 from core.state_manager import StateManager
 
@@ -22,6 +24,8 @@ from fusion.signal_mapper import SignalMapper
 
 from execution.action_executor import ActionExecutor
 
+from ui.quick_command_overlay import QuickCommandOverlay
+
 
 def main():
 
@@ -29,6 +33,12 @@ def main():
     # camera feed with the anchor point, tracked finger
     # and current zone drawn on top
     debug_gesture = "--debug-gesture" in sys.argv
+
+    # Must exist, on the main thread, before ActionExecutor
+    # constructs PointerOverlay (a QWidget). Qt requires
+    # its widgets to be created after a QApplication and
+    # on the thread that owns the application.
+    qt_app = QApplication(sys.argv)
 
     event_bus = EventBus()
 
@@ -104,6 +114,10 @@ def main():
         event_bus
     )
 
+    quick_command_overlay = QuickCommandOverlay(
+        event_bus
+    )
+
     # ---------------------------------
     # Start Modules
     # ---------------------------------
@@ -134,6 +148,8 @@ def main():
 
     executor.start()
 
+    quick_command_overlay.start()
+
     # ---------------------------------
     # Main Loop
     # ---------------------------------
@@ -149,9 +165,16 @@ def main():
 
                 gesture_debug_view.render()
 
-            else:
+            # Non-blocking; delivers the queued
+            # position_updated signal onto this thread and
+            # lets the pointer overlay's QTimer/paintEvent
+            # run, without giving up control of the loop
+            # the way app.exec() would.
+            qt_app.processEvents()
 
-                time.sleep(0.1)
+            if gesture_debug_view is None:
+
+                time.sleep(0.01)
 
     except KeyboardInterrupt:
 
@@ -182,6 +205,8 @@ def main():
         signal_mapper.stop()
 
         executor.stop()
+
+        quick_command_overlay.stop()
 
         print("System stopped.")
 

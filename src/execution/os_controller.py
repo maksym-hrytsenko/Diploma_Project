@@ -1,164 +1,197 @@
-import os
 import subprocess
+import time
 import webbrowser
-from datetime import datetime
 
 import pyautogui
-import pyperclip
 
 
 class OSController:
 
-    CURSOR_STEP = 50
     SCROLL_STEP = 300
+
+    # A single swipe should feel like a smooth scroll, not
+    # one abrupt jump — broken into a short burst of small
+    # ticks with tiny pauses between them.
+    SCROLL_BURST_TICKS = 6
+    SCROLL_BURST_DELAY = 0.012
+
+    # Scales a pinch-drag's per-frame normalized Y movement
+    # into pyautogui scroll units.
+    DRAG_SCROLL_SENSITIVITY = 4000
+
+    # Frontmost apps that actually respond to arrow-key
+    # "next/previous" navigation (photo viewers, browsers,
+    # video players). Everywhere else, Flip mode falls back
+    # to switching macOS Spaces instead — there is no
+    # generic macOS API to ask an arbitrary app "is there
+    # more content in this direction".
+    FLIPPABLE_APPS = {
+        "Preview",
+        "Photos",
+        "Safari",
+        "Google Chrome",
+        "QuickTime Player"
+    }
 
     def __init__(self):
 
         pyautogui.FAILSAFE = True
 
+        # Tracks the caffeinate subprocess started by
+        # prevent_display_sleep, so allow_display_sleep can
+        # stop the right one.
+        self.caffeinate_process = None
+
     # ---------------------------------
-    # Mouse
+    # Mouse (Cursor Mode)
     # ---------------------------------
 
     def click(self):
 
         pyautogui.click()
 
-    def move_cursor_left(self):
+    def move_cursor_to(self, x_pixels, y_pixels):
 
-        pyautogui.moveRel(
-            -self.CURSOR_STEP,
-            0,
-            duration=0.1
+        try:
+
+            pyautogui.moveTo(
+                x_pixels,
+                y_pixels,
+                duration=0
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CURSOR ERROR] {e}"
+            )
+
+    def scroll_by(self, delta_y):
+
+        # Dragging down (delta_y > 0 in normalized image
+        # coordinates) reveals content below, matching
+        # natural/trackpad-style scrolling.
+        amount = int(
+            -delta_y * self.DRAG_SCROLL_SENSITIVITY
         )
 
-    def move_cursor_right(self):
+        if amount == 0:
+            return
 
-        pyautogui.moveRel(
-            self.CURSOR_STEP,
-            0,
-            duration=0.1
-        )
+        try:
 
-    def move_cursor_up(self):
+            pyautogui.scroll(amount)
 
-        pyautogui.moveRel(
-            0,
-            -self.CURSOR_STEP,
-            duration=0.1
-        )
+        except Exception as e:
 
-    def move_cursor_down(self):
-
-        pyautogui.moveRel(
-            0,
-            self.CURSOR_STEP,
-            duration=0.1
-        )
+            print(
+                f"[SCROLL ERROR] {e}"
+            )
 
     # ---------------------------------
-    # Scroll
+    # Scroll (Flip Mode)
     # ---------------------------------
 
     def scroll_up(self):
 
-        pyautogui.scroll(
+        self._smooth_scroll(
             self.SCROLL_STEP
         )
 
     def scroll_down(self):
 
-        pyautogui.scroll(
+        self._smooth_scroll(
             -self.SCROLL_STEP
         )
 
-    # ---------------------------------
-    # Keyboard Shortcuts
-    # ---------------------------------
+    def _smooth_scroll(self, total_amount):
 
-    def shortcut(self, *keys):
+        tick_amount = total_amount // self.SCROLL_BURST_TICKS
 
-        pyautogui.hotkey(*keys)
+        if tick_amount == 0:
+            tick_amount = total_amount
 
-    def alt_tab(self):
+        for _ in range(self.SCROLL_BURST_TICKS):
 
-        pyautogui.hotkey(
-            "alt",
-            "tab"
-        )
+            pyautogui.scroll(tick_amount)
 
-    def ctrl_c(self):
-
-        pyautogui.hotkey(
-            "ctrl",
-            "c"
-        )
-
-    def ctrl_v(self):
-
-        pyautogui.hotkey(
-            "ctrl",
-            "v"
-        )
+            time.sleep(self.SCROLL_BURST_DELAY)
 
     # ---------------------------------
-    # Clipboard
+    # Flip Next / Previous (Flip Mode)
     # ---------------------------------
 
-    def clipboard_copy(self, text):
+    def flip_next(self):
 
-        pyperclip.copy(text)
+        if self._frontmost_app_is_flippable():
 
-    def clipboard_paste(self):
+            pyautogui.press("right")
 
-        return pyperclip.paste()
+        else:
+
+            pyautogui.hotkey("ctrl", "right")
+
+    def flip_previous(self):
+
+        if self._frontmost_app_is_flippable():
+
+            pyautogui.press("left")
+
+        else:
+
+            pyautogui.hotkey("ctrl", "left")
+
+    def _frontmost_app_is_flippable(self):
+
+        app_name = self._run_applescript(
+            'tell application "System Events" to get name of '
+            'first process whose frontmost is true'
+        )
+
+        return app_name in self.FLIPPABLE_APPS
 
     # ---------------------------------
-    # Window Management
+    # AppleScript Helper
     # ---------------------------------
 
-    def maximize_window(self):
+    def _run_applescript(self, script):
 
-        pyautogui.hotkey(
-            "win",
-            "up"
-        )
+        try:
 
-    def minimize_window(self):
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True,
+                check=True
+            )
 
-        pyautogui.hotkey(
-            "win",
-            "down"
-        )
+            return result.stdout.strip()
 
-    def move_window_left(self):
+        except Exception as e:
 
-        pyautogui.hotkey(
-            "win",
-            "left"
-        )
+            print(
+                f"[APPLESCRIPT ERROR] {e} "
+                f"(Accessibility permission granted?)"
+            )
 
-    def move_window_right(self):
-
-        pyautogui.hotkey(
-            "win",
-            "right"
-        )
+            return None
 
     # ---------------------------------
     # Applications
     # ---------------------------------
 
-    def open_application(self, command):
+    def _open_mac_app(self, app_name):
 
         try:
 
-            subprocess.Popen(command)
+            subprocess.Popen(
+                ["open", "-a", app_name]
+            )
 
         except Exception as e:
 
             print(
-                f"[APPLICATION ERROR] {e}"
+                f"[APPLICATION ERROR] {app_name}: {e}"
             )
 
     def open_vscode(self):
@@ -177,17 +210,121 @@ class OSController:
 
     def open_terminal(self):
 
+        self._open_mac_app("Terminal")
+
+    def open_admin_terminal(self):
+
+        # macOS has no direct "Run as Administrator"
+        # equivalent — the realistic version is opening
+        # Terminal and immediately prompting for the
+        # user's password via sudo.
         try:
 
             subprocess.Popen(
-                ["cmd.exe"]
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Terminal" to do script "sudo -s"'
+                ]
+            )
+
+            subprocess.Popen(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Terminal" to activate'
+                ]
             )
 
         except Exception as e:
 
             print(
-                f"[TERMINAL ERROR] {e}"
+                f"[ADMIN TERMINAL ERROR] {e}"
             )
+
+    def open_safari(self):
+
+        self._open_mac_app("Safari")
+
+    def open_chrome(self):
+
+        self._open_mac_app("Google Chrome")
+
+    def open_spotify(self):
+
+        self._open_mac_app("Spotify")
+
+    def open_slack(self):
+
+        self._open_mac_app("Slack")
+
+    def open_discord(self):
+
+        self._open_mac_app("Discord")
+
+    def open_zoom(self):
+
+        self._open_mac_app("zoom.us")
+
+    def open_mail(self):
+
+        self._open_mac_app("Mail")
+
+    def open_calendar(self):
+
+        self._open_mac_app("Calendar")
+
+    def open_notes(self):
+
+        self._open_mac_app("Notes")
+
+    def open_messages(self):
+
+        self._open_mac_app("Messages")
+
+    def open_whatsapp(self):
+
+        self._open_mac_app("WhatsApp")
+
+    def open_telegram(self):
+
+        self._open_mac_app("Telegram")
+
+    def open_finder(self):
+
+        self._open_mac_app("Finder")
+
+    def open_notion(self):
+
+        self._open_mac_app("Notion")
+
+    def open_figma(self):
+
+        self._open_mac_app("Figma")
+
+    def open_photos(self):
+
+        self._open_mac_app("Photos")
+
+    def open_music(self):
+
+        self._open_mac_app("Music")
+
+    def open_preview(self):
+
+        self._open_mac_app("Preview")
+
+    def open_settings(self):
+
+        self._open_mac_app("System Settings")
+
+    def open_tv(self):
+
+        self._open_mac_app("TV")
+
+    def open_news(self):
+
+        self._open_mac_app("News")
 
     # ---------------------------------
     # Websites
@@ -209,32 +346,251 @@ class OSController:
             "https://chatgpt.com"
         )
 
-    # ---------------------------------
-    # Screenshot
-    # ---------------------------------
+    def open_github(self):
 
-    def take_screenshot(self):
-
-        os.makedirs(
-            "screenshots",
-            exist_ok=True
+        webbrowser.open(
+            "https://github.com"
         )
 
-        filename = (
-            datetime.now()
-            .strftime(
-                "%Y%m%d_%H%M%S"
+    # ---------------------------------
+    # Focus Music (Study Environment)
+    # ---------------------------------
+
+    def play_focus_music(self):
+
+        try:
+
+            subprocess.Popen(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Spotify" to play'
+                ]
             )
-            + ".png"
+
+        except Exception as e:
+
+            print(
+                f"[MUSIC ERROR] {e}"
+            )
+
+    def pause_focus_music(self):
+
+        try:
+
+            subprocess.Popen(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "Spotify" to pause'
+                ]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[MUSIC ERROR] {e}"
+            )
+
+    # ---------------------------------
+    # Media Play / Pause (Global)
+    # ---------------------------------
+
+    # Works with whichever player currently owns "now
+    # playing" (Spotify, Music, a browser tab, QuickTime,
+    # ...) by posting the real macOS system Play/Pause
+    # media key, the same event a physical keyboard's media
+    # key sends — not an app-specific AppleScript call.
+    #
+    # This is inherently a single toggle key, not separate
+    # absolute play/pause keys, so "start" and "stop" both
+    # send the identical event: saying "stop" while already
+    # paused resumes playback. See docs/SYSTEM_FUNCTIONS.md
+    # for this accepted limitation.
+    def media_play_pause(self):
+
+        try:
+
+            from AppKit import NSEvent
+            import Quartz
+
+            nx_keytype_play = 16
+
+            def post(key_down):
+
+                flags = 0xa00 if key_down else 0xb00
+
+                data1 = (
+                    (nx_keytype_play << 16)
+                    | ((0xa if key_down else 0xb) << 8)
+                )
+
+                event = (
+                    NSEvent
+                    .otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+                        Quartz.NSSystemDefined,
+                        (0, 0),
+                        flags,
+                        0,
+                        0,
+                        0,
+                        8,
+                        data1,
+                        -1
+                    )
+                )
+
+                Quartz.CGEventPost(
+                    Quartz.kCGHIDEventTap,
+                    event.CGEvent()
+                )
+
+            post(True)
+            post(False)
+
+        except Exception as e:
+
+            print(
+                f"[MEDIA ERROR] {e}"
+            )
+
+    # ---------------------------------
+    # Do Not Disturb
+    # ---------------------------------
+
+    # Raw `defaults write` + `killall NotificationCenter`
+    # toggling is version-fragile and deprecated on modern
+    # macOS. The supported approach is running a Focus
+    # toggle through the Shortcuts app — this requires the
+    # user to author "Enable Do Not Disturb", "Disable Do
+    # Not Disturb" and "Toggle Do Not Disturb" Shortcuts
+    # once (see docs/SYSTEM_FUNCTIONS.md setup section).
+
+    def enable_do_not_disturb(self):
+
+        try:
+
+            subprocess.Popen(
+                ["shortcuts", "run", "Enable Do Not Disturb"]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[DND ERROR] {e}"
+            )
+
+    def disable_do_not_disturb(self):
+
+        try:
+
+            subprocess.Popen(
+                ["shortcuts", "run", "Disable Do Not Disturb"]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[DND ERROR] {e}"
+            )
+
+    def toggle_do_not_disturb(self):
+
+        try:
+
+            subprocess.Popen(
+                ["shortcuts", "run", "Toggle Do Not Disturb"]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[DND ERROR] {e}"
+            )
+
+    # ---------------------------------
+    # Display Sleep (Movie / Presentation)
+    # ---------------------------------
+
+    def prevent_display_sleep(self):
+
+        try:
+
+            self.caffeinate_process = subprocess.Popen(
+                ["caffeinate", "-d"]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CAFFEINATE ERROR] {e}"
+            )
+
+    def allow_display_sleep(self):
+
+        if self.caffeinate_process is None:
+            return
+
+        try:
+
+            self.caffeinate_process.terminate()
+
+        except Exception as e:
+
+            print(
+                f"[CAFFEINATE ERROR] {e}"
+            )
+
+        self.caffeinate_process = None
+
+    # ---------------------------------
+    # Slides (Presentation Mode)
+    # ---------------------------------
+
+    def next_slide(self):
+
+        pyautogui.press("right")
+
+    def previous_slide(self):
+
+        pyautogui.press("left")
+
+    # ---------------------------------
+    # Quick Command Circle
+    # ---------------------------------
+
+    def lock_screen(self):
+
+        try:
+
+            subprocess.Popen(
+                ["pmset", "displaysleepnow"]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[LOCK ERROR] {e}"
+            )
+
+    def force_quit_frontmost_app(self):
+
+        app_name = self._run_applescript(
+            'tell application "System Events" to get name of '
+            'first process whose frontmost is true'
         )
 
-        path = os.path.join(
-            "screenshots",
-            filename
-        )
+        if not app_name:
+            return
 
-        screenshot = pyautogui.screenshot()
+        try:
 
-        screenshot.save(path)
+            subprocess.Popen(
+                ["killall", app_name]
+            )
 
-        return path
+        except Exception as e:
+
+            print(
+                f"[FORCE QUIT ERROR] {e}"
+            )
