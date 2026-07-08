@@ -154,7 +154,14 @@ class CommandInterpreter:
 
                 "signal": mapped_signal,
 
-                "confidence": 1.0
+                "confidence": 1.0,
+
+                # "down" while the combo is held, "up" the
+                # instant it breaks — MultimodalFusion uses
+                # this to keep a held combo valid for as
+                # long as it is physically held, instead of
+                # only at the moment of release.
+                "event": data.get("event")
 
             }
 

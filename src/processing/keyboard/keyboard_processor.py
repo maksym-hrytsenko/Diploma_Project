@@ -4,14 +4,13 @@ class KeyboardProcessor:
 
         self.event_bus = event_bus
 
-        # Currently pressed keys
+        # Keys physically held down right now
         self.current_keys = set()
 
-        # Keys collected during session
-        self.session_keys = set()
-
-        # Recording state
-        self.is_recording = False
+        # The combo string last announced as "down", so a
+        # change in current_keys can be compared against
+        # it — None means nothing is currently held.
+        self.currently_held_combo = None
 
         # Modifier priority
         self.modifier_order = [
@@ -43,6 +42,15 @@ class KeyboardProcessor:
     # Handle Raw Keyboard Events
     # ---------------------------------
 
+    # Press and release are tracked as two separate moments
+    # rather than waiting for a full press-then-release
+    # cycle to complete before publishing anything. This
+    # means a combo is announced ("down") the instant it is
+    # fully held, and announced again ("up") the instant it
+    # breaks — so a still-held combo stays valid the whole
+    # time a key is down, not just at the moment it is
+    # released, letting another gesture/voice action fire
+    # alongside it mid-hold.
     def _handle_raw(self, event):
 
         key = (
@@ -58,101 +66,56 @@ class KeyboardProcessor:
         if not key:
             return
 
-        # Normalize key
         key = key.lower()
-
-        # ---------------------------------
-        # PRESS
-        # ---------------------------------
 
         if action == "press":
 
             self.current_keys.add(key)
 
-            # Start session
-            if not self.is_recording:
-
-                self.is_recording = True
-
-                self.session_keys.clear()
-
-            # Save key
-            self.session_keys.add(key)
-
-        # ---------------------------------
-        # RELEASE
-        # ---------------------------------
-
         elif action == "release":
 
             self.current_keys.discard(key)
 
-            # ---------------------------------
-            # Modifier-only combo
-            # ---------------------------------
+        else:
 
-            if (
-                self.is_recording
-                and not self.current_keys
-                and self.session_keys
-            ):
+            return
 
-                combo = self._build_combo(
-                    self.session_keys
-                )
+        self._update_combo()
 
-                if combo:
+    # ---------------------------------
+    # Announce Combo Transitions
+    # ---------------------------------
 
-                    #print(
-                     #   f"[KEYBOARD] "
-                      #  f"{combo}"
-                    #)
+    def _update_combo(self):
 
-                    self.event_bus.publish(
-                        "keyboard_signal",
-                        {
-                            "signal": combo
-                        }
-                    )
+        new_combo = self._build_combo(
+            self.current_keys
+        )
 
-                # Reset session
-                self.session_keys.clear()
+        if new_combo == self.currently_held_combo:
+            return
 
-                self.is_recording = False
+        if self.currently_held_combo is not None:
 
-            # ---------------------------------
-            # Normal combo
-            # ---------------------------------
+            self.event_bus.publish(
+                "keyboard_signal",
+                {
+                    "signal": self.currently_held_combo,
+                    "event": "up"
+                }
+            )
 
-            elif (
-                self.is_recording
-                and key not in self.modifier_order
-            ):
+        self.currently_held_combo = new_combo
 
-                combo = self._build_combo(
-                    self.session_keys
-                )
+        if self.currently_held_combo is not None:
 
-                if combo:
-
-                    #print(
-                     #   f"[KEYBOARD] "
-                      #  f"{combo}"
-                    #)
-
-                    self.event_bus.publish(
-                        "keyboard_signal",
-                        {
-                            "signal": combo
-                        }
-                    )
-
-                # Reset session
-                self.session_keys.clear()
-
-                self.current_keys.clear()
-
-                self.is_recording = False
+            self.event_bus.publish(
+                "keyboard_signal",
+                {
+                    "signal": self.currently_held_combo,
+                    "event": "down"
+                }
+            )
 
     # ---------------------------------
     # Build Combination

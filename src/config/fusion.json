@@ -34,6 +34,15 @@
         },
 
         {
+            "mode": "window_management",
+
+            "triggers": [
+                { "source": "voice", "signal": "WINDOW_MANAGEMENT_MODE" },
+                { "source": "keyboard", "signal": "WINDOW_MANAGEMENT_MODE_KEY" }
+            ]
+        },
+
+        {
             "mode": "quick_circle",
 
             "triggers": [
@@ -301,14 +310,14 @@
             "name": "flip_up",
             "mode": "flip",
             "conditions": { "gesture": "HAND_UP" },
-            "action": "SCROLL_UP"
+            "action": "SCROLL_DOWN"
         },
 
         {
             "name": "flip_down",
             "mode": "flip",
             "conditions": { "gesture": "HAND_DOWN" },
-            "action": "SCROLL_DOWN"
+            "action": "SCROLL_UP"
         },
 
         {
@@ -333,35 +342,59 @@
         },
 
         {
-            "name": "quick_circle_admin_terminal",
+            "name": "window_mgmt_left",
+            "mode": "window_management",
+            "conditions": { "gesture": "HAND_LEFT" },
+            "action": "MOVE_WINDOW_LEFT"
+        },
+
+        {
+            "name": "window_mgmt_right",
+            "mode": "window_management",
+            "conditions": { "gesture": "HAND_RIGHT" },
+            "action": "MOVE_WINDOW_RIGHT"
+        },
+
+        {
+            "name": "window_mgmt_maximize",
+            "mode": "window_management",
+            "conditions": { "gesture": "HAND_UP" },
+            "action": "MAXIMIZE_WINDOW"
+        },
+
+        {
+            "name": "window_mgmt_minimize",
+            "mode": "window_management",
+            "conditions": { "gesture": "HAND_DOWN" },
+            "action": "MINIMIZE_WINDOW"
+        },
+
+        {
+            "name": "quick_circle_select_presentation",
             "mode": "quick_circle",
             "conditions": { "gesture": "HAND_UP" },
-            "action": "OPEN_ADMIN_TERMINAL",
-            "exits_mode": true
+            "enters_mode": "presentation"
         },
 
         {
-            "name": "quick_circle_lock_screen",
+            "name": "quick_circle_select_window_management",
             "mode": "quick_circle",
             "conditions": { "gesture": "HAND_DOWN" },
-            "action": "LOCK_SCREEN",
-            "exits_mode": true
+            "enters_mode": "window_management"
         },
 
         {
-            "name": "quick_circle_force_quit",
+            "name": "quick_circle_select_flip",
             "mode": "quick_circle",
             "conditions": { "gesture": "HAND_LEFT" },
-            "action": "FORCE_QUIT_APP",
-            "exits_mode": true
+            "enters_mode": "flip"
         },
 
         {
-            "name": "quick_circle_toggle_dnd",
+            "name": "quick_circle_select_cursor",
             "mode": "quick_circle",
             "conditions": { "gesture": "HAND_RIGHT" },
-            "action": "TOGGLE_DO_NOT_DISTURB",
-            "exits_mode": true
+            "enters_mode": "cursor"
         }
 
     ]

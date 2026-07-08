@@ -17,7 +17,8 @@ class TemporalSync:
         self,
         source,
         signal,
-        confidence=1.0
+        confidence=1.0,
+        persistent=False
     ):
 
         self.signals[source] = {
@@ -26,7 +27,15 @@ class TemporalSync:
 
             "confidence": confidence,
 
-            "timestamp": time.time()
+            "timestamp": time.time(),
+
+            # A persistent signal (a physically held
+            # keyboard combo) stays valid until explicitly
+            # cleared rather than expiring after `timeout`
+            # — a key held longer than the timeout should
+            # not silently drop out of the buffer while
+            # still physically pressed.
+            "persistent": persistent
         }
 
         self.cleanup()
@@ -76,6 +85,27 @@ class TemporalSync:
         self.signals.clear()
 
     # ---------------------------------
+    # Clear only non-persistent signals
+    # ---------------------------------
+
+    # Used after a rule fires: momentary voice/gesture
+    # signals should be consumed so they cannot immediately
+    # re-match, but a still-held keyboard combo should
+    # remain available for the next gesture/voice signal
+    # that arrives while it is held.
+    def clear_non_persistent(self):
+
+        to_remove = [
+            source
+            for source, data in self.signals.items()
+            if not data.get("persistent", False)
+        ]
+
+        for source in to_remove:
+
+            del self.signals[source]
+
+    # ---------------------------------
     # Cleanup expired signals
     # ---------------------------------
 
@@ -86,6 +116,9 @@ class TemporalSync:
         expired = []
 
         for source, data in self.signals.items():
+
+            if data.get("persistent", False):
+                continue
 
             if now - data["timestamp"] > self.timeout:
 

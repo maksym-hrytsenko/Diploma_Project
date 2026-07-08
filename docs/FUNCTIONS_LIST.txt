@@ -1,0 +1,169 @@
+MULTIMODAL CONTROL SYSTEM -- FUNCTION LIST
+What opens/launches what, and what triggers each action.
+Full explanations: docs/SYSTEM_FUNCTIONS.md
+
+
+VOICE -- OPENS AN APPLICATION OR WEBSITE
+----------------------------------------
+"open browser"    -> opens https://google.com in the default browser
+"open chatgpt"     -> opens https://chatgpt.com
+"open github"      -> opens https://github.com
+"open vscode"      -> launches VS Code
+"open terminal"    -> launches Terminal
+"open safari"      -> launches Safari
+"open chrome"      -> launches Google Chrome
+"open spotify"     -> launches Spotify
+"open slack"       -> launches Slack
+"open discord"     -> launches Discord
+"open zoom"        -> launches zoom.us
+"open mail"        -> launches Mail
+"open calendar"    -> launches Calendar
+"open notes"       -> launches Notes
+"open messages"    -> launches Messages
+"open whatsapp"    -> launches WhatsApp
+"open telegram"    -> launches Telegram
+"open finder"      -> launches Finder
+"open notion"      -> launches Notion
+"open figma"       -> launches Figma
+"open photos"      -> launches Photos
+"open music"       -> launches Music
+"open preview"     -> launches Preview
+"open settings"    -> launches System Settings
+
+NOTE: Vosk's speech model does not recognize the words "chatgpt",
+"vscode", "whatsapp" or "figma" -- those four phrases will not be
+detected no matter how clearly spoken. Everything else above works.
+
+
+VOICE -- MODES (gesture-scoping, no side effects)
+--------------------------------------------------
+"presentation mode"       -> enters Presentation mode       (or ctrl+shift+p)
+"flip mode"                -> enters Flip mode               (or ctrl+shift+f)
+"cursor mode"               -> enters Cursor mode             (or ctrl+shift+c)
+"window management mode"    -> enters Window Management mode (or ctrl+shift+w)
+"exit mode" (or press ESC) -> leaves whichever mode is active
+(Quick Command Circle has no voice/keyboard trigger -- gesture only,
+ see GESTURES section below. It doubles as a quick way to pick any of
+ the four modes above without remembering its phrase/combo.)
+
+
+VOICE -- ENVIRONMENTS (opens apps + changes system state)
+------------------------------------------------------------
+"work mode"
+    opens: Slack, Mail, Calendar
+    also:  turns Do Not Disturb ON
+    on exit: turns Do Not Disturb OFF
+
+"study mode"
+    opens: Safari, Preview
+    also:  turns Do Not Disturb ON, resumes/plays Spotify
+    on exit: turns Do Not Disturb OFF, pauses Spotify
+
+"movie mode"
+    opens: TV (built-in Apple TV app)
+    also:  turns Do Not Disturb ON, prevents the screen from sleeping
+    on exit: turns Do Not Disturb OFF, allows the screen to sleep again
+
+"news mode"
+    opens: News (built-in Apple News app)
+    on exit: nothing to undo
+
+Switching directly from one environment to another automatically
+undoes the old one first, then applies the new one.
+
+
+VOICE -- GLOBAL, ALWAYS ACTIVE
+---------------------------------
+"start"  -> plays/resumes whichever media player currently has focus
+"stop"   -> pauses whichever media player currently has focus
+            (same underlying system key as "start" -- see limitation below)
+"yes" / "no" -> reserved, not wired to anything yet
+
+"next slide" / "previous slide" -> only work while in Presentation mode
+
+
+GESTURES
+----------
+Pointing_Up (index finger extended), held
+    -> outside Cursor mode: shows a laser-pointer dot on screen
+       (purely visual, cannot click or interact with anything)
+    -> inside Cursor mode: the real mouse cursor is placed at the exact
+       same relative position as the fingertip in the camera frame,
+       every frame (same mechanism as the laser dot, just moving the
+       real cursor instead of a visual one)
+
+PINCH (thumb + index finger touching)
+    -- only recognized in Cursor mode, nowhere else --
+    quick tap-and-release -> click (Cursor mode only)
+    held and dragged       -> scrolls (Cursor mode only, distance matches
+                               how far the hand moved, natural/drag
+                               direction -- see below)
+
+HAND_LEFT / HAND_RIGHT / HAND_UP / HAND_DOWN (a swipe, started by
+closing the fist then opening the palm)
+    -> inside Flip mode:
+         hand UP    = scrolls to reveal LATER content (drag-up feel)
+         hand DOWN  = scrolls to reveal EARLIER content (drag-down feel)
+         left/right = flip photo/page forward-back, OR switch desktop
+                       if the frontmost app has nothing to flip
+       (PINCH is ignored entirely here too -- swiping naturally passes
+        through pinch-like hand poses, so detection only ever runs in
+        Cursor mode, switched off everywhere else)
+    -> inside Window Management mode:
+         hand UP    = maximize the frontmost window
+         hand DOWN  = minimize (hide) the frontmost window
+         hand LEFT  = snap the frontmost window to the left half of the screen
+         hand RIGHT = snap the frontmost window to the right half
+    -> inside Quick Command Circle: picks one of the 4 modes below
+
+NOTE on scroll direction (Flip mode and Cursor mode): both use
+"natural"/drag scrolling, same as a touchscreen or a Mac trackpad with
+natural scrolling on -- moving your hand feels like grabbing and
+dragging the content itself, not turning an old-style scroll wheel.
+
+Closed_Fist -> Open_Palm (fist closes, then opens)
+    -> if no other mode is active: opens the Quick Command Circle
+
+
+QUICK COMMAND CIRCLE (gesture-only: close fist, then open palm)
+-------------------------------------------------------------------
+A circle appears on screen with the system's 4 other modes laid out
+around it. Swipe in a direction to enter that mode -- the circle closes
+automatically. Only opens when you're not already in a mode.
+
+    swipe UP     -> enters Presentation mode
+    swipe DOWN   -> enters Window Management mode
+    swipe LEFT   -> enters Flip mode
+    swipe RIGHT  -> enters Cursor mode
+
+
+KEYBOARD
+----------
+ctrl+shift+p           -> enters Presentation mode
+ctrl+shift+f           -> enters Flip mode
+ctrl+shift+c           -> enters Cursor mode
+ctrl+shift+w           -> enters Window Management mode
+right arrow (no other keys held)  -> next slide (Presentation mode only)
+left arrow (no other keys held)   -> previous slide (Presentation mode only)
+esc                    -> exits whichever mode is active (any mode, any time)
+
+(All four mode combos share ctrl+shift, distinguished by a third key
+that's the first letter of the mode: p/f/c/w.)
+
+Holding a key down and releasing it are tracked as two separate
+moments -- while a key combo is held, other gesture/voice actions can
+still fire independently at the same time.
+
+
+SETUP REQUIRED BEFORE THESE WORK
+------------------------------------
+- Accessibility permission granted to the terminal/app running this
+  program -- REQUIRED for basically everything (cursor movement,
+  clicks, scrolling, window management, key presses). Without it,
+  these silently do nothing with no error message at all. Check the
+  console at startup for an "[ACCESSIBILITY WARNING]" banner.
+  System Settings -> Privacy & Security -> Accessibility.
+- Two Shortcuts authored once in the macOS Shortcuts app, named
+  exactly "Enable Do Not Disturb" and "Disable Do Not Disturb"
+- Spotify installed (for "study mode" focus music)
+- VS Code's "code" command installed on PATH (for "open vscode")

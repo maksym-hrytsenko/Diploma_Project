@@ -78,13 +78,13 @@ class ActionExecutor:
             "OPEN_TV": controller.open_tv,
             "OPEN_NEWS": controller.open_news,
 
-            "OPEN_ADMIN_TERMINAL": controller.open_admin_terminal,
-            "FORCE_QUIT_APP": controller.force_quit_frontmost_app,
-            "LOCK_SCREEN": controller.lock_screen,
+            "MAXIMIZE_WINDOW": controller.maximize_window,
+            "MINIMIZE_WINDOW": controller.minimize_window,
+            "MOVE_WINDOW_LEFT": controller.move_window_left,
+            "MOVE_WINDOW_RIGHT": controller.move_window_right,
 
             "ENABLE_DO_NOT_DISTURB": controller.enable_do_not_disturb,
             "DISABLE_DO_NOT_DISTURB": controller.disable_do_not_disturb,
-            "TOGGLE_DO_NOT_DISTURB": controller.toggle_do_not_disturb,
 
             "PREVENT_DISPLAY_SLEEP": controller.prevent_display_sleep,
             "ALLOW_DISPLAY_SLEEP": controller.allow_display_sleep,
@@ -235,7 +235,7 @@ class ActionExecutor:
 
         if self.active_mode == "cursor":
 
-            self._move_real_cursor(
+            self._move_real_cursor_to(
                 x,
                 y
             )
@@ -247,13 +247,16 @@ class ActionExecutor:
                 y
             )
 
-    def _move_real_cursor(self, normalized_x, normalized_y):
+    def _move_real_cursor_to(self, normalized_x, normalized_y):
 
+        # Absolute move — take the fingertip's position in
+        # the camera frame and put the cursor at that exact
+        # same relative spot on the real screen.
         screen_width, screen_height = pyautogui.size()
 
         # Mirrors PointerOverlay's convention, so the
-        # cursor moves the same direction as the user's
-        # hand from their own point of view.
+        # cursor sits on the same side the user's hand is
+        # on from their own point of view.
         display_x = 1.0 - normalized_x
 
         pixel_x = int(display_x * screen_width)
@@ -283,8 +286,22 @@ class ActionExecutor:
         if delta_y is None:
             return
 
+        _, screen_height = pyautogui.size()
+
+        # Natural/drag scrolling: the content moves WITH
+        # the hand, as if physically grabbed — dragging up
+        # (delta_y < 0) pulls later content into view (same
+        # direction as OSController.scroll_down), dragging
+        # down (delta_y > 0) reveals earlier content (same
+        # direction as scroll_up). Converted to real screen
+        # pixels so the content moves by roughly the same
+        # distance the hand moved.
+        pixel_amount = int(
+            delta_y * screen_height
+        )
+
         self.os_controller.scroll_by(
-            delta_y
+            pixel_amount
         )
 
     # ---------------------------------

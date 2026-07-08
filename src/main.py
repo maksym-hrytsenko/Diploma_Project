@@ -120,19 +120,26 @@ def main():
 
     # ---------------------------------
     # Start Modules
+    #
+    # Started in reverse pipeline order —
+    # every consumer subscribes before the
+    # producer that could feed it anything
+    # starts running, so no early event
+    # (e.g. a mode_changed fired the instant
+    # a camera frame arrives) is ever missed.
     # ---------------------------------
 
-    keyboard_input.start()
+    executor.start()
 
-    keyboard_processor.start()
+    quick_command_overlay.start()
 
-    microphone_input.start()
+    signal_mapper.start()
 
-    speech_recognizer.start()
+    fusion.start()
+
+    interpreter.start()
 
     intent_model.start()
-
-    camera_input.start()
 
     gesture_recognizer.start()
 
@@ -140,15 +147,15 @@ def main():
 
         gesture_debug_view.start()
 
-    interpreter.start()
+    keyboard_processor.start()
 
-    fusion.start()
+    speech_recognizer.start()
 
-    signal_mapper.start()
+    camera_input.start()
 
-    executor.start()
+    microphone_input.start()
 
-    quick_command_overlay.start()
+    keyboard_input.start()
 
     # ---------------------------------
     # Main Loop

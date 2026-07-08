@@ -133,11 +133,27 @@ class GestureRecognizer:
         self.pinch_start_y = None
         self.pinch_previous_y = None
 
+        # Mirrored from SignalMapper's "mode_changed" event.
+        # A deliberate, narrow exception to this class
+        # otherwise staying mode-agnostic: while swiping in
+        # Flip mode, the hand naturally passes through poses
+        # that satisfy the pinch-touch geometry, which would
+        # otherwise be detected and published as noise (with
+        # no rule ever using it there anyway). Suppressing
+        # detection at the source is cleaner than relying on
+        # "no rule happens to reference it downstream".
+        self.active_mode = None
+
     def start(self):
 
         self.event_bus.subscribe(
             "camera_frame",
             self._handle_frame
+        )
+
+        self.event_bus.subscribe(
+            "mode_changed",
+            self._handle_mode_changed
         )
 
     def stop(self):
@@ -146,6 +162,18 @@ class GestureRecognizer:
             "camera_frame",
             self._handle_frame
         )
+
+        self.event_bus.unsubscribe(
+            "mode_changed",
+            self._handle_mode_changed
+        )
+
+    def _handle_mode_changed(self, event):
+
+        self.active_mode = event.get(
+            "data",
+            {}
+        ).get("mode")
 
     def _handle_frame(self, event):
 
@@ -201,9 +229,16 @@ class GestureRecognizer:
             result
         )
 
-        self._check_pinch(
-            result
-        )
+        # PINCH only ever means anything in Cursor mode
+        # (click / drag-to-scroll) — checked only there so a
+        # pinch-like hand pose passing through during any
+        # other gesture (a swipe, a fist-open transition)
+        # never gets detected or published as noise.
+        if self.active_mode == "cursor":
+
+            self._check_pinch(
+                result
+            )
 
         self._update_pointer(
             gesture_name,
@@ -729,6 +764,11 @@ class GestureRecognizer:
 
         index_tip = hand_landmarks[8]
 
+        # Raw, absolute fingertip position for this frame —
+        # the consumer (ActionExecutor) maps it straight
+        # onto the screen: wherever the finger is in the
+        # camera's view, the cursor/laser dot goes to that
+        # same relative spot on screen.
         self.event_bus.publish(
             "pointer_position",
             {

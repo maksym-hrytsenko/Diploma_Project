@@ -1,12 +1,15 @@
 {
     "keyboard": {
 
-        "ctrl+alt": "PRESENTATION_MODE_KEY",
-        "alt+shift": "FLIP_MODE_KEY",
-        "ctrl+shift": "CURSOR_MODE_KEY",
+        "ctrl+shift+p": "PRESENTATION_MODE_KEY",
+        "ctrl+shift+f": "FLIP_MODE_KEY",
+        "ctrl+shift+c": "CURSOR_MODE_KEY",
+        "ctrl+shift+w": "WINDOW_MANAGEMENT_MODE_KEY",
 
         "right": "KEY_RIGHT",
-        "left": "KEY_LEFT"
+        "left": "KEY_LEFT",
+
+        "esc": "ESCAPE_KEY"
     },
 
     "voice": {
@@ -22,6 +25,7 @@
         "PRESENTATION_MODE": "presentation mode",
         "FLIP_MODE": "flip mode",
         "CURSOR_MODE": "cursor mode",
+        "WINDOW_MANAGEMENT_MODE": "window management mode",
 
         "NEXT_SLIDE": "next slide",
         "PREVIOUS_SLIDE": "previous slide",
@@ -73,12 +77,15 @@
 
         "keyboard": [
 
-            "ctrl+alt",
-            "alt+shift",
-            "ctrl+shift",
+            "ctrl+shift+p",
+            "ctrl+shift+f",
+            "ctrl+shift+c",
+            "ctrl+shift+w",
 
             "right",
-            "left"
+            "left",
+
+            "esc"
         ],
 
         "voice": [
@@ -94,6 +101,7 @@
             "PRESENTATION_MODE",
             "FLIP_MODE",
             "CURSOR_MODE",
+            "WINDOW_MANAGEMENT_MODE",
 
             "NEXT_SLIDE",
             "PREVIOUS_SLIDE",

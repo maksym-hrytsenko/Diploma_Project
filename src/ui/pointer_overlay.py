@@ -116,6 +116,12 @@ class PointerOverlay(QWidget):
 
         self.show()
 
+        # WindowStaysOnTopHint alone does not always keep a
+        # frameless window in front of everything else on
+        # macOS — raise_() forces it to the front of the
+        # window stack.
+        self.raise_()
+
         self.update()
 
         # There is no explicit "pointer stopped" event —

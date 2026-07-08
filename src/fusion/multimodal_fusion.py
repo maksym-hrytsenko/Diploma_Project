@@ -108,21 +108,41 @@ class MultimodalFusion:
             1.0
         )
 
+        keyboard_event = data.get(
+            "event"
+        )
+
         if source is None:
             return
 
         if signal is None:
             return
 
-        self.sync.store_signal(
+        if source == "keyboard" and keyboard_event == "up":
 
-            source=source,
+            # The combo just broke — drop it immediately
+            # rather than letting it linger until it times
+            # out on its own.
+            self.sync.clear_signal(source)
 
-            signal=signal,
+        else:
 
-            confidence=confidence
+            # A keyboard combo is held for as long as the
+            # physical keys are down, so it must not expire
+            # on the fixed voice/gesture timeout — every
+            # other source stays exactly as momentary as
+            # before.
+            self.sync.store_signal(
 
-        )
+                source=source,
+
+                signal=signal,
+
+                confidence=confidence,
+
+                persistent=(source == "keyboard")
+
+            )
 
         self.event_bus.publish(
 
@@ -143,9 +163,14 @@ class MultimodalFusion:
     # Clear Signals
     # ---------------------------------
 
+    # Only clears momentary (voice/gesture) signals so they
+    # cannot immediately re-match the rule that just fired.
+    # A still-physically-held keyboard combo is left in
+    # place, ready to combine with the next gesture/voice
+    # signal that arrives while it is held.
     def _clear_signals(self, event):
 
-        self.sync.clear_all()
+        self.sync.clear_non_persistent()
 
     # ---------------------------------
     # Public API

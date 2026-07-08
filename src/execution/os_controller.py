@@ -7,17 +7,13 @@ import pyautogui
 
 class OSController:
 
-    SCROLL_STEP = 300
-
-    # A single swipe should feel like a smooth scroll, not
-    # one abrupt jump — broken into a short burst of small
-    # ticks with tiny pauses between them.
-    SCROLL_BURST_TICKS = 6
-    SCROLL_BURST_DELAY = 0.012
-
-    # Scales a pinch-drag's per-frame normalized Y movement
-    # into pyautogui scroll units.
-    DRAG_SCROLL_SENSITIVITY = 4000
+    # Total on-screen distance (real pixels) a single Flip
+    # Mode swipe scrolls, spread across many small ticks
+    # with a short pause between each so it reads as a
+    # smooth glide rather than one abrupt jump.
+    FLIP_SCROLL_PIXELS = 90
+    FLIP_SCROLL_TICKS = 18
+    FLIP_SCROLL_TICK_DELAY = 0.014
 
     # Frontmost apps that actually respond to arrow-key
     # "next/previous" navigation (photo viewers, browsers,
@@ -35,12 +31,61 @@ class OSController:
 
     def __init__(self):
 
-        pyautogui.FAILSAFE = True
+        # This app moves the cursor continuously and on
+        # purpose (Cursor mode follows the fingertip every
+        # frame) — the corner-abort safety net is meant for
+        # runaway scripts, not a live, hand-driven pointer,
+        # and a fingertip position that happens to map to a
+        # screen corner would otherwise silently cancel that
+        # frame's move.
+        pyautogui.FAILSAFE = False
+
+        self._warn_if_not_trusted()
 
         # Tracks the caffeinate subprocess started by
         # prevent_display_sleep, so allow_display_sleep can
         # stop the right one.
         self.caffeinate_process = None
+
+    # ---------------------------------
+    # Accessibility Permission Check
+    # ---------------------------------
+
+    # Every OS-level action in this class (cursor, scroll,
+    # window/app control) is a synthetic input event, which
+    # macOS silently drops — no exception, nothing — unless
+    # Accessibility permission is granted to whatever process
+    # is actually running python. This is the single most
+    # common reason "nothing happens" with no visible error,
+    # so it's checked once, loudly, at startup instead of
+    # leaving it to be discovered the hard way.
+    def _warn_if_not_trusted(self):
+
+        try:
+
+            from ApplicationServices import AXIsProcessTrusted
+
+            if not AXIsProcessTrusted():
+
+                print(
+                    "\n"
+                    "==================================================\n"
+                    "[ACCESSIBILITY WARNING] This process is NOT trusted "
+                    "for Accessibility.\n"
+                    "Cursor movement, clicks, scrolling and window "
+                    "control will silently do nothing until you grant "
+                    "it.\n"
+                    "Fix: System Settings -> Privacy & Security -> "
+                    "Accessibility -> enable the app/terminal running "
+                    "this program.\n"
+                    "==================================================\n"
+                )
+
+        except Exception as e:
+
+            print(
+                f"[ACCESSIBILITY CHECK ERROR] {e}"
+            )
 
     # ---------------------------------
     # Mouse (Cursor Mode)
@@ -50,6 +95,10 @@ class OSController:
 
         pyautogui.click()
 
+    # Absolute move — the cursor jumps straight to the given
+    # screen position, mirroring wherever the fingertip
+    # currently is within the camera's view (converted to
+    # screen pixels by the caller).
     def move_cursor_to(self, x_pixels, y_pixels):
 
         try:
@@ -66,27 +115,9 @@ class OSController:
                 f"[CURSOR ERROR] {e}"
             )
 
-    def scroll_by(self, delta_y):
+    def scroll_by(self, pixel_amount):
 
-        # Dragging down (delta_y > 0 in normalized image
-        # coordinates) reveals content below, matching
-        # natural/trackpad-style scrolling.
-        amount = int(
-            -delta_y * self.DRAG_SCROLL_SENSITIVITY
-        )
-
-        if amount == 0:
-            return
-
-        try:
-
-            pyautogui.scroll(amount)
-
-        except Exception as e:
-
-            print(
-                f"[SCROLL ERROR] {e}"
-            )
+        self._post_pixel_scroll(pixel_amount)
 
     # ---------------------------------
     # Scroll (Flip Mode)
@@ -95,27 +126,63 @@ class OSController:
     def scroll_up(self):
 
         self._smooth_scroll(
-            self.SCROLL_STEP
+            self.FLIP_SCROLL_PIXELS
         )
 
     def scroll_down(self):
 
         self._smooth_scroll(
-            -self.SCROLL_STEP
+            -self.FLIP_SCROLL_PIXELS
         )
 
-    def _smooth_scroll(self, total_amount):
+    def _smooth_scroll(self, total_pixels):
 
-        tick_amount = total_amount // self.SCROLL_BURST_TICKS
+        tick_pixels = total_pixels // self.FLIP_SCROLL_TICKS
 
-        if tick_amount == 0:
-            tick_amount = total_amount
+        if tick_pixels == 0:
+            tick_pixels = total_pixels
 
-        for _ in range(self.SCROLL_BURST_TICKS):
+        for _ in range(self.FLIP_SCROLL_TICKS):
 
-            pyautogui.scroll(tick_amount)
+            self._post_pixel_scroll(tick_pixels)
 
-            time.sleep(self.SCROLL_BURST_DELAY)
+            time.sleep(self.FLIP_SCROLL_TICK_DELAY)
+
+    # ---------------------------------
+    # Pixel-Precise Scroll (shared helper)
+    # ---------------------------------
+
+    # Uses a real, hardware-accurate pixel-unit scroll event
+    # (via Quartz) instead of pyautogui's coarser "line/click"
+    # scroll units — this is what makes both the Flip Mode
+    # glide and the Cursor Mode drag-to-scroll move the
+    # content by an actual, predictable number of pixels.
+    def _post_pixel_scroll(self, pixel_amount):
+
+        if pixel_amount == 0:
+            return
+
+        try:
+
+            import Quartz
+
+            event = Quartz.CGEventCreateScrollWheelEvent(
+                None,
+                Quartz.kCGScrollEventUnitPixel,
+                1,
+                pixel_amount
+            )
+
+            Quartz.CGEventPost(
+                Quartz.kCGHIDEventTap,
+                event
+            )
+
+        except Exception as e:
+
+            print(
+                f"[SCROLL ERROR] {e}"
+            )
 
     # ---------------------------------
     # Flip Next / Previous (Flip Mode)
@@ -211,36 +278,6 @@ class OSController:
     def open_terminal(self):
 
         self._open_mac_app("Terminal")
-
-    def open_admin_terminal(self):
-
-        # macOS has no direct "Run as Administrator"
-        # equivalent — the realistic version is opening
-        # Terminal and immediately prompting for the
-        # user's password via sudo.
-        try:
-
-            subprocess.Popen(
-                [
-                    "osascript",
-                    "-e",
-                    'tell application "Terminal" to do script "sudo -s"'
-                ]
-            )
-
-            subprocess.Popen(
-                [
-                    "osascript",
-                    "-e",
-                    'tell application "Terminal" to activate'
-                ]
-            )
-
-        except Exception as e:
-
-            print(
-                f"[ADMIN TERMINAL ERROR] {e}"
-            )
 
     def open_safari(self):
 
@@ -462,9 +499,9 @@ class OSController:
     # toggling is version-fragile and deprecated on modern
     # macOS. The supported approach is running a Focus
     # toggle through the Shortcuts app — this requires the
-    # user to author "Enable Do Not Disturb", "Disable Do
-    # Not Disturb" and "Toggle Do Not Disturb" Shortcuts
-    # once (see docs/SYSTEM_FUNCTIONS.md setup section).
+    # user to author "Enable Do Not Disturb" and "Disable
+    # Do Not Disturb" Shortcuts once (see
+    # docs/SYSTEM_FUNCTIONS.md setup section).
 
     def enable_do_not_disturb(self):
 
@@ -486,20 +523,6 @@ class OSController:
 
             subprocess.Popen(
                 ["shortcuts", "run", "Disable Do Not Disturb"]
-            )
-
-        except Exception as e:
-
-            print(
-                f"[DND ERROR] {e}"
-            )
-
-    def toggle_do_not_disturb(self):
-
-        try:
-
-            subprocess.Popen(
-                ["shortcuts", "run", "Toggle Do Not Disturb"]
             )
 
         except Exception as e:
@@ -556,41 +579,99 @@ class OSController:
         pyautogui.press("left")
 
     # ---------------------------------
-    # Quick Command Circle
+    # Window Management (Window Management Mode)
     # ---------------------------------
 
-    def lock_screen(self):
+    def _get_screen_size(self):
 
-        try:
-
-            subprocess.Popen(
-                ["pmset", "displaysleepnow"]
-            )
-
-        except Exception as e:
-
-            print(
-                f"[LOCK ERROR] {e}"
-            )
-
-    def force_quit_frontmost_app(self):
-
-        app_name = self._run_applescript(
-            'tell application "System Events" to get name of '
-            'first process whose frontmost is true'
+        output = self._run_applescript(
+            'tell application "Finder" to get bounds of window of desktop'
         )
 
-        if not app_name:
+        if output is None:
+            return None
+
+        parts = [
+            int(value.strip())
+            for value in output.split(",")
+        ]
+
+        return parts[2], parts[3]
+
+    def _set_frontmost_window_bounds(
+        self,
+        x,
+        y,
+        width,
+        height
+    ):
+
+        script = (
+            'tell application "System Events"\n'
+            'set frontApp to first process whose frontmost is true\n'
+            'tell (first window of frontApp)\n'
+            f'set position to {{{x}, {y}}}\n'
+            f'set size to {{{width}, {height}}}\n'
+            'end tell\n'
+            'end tell'
+        )
+
+        self._run_applescript(script)
+
+    def maximize_window(self):
+
+        screen_size = self._get_screen_size()
+
+        if screen_size is None:
             return
 
-        try:
+        width, height = screen_size
 
-            subprocess.Popen(
-                ["killall", app_name]
-            )
+        self._set_frontmost_window_bounds(
+            0,
+            0,
+            width,
+            height
+        )
 
-        except Exception as e:
+    def minimize_window(self):
 
-            print(
-                f"[FORCE QUIT ERROR] {e}"
-            )
+        # True AppleScript minimize-to-Dock is unreliable
+        # across apps; hiding the frontmost app achieves
+        # the same practical "get it out of the way" result.
+        self._run_applescript(
+            'tell application "System Events" to set visible of '
+            '(first process whose frontmost is true) to false'
+        )
+
+    def move_window_left(self):
+
+        screen_size = self._get_screen_size()
+
+        if screen_size is None:
+            return
+
+        width, height = screen_size
+
+        self._set_frontmost_window_bounds(
+            0,
+            0,
+            width // 2,
+            height
+        )
+
+    def move_window_right(self):
+
+        screen_size = self._get_screen_size()
+
+        if screen_size is None:
+            return
+
+        width, height = screen_size
+
+        self._set_frontmost_window_bounds(
+            width // 2,
+            0,
+            width // 2,
+            height
+        )

@@ -123,26 +123,43 @@ class SignalMapper:
             {}
         )
 
+        triggering_source = data.get(
+            "source"
+        )
+
         if not signals:
             return
 
-        self._update_mode(
+        # `signals` is the SAME dict TemporalSync stores
+        # internally (not a copy) — clearing it mid-way
+        # would delete entries out from under the checks
+        # still to come in this same pass. So every check
+        # below only decides whether IT matched; nothing
+        # gets cleared until every check has already seen
+        # the complete, untouched signal set.
+        mode_matched = self._update_mode(
             signals
         )
 
-        self._update_environment(
+        environment_matched = self._update_environment(
             signals
         )
 
-        matched = self._check_rules(
-            signals
+        rule_matched = self._check_rules(
+            signals,
+            triggering_source
         )
 
-        if not matched:
+        if not rule_matched:
 
-            self._check_mode_rules(
-                signals
+            rule_matched = self._check_mode_rules(
+                signals,
+                triggering_source
             )
+
+        if mode_matched or environment_matched or rule_matched:
+
+            self._maybe_clear_signals()
 
     # ---------------------------------
     # Update Mode (Presentation / Flip /
@@ -162,18 +179,30 @@ class SignalMapper:
             "voice"
         )
 
-        if (
+        keyboard = signals.get(
+            "keyboard"
+        )
+
+        # Two independent ways to back out of whichever
+        # mode is active — saying "exit mode", or pressing
+        # Esc, work identically from any mode at any time.
+        exit_requested = (
             voice is not None
             and voice.get("signal") == "EXIT_MODE"
-        ):
+        ) or (
+            keyboard is not None
+            and keyboard.get("signal") == "ESCAPE_KEY"
+        )
+
+        if exit_requested:
 
             if self.current_mode is not None:
 
                 self._exit_current_mode()
 
-                self._maybe_clear_signals()
+                return True
 
-            return
+            return False
 
         for mode in self.modes:
 
@@ -184,7 +213,7 @@ class SignalMapper:
                 continue
 
             if mode["mode"] == self.current_mode:
-                return
+                return False
 
             self._exit_current_mode()
 
@@ -192,9 +221,9 @@ class SignalMapper:
                 mode
             )
 
-            self._maybe_clear_signals()
+            return True
 
-            return
+        return False
 
     def _mode_trigger_matches(self, mode, signals):
 
@@ -282,7 +311,7 @@ class SignalMapper:
         )
 
         if voice is None:
-            return
+            return False
 
         signal = voice.get(
             "signal"
@@ -294,7 +323,7 @@ class SignalMapper:
                 continue
 
             if environment["environment"] == self.current_environment:
-                return
+                return False
 
             self._exit_current_environment()
 
@@ -302,9 +331,9 @@ class SignalMapper:
                 environment
             )
 
-            self._maybe_clear_signals()
+            return True
 
-            return
+        return False
 
     def _enter_environment(self, environment):
 
@@ -371,44 +400,21 @@ class SignalMapper:
     # Standard Rules
     # ---------------------------------
 
-    def _check_rules(self, signals):
+    # A rule only gets a chance to fire on the pass whose
+    # triggering source is one of its own condition keys —
+    # i.e. it fires on the edge of ITS OWN condition
+    # becoming satisfied, not on every unrelated signal that
+    # happens to arrive while a held keyboard combo (now
+    # persistent, see MultimodalFusion) keeps its own share
+    # of the condition sitting in the buffer. Without this,
+    # a rule keyed on a single held combo would refire on
+    # every unrelated event for as long as the key stays
+    # down.
+    def _check_rules(self, signals, triggering_source):
 
         for rule in self.rules:
 
-            if self._match_conditions(
-
-                rule["conditions"],
-
-                signals
-
-            ):
-
-                print(
-                    f"[MAPPER] Match -> {rule['name']}"
-                )
-
-                self._publish_command(
-                    rule["action"]
-                )
-
-                self._maybe_clear_signals()
-
-                return True
-
-        return False
-
-    # ---------------------------------
-    # Mode Rules
-    # ---------------------------------
-
-    def _check_mode_rules(self, signals):
-
-        if self.current_mode is None:
-            return False
-
-        for rule in self.mode_rules:
-
-            if rule["mode"] != self.current_mode:
+            if triggering_source not in rule["conditions"]:
                 continue
 
             if self._match_conditions(
@@ -427,14 +433,72 @@ class SignalMapper:
                     rule["action"]
                 )
 
+                return True
+
+        return False
+
+    # ---------------------------------
+    # Mode Rules
+    # ---------------------------------
+
+    def _check_mode_rules(self, signals, triggering_source):
+
+        if self.current_mode is None:
+            return False
+
+        for rule in self.mode_rules:
+
+            if rule["mode"] != self.current_mode:
+                continue
+
+            if triggering_source not in rule["conditions"]:
+                continue
+
+            if self._match_conditions(
+
+                rule["conditions"],
+
+                signals
+
+            ):
+
+                print(
+                    f"[MAPPER] Match -> {rule['name']}"
+                )
+
+                # Quick Circle's four sides each select a
+                # different mode directly — this is a mode
+                # transition, not a command, so it swaps in
+                # the target mode instead of publishing an
+                # action.
+                target_mode_name = rule.get("enters_mode")
+
+                if target_mode_name is not None:
+
+                    target_mode = self._find_mode(
+                        target_mode_name
+                    )
+
+                    self._exit_current_mode()
+
+                    if target_mode is not None:
+
+                        self._enter_mode(
+                            target_mode
+                        )
+
+                    return True
+
+                self._publish_command(
+                    rule["action"]
+                )
+
                 # Quick Circle is a one-shot menu: picking
                 # one of its four functions should close it
                 # again, not leave it hanging open.
                 if rule.get("exits_mode", False):
 
                     self._exit_current_mode()
-
-                self._maybe_clear_signals()
 
                 return True
 

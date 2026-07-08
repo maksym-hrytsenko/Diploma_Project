@@ -17,13 +17,13 @@ class QuickCommandOverlay(QWidget):
 
     # Mirrors the four quick_circle mode_rules in
     # fusion.json (src/config/fusion.json) — kept here only
-    # as display labels, the actual gesture -> action wiring
+    # as display labels, the actual gesture -> mode wiring
     # lives entirely in fusion.json / SignalMapper.
     LABELS = {
-        "up": "Admin Terminal",
-        "down": "Lock Screen",
-        "left": "Force Quit",
-        "right": "Toggle DND"
+        "up": "Presentation",
+        "down": "Window Management",
+        "left": "Flip",
+        "right": "Cursor"
     }
 
     RADIUS = 140
@@ -107,7 +107,17 @@ class QuickCommandOverlay(QWidget):
 
         if self.circle_visible:
 
+            print(
+                "[QUICK CIRCLE] showing overlay"
+            )
+
             self.show()
+
+            # WindowStaysOnTopHint alone does not always put
+            # a freshly-shown frameless window in front of
+            # everything else on macOS — raise_() forces it
+            # to the front of the window stack.
+            self.raise_()
 
         else:
 
