@@ -8,6 +8,11 @@ from processing.gesture.gesture_model import (
 
 class GestureRecognizer:
 
+    # Off-hand fist ("precision mode", Cursor mode only) scales
+    # cursor movement down to this fraction of the raw hand
+    # movement, like a DPI switch on a physical mouse.
+    PRECISION_SCALE = 0.3
+
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
@@ -116,7 +121,10 @@ class GestureRecognizer:
 
         # Distance (normalized coordinates) between thumb
         # tip and index tip below which the two fingers
-        # count as "touching" — a pinch.
+        # count as "touching" — a pinch. Also reused as-is by
+        # Call mode's OK-sign check (same thumb/index-touch
+        # geometry, different meaning depending on which mode
+        # is active — the two never run in the same mode).
         self.pinch_distance_threshold = 0.06
 
         # A pinch held/moved past either of these
@@ -133,15 +141,57 @@ class GestureRecognizer:
         self.pinch_start_y = None
         self.pinch_previous_y = None
 
+        # A completed quick tap is not published as PINCH
+        # right away — it waits up to double_pinch_window to
+        # see whether a second tap follows, in which case the
+        # pair is published as one DOUBLE_PINCH (right-click)
+        # instead of two separate PINCH (click) signals.
+        self.pending_single_pinch = False
+        self.pending_pinch_time = 0
+        self.double_pinch_window = 0.3
+
+        # ---------------------------------
+        # OK-Sign (Call Mode: raise hand)
+        # ---------------------------------
+
+        # MediaPipe's bundled gesture classifier has no "OK"
+        # category (confirmed against the model's own
+        # labels.txt — only None/Closed_Fist/Open_Palm/
+        # Pointing_Up/Thumb_Down/Thumb_Up/Victory/ILoveYou
+        # exist), so this is computed the same way PINCH is —
+        # directly from thumb/index landmark distance — rather
+        # than relying on a classifier category that will never
+        # actually fire. Edge-triggered: fires once when the
+        # fingers first touch, not again until they separate.
+        self.ok_touching = False
+
+        # ---------------------------------
+        # Two-Hand Cursor Mode (off-hand)
+        # ---------------------------------
+
+        # True while an off-hand Closed_Fist is held during
+        # Cursor mode — see _update_pointer.
+        self.precision_active = False
+
+        self.precision_anchor_x = None
+        self.precision_anchor_y = None
+
+        # Baseline distance for two-hand pinch-to-zoom (see
+        # _check_two_hand_zoom) — reset whenever the off-hand
+        # disappears or closes into a fist, so re-engaging zoom
+        # always starts from a fresh baseline instead of a
+        # potentially large stale delta.
+        self.previous_two_hand_distance = None
+
+        # ---------------------------------
         # Mirrored from SignalMapper's "mode_changed" event.
         # A deliberate, narrow exception to this class
-        # otherwise staying mode-agnostic: while swiping in
-        # Flip mode, the hand naturally passes through poses
-        # that satisfy the pinch-touch geometry, which would
-        # otherwise be detected and published as noise (with
-        # no rule ever using it there anyway). Suppressing
-        # detection at the source is cleaner than relying on
-        # "no rule happens to reference it downstream".
+        # otherwise staying mode-agnostic: a handful of checks
+        # below (PINCH, OK-sign, Thumb_Up/Thumb_Down/Victory,
+        # off-hand precision/zoom) only mean something in one
+        # specific mode each, and are gated at the source so a
+        # pose that happens to pass through during an unrelated
+        # mode never gets detected or published as noise.
         self.active_mode = None
 
     def start(self):
@@ -175,6 +225,24 @@ class GestureRecognizer:
             {}
         ).get("mode")
 
+        # Leaving Cursor mode mid-window would otherwise let
+        # a deferred single tap fire once the mode is
+        # re-entered later, long after the user actually
+        # pinched. Same idea for precision mode and the zoom
+        # baseline — neither should carry over into a new
+        # Cursor mode session.
+        if self.active_mode != "cursor":
+
+            self.pending_single_pinch = False
+
+            self.precision_active = False
+
+            self.previous_two_hand_distance = None
+
+        if self.active_mode != "call":
+
+            self.ok_touching = False
+
     def _handle_frame(self, event):
 
         frame = event.get("data")
@@ -193,8 +261,13 @@ class GestureRecognizer:
         if result is None:
             return
 
-        gesture_name, confidence = self._read_gesture(
+        primary_index = self._resolve_primary_index(
             result
+        )
+
+        gesture_name, confidence = self._read_gesture(
+            result,
+            primary_index
         )
 
         # ---------------------------------
@@ -226,7 +299,24 @@ class GestureRecognizer:
         )
 
         self._check_motion(
-            result
+            result,
+            primary_index
+        )
+
+        # A second hand only ever means anything in Cursor
+        # mode (precision scaling / two-hand zoom) — resolved
+        # to None everywhere else so the checks below become
+        # unconditional no-ops outside Cursor mode.
+        off_index = self._resolve_off_hand_index(
+            result,
+            primary_index
+        )
+
+        off_hand_fisted = self._check_off_hand(
+            result,
+            primary_index,
+            off_index,
+            gesture_name
         )
 
         # PINCH only ever means anything in Cursor mode
@@ -237,12 +327,24 @@ class GestureRecognizer:
         if self.active_mode == "cursor":
 
             self._check_pinch(
-                result
+                result,
+                primary_index
+            )
+
+        # OK-sign (raise hand) only means anything in Call
+        # mode.
+        if self.active_mode == "call":
+
+            self._check_ok_sign(
+                result,
+                primary_index
             )
 
         self._update_pointer(
             gesture_name,
-            result
+            result,
+            primary_index,
+            off_hand_fisted
         )
 
         self._publish_static_gesture(
@@ -250,7 +352,7 @@ class GestureRecognizer:
             confidence
         )
 
-        index_tip = result.hand_landmarks[0][8]
+        index_tip = result.hand_landmarks[primary_index][8]
 
         self._publish_debug(
             frame,
@@ -258,6 +360,67 @@ class GestureRecognizer:
             gesture_name,
             confidence
         )
+
+    # ---------------------------------
+    # Primary / Off Hand Resolution
+    # ---------------------------------
+
+    # With up to two hands now tracked (GestureModel's
+    # num_hands=2), every existing single-hand check
+    # (motion/swipe tracking, pinch, static gestures) keeps
+    # operating on exactly one "primary" hand, unchanged in
+    # spirit from before num_hands=2 — this just resolves
+    # which detected hand that is, per frame.
+    #
+    # Outside Cursor mode, or with only one hand visible, the
+    # primary hand is always index 0 — identical to the old
+    # hardcoded behavior, zero behavior change for every other
+    # mode. Only inside Cursor mode, with two hands visible,
+    # does it matter which one is "primary": whichever hand is
+    # currently doing Pointing_Up (the gesture Cursor mode
+    # already requires to move the pointer at all) is primary;
+    # the other hand is the off-hand driving precision/zoom.
+    def _resolve_primary_index(self, result):
+
+        num_hands = (
+            len(result.hand_landmarks)
+            if result.hand_landmarks
+            else 0
+        )
+
+        if num_hands <= 1:
+            return 0
+
+        if self.active_mode != "cursor":
+            return 0
+
+        for i in range(num_hands):
+
+            name, _ = self._read_gesture(
+                result,
+                i
+            )
+
+            if name == "Pointing_Up":
+                return i
+
+        return 0
+
+    def _resolve_off_hand_index(self, result, primary_index):
+
+        if self.active_mode != "cursor":
+            return None
+
+        num_hands = (
+            len(result.hand_landmarks)
+            if result.hand_landmarks
+            else 0
+        )
+
+        if num_hands != 2:
+            return None
+
+        return 1 - primary_index
 
     # ---------------------------------
     # Hand Lost
@@ -298,13 +461,16 @@ class GestureRecognizer:
     # Read Static Gesture
     # ---------------------------------
 
-    def _read_gesture(self, result):
+    def _read_gesture(self, result, index=0):
 
         if not result.gestures:
             return None, None
 
+        if index >= len(result.gestures):
+            return None, None
+
         gesture_category = (
-            result.gestures[0][0]
+            result.gestures[index][0]
         )
 
         gesture_name = (
@@ -523,13 +689,13 @@ class GestureRecognizer:
     # Motion Tracking
     # ---------------------------------
 
-    def _check_motion(self, result):
+    def _check_motion(self, result, primary_index):
 
         if not self.tracking_active:
             return
 
         hand_landmarks = (
-            result.hand_landmarks[0]
+            result.hand_landmarks[primary_index]
         )
 
         # Index fingertip
@@ -635,10 +801,27 @@ class GestureRecognizer:
     # does not know that Cursor mode is the only place any
     # of this currently matters.
 
-    def _check_pinch(self, result):
+    def _check_pinch(self, result, primary_index):
+
+        current_time = time.time()
+
+        # A deferred single tap (see _release_pinch) is
+        # committed here, on whichever later frame first
+        # notices the double-pinch window has expired without
+        # a second tap arriving.
+        if (
+            self.pending_single_pinch
+            and not self.is_pinching
+            and (current_time - self.pending_pinch_time)
+            > self.double_pinch_window
+        ):
+
+            self._fire_pinch_signal("PINCH")
+
+            self.pending_single_pinch = False
 
         hand_landmarks = (
-            result.hand_landmarks[0]
+            result.hand_landmarks[primary_index]
         )
 
         thumb_tip = hand_landmarks[4]
@@ -652,8 +835,6 @@ class GestureRecognizer:
         currently_touching = (
             distance < self.pinch_distance_threshold
         )
-
-        current_time = time.time()
 
         current_x = (thumb_tip.x + index_tip.x) / 2
         current_y = (thumb_tip.y + index_tip.y) / 2
@@ -729,18 +910,36 @@ class GestureRecognizer:
 
     def _release_pinch(self):
 
-        # A quick tap (never became a drag) is a click.
-        # A completed drag ends silently — it already did
-        # its job as a scroll, it should not also click.
+        # A quick tap (never became a drag) is a click — or
+        # half of a double-click. A completed drag ends
+        # silently either way — it already did its job as a
+        # scroll, it should not also click.
         if not self.is_dragging:
 
-            self.event_bus.publish(
-                "gesture_signal",
-                {
-                    "signal": "PINCH",
-                    "source": "gesture"
-                }
-            )
+            current_time = time.time()
+
+            if (
+                self.pending_single_pinch
+                and (current_time - self.pending_pinch_time)
+                <= self.double_pinch_window
+            ):
+
+                # Second tap arrived in time — the pair is a
+                # double-pinch (right-click), not two clicks.
+                self._fire_pinch_signal("DOUBLE_PINCH")
+
+                self.pending_single_pinch = False
+
+            else:
+
+                # First tap: don't fire PINCH yet, it might
+                # be the start of a double-pinch. _check_pinch
+                # commits it as a plain click once
+                # double_pinch_window passes with no second
+                # tap.
+                self.pending_single_pinch = True
+
+                self.pending_pinch_time = current_time
 
         self.is_pinching = False
         self.is_dragging = False
@@ -749,31 +948,233 @@ class GestureRecognizer:
         self.pinch_start_y = None
         self.pinch_previous_y = None
 
+    def _fire_pinch_signal(self, signal):
+
+        self.event_bus.publish(
+            "gesture_signal",
+            {
+                "signal": signal,
+                "source": "gesture"
+            }
+        )
+
+    # ---------------------------------
+    # OK-Sign (Call Mode: raise hand)
+    # ---------------------------------
+
+    def _check_ok_sign(self, result, primary_index):
+
+        hand_landmarks = (
+            result.hand_landmarks[primary_index]
+        )
+
+        thumb_tip = hand_landmarks[4]
+        index_tip = hand_landmarks[8]
+
+        distance = math.hypot(
+            thumb_tip.x - index_tip.x,
+            thumb_tip.y - index_tip.y
+        )
+
+        touching = (
+            distance < self.pinch_distance_threshold
+        )
+
+        if touching and not self.ok_touching:
+
+            self.ok_touching = True
+
+            self.event_bus.publish(
+                "gesture_signal",
+                {
+                    "signal": "OK_SIGN",
+                    "source": "gesture"
+                }
+            )
+
+        elif not touching:
+
+            self.ok_touching = False
+
+    # ---------------------------------
+    # Off-Hand (Cursor Mode: precision + zoom)
+    # ---------------------------------
+
+    # Returns True while the off-hand is held as a Closed_Fist
+    # (precision mode engaged), False otherwise. Also drives
+    # two-hand pinch-to-zoom as a side effect when the off-hand
+    # is present but NOT fisted — the two features are mutually
+    # exclusive by construction, since an off-hand fist has no
+    # meaningful "index fingertip" position to zoom from.
+    def _check_off_hand(
+        self,
+        result,
+        primary_index,
+        off_index,
+        primary_gesture_name
+    ):
+
+        if off_index is None:
+
+            self.previous_two_hand_distance = None
+
+            return False
+
+        off_gesture_name, _ = self._read_gesture(
+            result,
+            off_index
+        )
+
+        if off_gesture_name == "Closed_Fist":
+
+            self.previous_two_hand_distance = None
+
+            return True
+
+        self._check_two_hand_zoom(
+            result,
+            primary_index,
+            off_index,
+            primary_gesture_name
+        )
+
+        return False
+
+    # Replaces the earlier Alt+single-hand-pinch zoom entirely
+    # — no keyboard involved. Distance between the two hands'
+    # index fingertips drives zoom continuously: spreading the
+    # hands apart zooms in, bringing them together zooms out.
+    # Requires the primary hand to be doing Pointing_Up, the
+    # same gesture Cursor mode already requires to move the
+    # cursor at all — zooming while the cursor itself isn't
+    # even tracking would be confusing.
+    def _check_two_hand_zoom(
+        self,
+        result,
+        primary_index,
+        off_index,
+        primary_gesture_name
+    ):
+
+        if primary_gesture_name != "Pointing_Up":
+
+            self.previous_two_hand_distance = None
+
+            return
+
+        primary_tip = result.hand_landmarks[primary_index][8]
+        off_tip = result.hand_landmarks[off_index][8]
+
+        distance = math.hypot(
+            primary_tip.x - off_tip.x,
+            primary_tip.y - off_tip.y
+        )
+
+        if self.previous_two_hand_distance is None:
+
+            self.previous_two_hand_distance = distance
+
+            return
+
+        delta_distance = (
+            distance - self.previous_two_hand_distance
+        )
+
+        self.previous_two_hand_distance = distance
+
+        self.event_bus.publish(
+            "pinch_zoom",
+            {
+                "delta_distance": delta_distance,
+                "source": "gesture"
+            }
+        )
+
     # ---------------------------------
     # Pointer Tracking
     # ---------------------------------
 
-    def _update_pointer(self, gesture_name, result):
+    def _update_pointer(
+        self,
+        gesture_name,
+        result,
+        primary_index,
+        off_hand_fisted
+    ):
 
         if gesture_name != "Pointing_Up":
+
+            # Not pointing — nothing to publish, and any
+            # precision-mode engagement should not carry over
+            # to the next time pointing resumes.
+            self.precision_active = False
+
             return
 
         hand_landmarks = (
-            result.hand_landmarks[0]
+            result.hand_landmarks[primary_index]
         )
 
         index_tip = hand_landmarks[8]
 
-        # Raw, absolute fingertip position for this frame —
-        # the consumer (ActionExecutor) maps it straight
-        # onto the screen: wherever the finger is in the
-        # camera's view, the cursor/laser dot goes to that
-        # same relative spot on screen.
+        raw_x = index_tip.x
+        raw_y = index_tip.y
+
+        if off_hand_fisted:
+
+            # Precision mode: a temporary relative "clutch"
+            # layered on top of the otherwise-always-absolute
+            # mapping below. Engaging it anchors the current
+            # raw position; while held, the published position
+            # only moves PRECISION_SCALE of however far the
+            # hand actually moves from that anchor — exactly
+            # like lowering a mouse's DPI. Releasing the
+            # off-hand fist snaps straight back to plain
+            # absolute 1:1 tracking, which means the cursor
+            # jumps to match the finger's current raw position
+            # — an intentional, honest consequence of mixing a
+            # relative clutch into an otherwise-absolute
+            # mapping, not a bug.
+            if not self.precision_active:
+
+                self.precision_active = True
+
+                self.precision_anchor_x = raw_x
+                self.precision_anchor_y = raw_y
+
+            effective_x = (
+                self.precision_anchor_x
+                + (raw_x - self.precision_anchor_x)
+                * self.PRECISION_SCALE
+            )
+
+            effective_y = (
+                self.precision_anchor_y
+                + (raw_y - self.precision_anchor_y)
+                * self.PRECISION_SCALE
+            )
+
+        else:
+
+            # Default: absolute mapping, unchanged from before
+            # off-hand precision mode existed — take a camera
+            # frame, find the finger, that IS the position.
+            self.precision_active = False
+
+            effective_x = raw_x
+            effective_y = raw_y
+
+        effective_x = min(1.0, max(0.0, effective_x))
+        effective_y = min(1.0, max(0.0, effective_y))
+
+        # Raw, absolute (or precision-scaled) fingertip
+        # position for this frame — the consumer
+        # (ActionExecutor) maps it straight onto the screen.
         self.event_bus.publish(
             "pointer_position",
             {
-                "x": index_tip.x,
-                "y": index_tip.y,
+                "x": effective_x,
+                "y": effective_y,
                 "source": "gesture"
             }
         )
@@ -802,6 +1203,21 @@ class GestureRecognizer:
         if (
             self.tracking_active
             and gesture_name != "Closed_Fist"
+        ):
+            return
+
+        # Thumb_Up/Thumb_Down/Victory only mean anything in
+        # Call mode (mic mute/unmute, camera toggle) — gated
+        # at the source so, e.g., an actual thumbs-up given to
+        # someone during a Flip-mode swipe session never gets
+        # detected or published as noise.
+        if (
+            gesture_name in (
+                "Thumb_Up",
+                "Thumb_Down",
+                "Victory"
+            )
+            and self.active_mode != "call"
         ):
             return
 

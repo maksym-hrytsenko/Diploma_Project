@@ -29,6 +29,13 @@ class OSController:
         "QuickTime Player"
     }
 
+    # macOS system media key codes (NSSystemDefined event
+    # data1 high byte), the same codes a physical keyboard's
+    # media keys send.
+    NX_KEYTYPE_PLAY = 16
+    NX_KEYTYPE_NEXT = 17
+    NX_KEYTYPE_PREVIOUS = 18
+
     def __init__(self):
 
         # This app moves the cursor continuously and on
@@ -39,6 +46,14 @@ class OSController:
         # screen corner would otherwise silently cancel that
         # frame's move.
         pyautogui.FAILSAFE = False
+
+        # pyautogui inserts a 0.1s sleep after EVERY call by
+        # default (PAUSE). Cursor mode calls moveTo() once per
+        # camera frame — at the default PAUSE that caps cursor
+        # updates to ~10fps and stalls whichever thread
+        # published the frame for 100ms each time, which reads
+        # as the cursor barely following the finger at all.
+        pyautogui.PAUSE = 0
 
         self._warn_if_not_trusted()
 
@@ -95,6 +110,10 @@ class OSController:
 
         pyautogui.click()
 
+    def right_click(self):
+
+        pyautogui.rightClick()
+
     # Absolute move — the cursor jumps straight to the given
     # screen position, mirroring wherever the fingertip
     # currently is within the camera's view (converted to
@@ -118,6 +137,23 @@ class OSController:
     def scroll_by(self, pixel_amount):
 
         self._post_pixel_scroll(pixel_amount)
+
+    # ---------------------------------
+    # Zoom (Cursor Mode, Alt + pinch distance)
+    # ---------------------------------
+
+    # Cmd+"=" / Cmd+"-" is the standard zoom-in/out shortcut
+    # across Safari, Preview, Photos and most other macOS
+    # apps — there is no single system-wide "zoom the frontmost
+    # app's content" API, so this piggybacks on the same
+    # keyboard shortcut a user would press themselves.
+    def zoom_in(self):
+
+        pyautogui.hotkey("command", "=")
+
+    def zoom_out(self):
+
+        pyautogui.hotkey("command", "-")
 
     # ---------------------------------
     # Scroll (Flip Mode)
@@ -299,10 +335,6 @@ class OSController:
 
         self._open_mac_app("Discord")
 
-    def open_zoom(self):
-
-        self._open_mac_app("zoom.us")
-
     def open_mail(self):
 
         self._open_mac_app("Mail")
@@ -314,14 +346,6 @@ class OSController:
     def open_notes(self):
 
         self._open_mac_app("Notes")
-
-    def open_messages(self):
-
-        self._open_mac_app("Messages")
-
-    def open_whatsapp(self):
-
-        self._open_mac_app("WhatsApp")
 
     def open_telegram(self):
 
@@ -335,17 +359,9 @@ class OSController:
 
         self._open_mac_app("Notion")
 
-    def open_figma(self):
-
-        self._open_mac_app("Figma")
-
     def open_photos(self):
 
         self._open_mac_app("Photos")
-
-    def open_music(self):
-
-        self._open_mac_app("Music")
 
     def open_preview(self):
 
@@ -446,19 +462,42 @@ class OSController:
     # for this accepted limitation.
     def media_play_pause(self):
 
+        self._post_system_media_key(
+            self.NX_KEYTYPE_PLAY
+        )
+
+    # ---------------------------------
+    # Next / Previous Track (Global)
+    # ---------------------------------
+
+    # Same system media-key mechanism as media_play_pause —
+    # works with whichever player owns "now playing", not tied
+    # to one specific app.
+    def next_track(self):
+
+        self._post_system_media_key(
+            self.NX_KEYTYPE_NEXT
+        )
+
+    def previous_track(self):
+
+        self._post_system_media_key(
+            self.NX_KEYTYPE_PREVIOUS
+        )
+
+    def _post_system_media_key(self, nx_keytype):
+
         try:
 
             from AppKit import NSEvent
             import Quartz
-
-            nx_keytype_play = 16
 
             def post(key_down):
 
                 flags = 0xa00 if key_down else 0xb00
 
                 data1 = (
-                    (nx_keytype_play << 16)
+                    (nx_keytype << 16)
                     | ((0xa if key_down else 0xb) << 8)
                 )
 
@@ -579,99 +618,46 @@ class OSController:
         pyautogui.press("left")
 
     # ---------------------------------
-    # Window Management (Window Management Mode)
+    # Call Mode (Microsoft Teams)
     # ---------------------------------
 
-    def _get_screen_size(self):
+    # Teams' own meeting-control shortcuts, sent as real
+    # keystrokes — there is no app-agnostic "mute the current
+    # call" system API, so this is inherently tied to whichever
+    # call app the user has (Teams, per current project
+    # configuration). These are Teams for Mac's documented
+    # bindings as of this writing; Microsoft has changed them
+    # before, so re-verify against Teams' own Settings ->
+    # Keyboard shortcuts page if they stop firing.
+    #
+    # Mute/unmute is a single toggle shortcut, the same
+    # limitation already documented for media_play_pause: both
+    # UNMUTE_MIC and MUTE_MIC send the identical keystroke, so
+    # firing the "wrong" one (already unmuted -> Thumb_Up again)
+    # toggles it the other way rather than no-op'ing.
+    def unmute_mic(self):
 
-        output = self._run_applescript(
-            'tell application "Finder" to get bounds of window of desktop'
-        )
+        pyautogui.hotkey("command", "shift", "m")
 
-        if output is None:
-            return None
+    def mute_mic(self):
 
-        parts = [
-            int(value.strip())
-            for value in output.split(",")
-        ]
+        pyautogui.hotkey("command", "shift", "m")
 
-        return parts[2], parts[3]
+    def toggle_camera(self):
 
-    def _set_frontmost_window_bounds(
-        self,
-        x,
-        y,
-        width,
-        height
-    ):
+        pyautogui.hotkey("command", "shift", "o")
 
-        script = (
-            'tell application "System Events"\n'
-            'set frontApp to first process whose frontmost is true\n'
-            'tell (first window of frontApp)\n'
-            f'set position to {{{x}, {y}}}\n'
-            f'set size to {{{width}, {height}}}\n'
-            'end tell\n'
-            'end tell'
-        )
+    def raise_hand(self):
 
-        self._run_applescript(script)
+        pyautogui.hotkey("command", "shift", "k")
 
-    def maximize_window(self):
+    # ---------------------------------
+    # Screenshot (Shift+Alt face layer)
+    # ---------------------------------
 
-        screen_size = self._get_screen_size()
+    # Full-screen capture, saved to the desktop — macOS's own
+    # built-in shortcut, not an interactive region-select
+    # (Cmd+Shift+4), so it needs no follow-up mouse drag.
+    def take_screenshot(self):
 
-        if screen_size is None:
-            return
-
-        width, height = screen_size
-
-        self._set_frontmost_window_bounds(
-            0,
-            0,
-            width,
-            height
-        )
-
-    def minimize_window(self):
-
-        # True AppleScript minimize-to-Dock is unreliable
-        # across apps; hiding the frontmost app achieves
-        # the same practical "get it out of the way" result.
-        self._run_applescript(
-            'tell application "System Events" to set visible of '
-            '(first process whose frontmost is true) to false'
-        )
-
-    def move_window_left(self):
-
-        screen_size = self._get_screen_size()
-
-        if screen_size is None:
-            return
-
-        width, height = screen_size
-
-        self._set_frontmost_window_bounds(
-            0,
-            0,
-            width // 2,
-            height
-        )
-
-    def move_window_right(self):
-
-        screen_size = self._get_screen_size()
-
-        if screen_size is None:
-            return
-
-        width, height = screen_size
-
-        self._set_frontmost_window_bounds(
-            width // 2,
-            0,
-            width // 2,
-            height
-        )
+        pyautogui.hotkey("command", "shift", "3")

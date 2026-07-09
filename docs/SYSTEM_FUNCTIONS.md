@@ -16,12 +16,12 @@ Target platform: **macOS only**.
 
 The system tracks two separate, orthogonal pieces of state at once:
 
-- **Mode** (`presentation` / `flip` / `cursor` / `window_management` /
+- **Mode** (`presentation` / `flip` / `cursor` / `call` /
   `quick_circle` / none) — an ephemeral context that decides what the
   *same physical gesture* currently means. Modes exist purely to stop
   gestures from colliding with each other (a swipe means something
-  different in Flip mode than in Window Management mode). They carry no
-  OS side effects of their own.
+  different in Flip mode than a thumbs-up means in Call mode). They
+  carry no OS side effects of their own.
 - **Environment** (`work` / `study` / `movie` / `news` / none) — a
   longer-lived task backdrop. Entering one runs a real sequence of OS
   actions (opening apps, toggling Do Not Disturb, music); leaving it (by
@@ -129,11 +129,17 @@ The **only** mode where pointing and pinching touch the real mouse.
 Outside this mode, `Pointing_Up` only drives the purely-visual laser
 pointer (§4) and `PINCH` does nothing.
 
+One hand is all Cursor mode needs and behaves exactly as before. A
+**second hand**, if visible, unlocks two more functions — see §2.3.1.
+
 | Gesture | Effect |
 |---|---|
 | `Pointing_Up`, held | The OS cursor jumps to wherever the fingertip is, every frame |
 | Quick pinch (touch and release) | `CLICK` |
+| Quick pinch **twice** in a row | `RIGHT_CLICK` (instead of two clicks) |
 | Pinch, **held or moved**, then dragged | Scroll (see below) — no click fires |
+| Off-hand Closed_Fist, held | Precision mode — see §2.3.1 |
+| Off-hand present, not fisted, primary hand pointing | Two-hand zoom — see §2.3.1 |
 
 **Cursor motion is absolute, mapped directly from the camera frame** —
 the same mechanism the laser pointer (§4) uses. Every frame,
@@ -167,25 +173,116 @@ fire a click. This state machine lives in `GestureRecognizer._check_pinch`
 — cursor-mode-agnostic; `ActionExecutor` decides whether to actually move
 the OS cursor / scroll based on which mode is currently active.
 
-### 2.4 Window Management — `"window management mode"` or `ctrl+shift+w`
+**Click vs. right-click disambiguation**: a quick tap (the "click" case
+above) is not published immediately — it is held as a `pending_single_pinch`
+for up to `double_pinch_window` (0.3s). If a second quick tap arrives in
+that window, the pair is published as one `DOUBLE_PINCH` gesture signal
+(→ `RIGHT_CLICK`) instead of two `PINCH` signals. If the window expires
+with no second tap, the deferred tap is committed as a plain `PINCH`
+(→ `CLICK`). This means every single click in Cursor mode carries a
+~0.3s latency by design — the trade-off for distinguishing it from a
+right-click using the same physical gesture. `GestureRecognizer._release_pinch`
+defers, `GestureRecognizer._check_pinch` commits the deferred click on a
+later frame once the window has passed.
 
-Gesture-only window control — no keyboard modifier needed for the
-gestures themselves once you're in this mode (unlike, say, quickly
-nudging a window from outside any mode, which this design doesn't
-otherwise support):
+#### 2.3.1 Two-hand functions (off-hand)
 
-| Gesture | Action |
-|---|---|
-| `HAND_UP` | `MAXIMIZE_WINDOW` |
-| `HAND_DOWN` | `MINIMIZE_WINDOW` (hides the app — see §10 known limitations) |
-| `HAND_LEFT` | `MOVE_WINDOW_LEFT` (snaps to the left half of the screen) |
-| `HAND_RIGHT` | `MOVE_WINDOW_RIGHT` (snaps to the right half) |
+`GestureModel` tracks up to two hands (`num_hands=2`). Every check
+described above still operates on exactly one "primary" hand — with
+two hands visible in Cursor mode, primary is whichever one is currently
+doing `Pointing_Up` (`GestureRecognizer._resolve_primary_index`); the
+other is the "off-hand". Outside Cursor mode, or with only one hand
+visible, primary is always hand 0 — identical to pre-two-hand behavior,
+so nothing here can regress any other mode.
 
-Window bounds are set via AppleScript driving System Events
-(`OSController._set_frontmost_window_bounds`) — macOS has no built-in
-"snap window" shortcut without third-party apps, so this positions the
-frontmost window's bounds directly. Requires Accessibility permission
-(§9); fails gracefully and prints an error without it.
+**Precision mode (off-hand `Closed_Fist`)**: like lowering a mouse's
+DPI. Engaging it anchors the primary fingertip's current position;
+while the off-hand fist is held, the published cursor position only
+moves `PRECISION_SCALE` (0.3) of however far the primary hand actually
+moves from that anchor point — fine, deliberate positioning instead of
+the normal full-speed 1:1 follow. This is necessarily a *relative*
+mechanism layered on top of the otherwise strictly *absolute* mapping
+described above — releasing the off-hand fist snaps straight back to
+absolute 1:1 tracking, which means the cursor visibly jumps to match
+wherever the primary fingertip currently, actually is. That jump is an
+intentional, honest consequence of mixing a temporary relative "clutch"
+into an absolute mapping, not a bug — same as lifting and repositioning
+a physical mouse. See `GestureRecognizer._update_pointer`.
+
+**Two-hand zoom (off-hand present, not fisted)**: replaces the earlier
+Alt+single-hand-pinch zoom entirely — no keyboard involved at all now.
+Requires the primary hand to be doing `Pointing_Up` (the same gesture
+already required for the cursor to track anything) and the off-hand to
+be visible but not a fist. The distance between the two hands' index
+fingertips is compared frame-to-frame and published as a `pinch_zoom`
+delta (`GestureRecognizer._check_two_hand_zoom`) — spreading the two
+hands apart zooms in, bringing them together zooms out, the same
+real-world gesture as a two-handed photo pinch-zoom. `ActionExecutor`'s
+consumption of `pinch_zoom` (accumulate deltas, fire
+`OSController.zoom_in()`/`zoom_out()` per `zoom_step_threshold`, 0.05)
+is completely unchanged from the old Alt+pinch mechanism — only the
+*source* of the delta changed, from single-hand pinch distance under
+Alt to two-hand fingertip distance. `zoom_in`/`zoom_out` still send
+Cmd+"="/Cmd+"-", the standard zoom shortcut in Safari, Preview, Photos
+and most other macOS apps.
+
+Precision mode and two-hand zoom are mutually exclusive by construction
+— an off-hand fist has no meaningful "index fingertip" position to zoom
+from, so `_check_off_hand` only ever runs one or the other per frame.
+
+### 2.4 Call — `"call mode"` or `ctrl+shift+w`
+
+Static, one-hand gestures, each firing a real Microsoft Teams keyboard
+shortcut — mic mute/unmute, camera toggle, raise hand. Replaces the
+earlier Window Management mode entirely (see §11); the `ctrl+shift+w`
+combo and voice-trigger slot were reused as-is rather than reassigned.
+
+| Gesture | Action | Teams shortcut (Mac) |
+|---|---|---|
+| `Thumb_Up` (thumbs up) | `UNMUTE_MIC` | Cmd+Shift+M |
+| `Thumb_Down` (thumbs down) | `MUTE_MIC` | Cmd+Shift+M |
+| `Victory` (peace sign) | `TOGGLE_CAMERA` | Cmd+Shift+O |
+| `OK_SIGN` (thumb+index touching) | `RAISE_HAND` | Cmd+Shift+K |
+
+**There is no app-agnostic "mute the current call" system API** — this
+is inherently tied to whichever app the user is actually calling
+through. Microsoft Teams was chosen (over Zoom / browser-based Google
+Meet) specifically because it supports meeting-control shortcuts that
+fire even when Teams isn't the frontmost/focused window — Meet's
+browser shortcuts only work while the Meet tab itself has focus, which
+defeats the purpose of a gesture fired while looking at the camera, not
+the call window. These are Teams for Mac's documented bindings as of
+this writing, sent as real keystrokes via `pyautogui.hotkey` — Microsoft
+has changed its own shortcuts before, so re-verify against Teams'
+Settings → Keyboard shortcuts page if they stop firing.
+
+**Mute/unmute is a single toggle shortcut** — the same honest limitation
+already documented for `MEDIA_PLAY_PAUSE` (§5). `UNMUTE_MIC` and
+`MUTE_MIC` send the *identical* keystroke, so firing the "wrong" one
+(already unmuted, thumbs-up again) toggles it the other way rather than
+being a no-op. `Victory`/`TOGGLE_CAMERA` is explicitly a toggle by
+design already, so it has no such asymmetry.
+
+**`OK_SIGN` is hand-coded, not a MediaPipe category.** The bundled
+gesture classifier's canned label set was checked directly against the
+model file (`models/gesture_recognizer.task` → `hand_gesture_recognizer
+.task` → `canned_gesture_classifier.tflite`'s embedded `labels.txt`):
+only `None`, `Closed_Fist`, `Open_Palm`, `Pointing_Up`, `Thumb_Down`,
+`Thumb_Up`, `Victory`, `ILoveYou` exist — there is no bundled `"OK"`
+category, and there is no `custom_gesture_classifier.tflite` in the
+bundle to add one without retraining. `OK_SIGN` is instead computed
+directly from thumb/index landmark distance
+(`GestureRecognizer._check_ok_sign`) — the exact same touch-distance
+geometry Cursor mode's `PINCH` already uses, just scoped to Call mode
+and edge-triggered (fires once when the fingers first touch, not again
+until they separate) rather than distinguishing click from drag.
+
+**Detection is gated to Call mode at the source.** `Thumb_Up`/
+`Thumb_Down`/`Victory` are real MediaPipe categories that could in
+principle be classified in any mode — `GestureRecognizer.
+_publish_static_gesture` only publishes them while `active_mode ==
+"call"`, so an actual thumbs-up given to someone mid-swipe in Flip mode
+is never detected as a system command.
 
 ### 2.5 Quick Command Circle — gesture only: Closed_Fist → Open_Palm
 
@@ -198,7 +295,7 @@ keyboard combo:
 | Selection gesture | Enters |
 |---|---|
 | `HAND_UP` | Presentation mode (§2.1) |
-| `HAND_DOWN` | Window Management mode (§2.4) |
+| `HAND_DOWN` | Call mode (§2.4) |
 | `HAND_LEFT` | Flip mode (§2.2) |
 | `HAND_RIGHT` | Cursor mode (§2.3) |
 
@@ -214,9 +311,8 @@ active). The same Closed_Fist → Open_Palm transition already means
 gesture-sourced mode trigger is deliberately only honored when
 `current_mode is None`, otherwise using Flip mode would constantly
 reopen the circle. Voice/keyboard-sourced triggers (Presentation/Flip/
-Cursor/Window Management) don't have this restriction — you can jump
-straight from one of those to another without going through the circle
-or idle first.
+Cursor/Call) don't have this restriction — you can jump straight from
+one of those to another without going through the circle or idle first.
 
 The circle itself is `src/ui/quick_command_overlay.py` — a click-through
 PyQt6 overlay that shows/hides purely by listening to the same
@@ -321,31 +417,34 @@ the "any open player" requirement).
 
 ## 6. Opening applications (unchanged — all voice-only, no gesture/keyboard)
 
-24 apps, each a single-condition voice rule — say the phrase, the app
+19 apps, each a single-condition voice rule — say the phrase, the app
 opens, nothing else required:
 
 `open browser`, `open chatgpt`, `open github`, `open vscode`, `open
 terminal`, `open safari`, `open chrome`, `open spotify`, `open slack`,
-`open discord`, `open zoom`, `open mail`, `open calendar`, `open notes`,
-`open messages`, `open whatsapp`, `open telegram`, `open finder`, `open
-notion`, `open figma`, `open photos`, `open music`, `open preview`,
+`open discord`, `open mail`, `open calendar`, `open notes`, `open
+telegram`, `open finder`, `open notion`, `open photos`, `open preview`,
 `open settings`.
+
+**Removed**: `open zoom`, `open messages`, `open whatsapp`, `open
+figma`, `open music` no longer open anything — dropped from
+`mapping.json` (voice + `valid_signals`), `fusion.json` (rules),
+`ActionExecutor`'s command table, and `OSController` entirely (see §11).
 
 **Vosk vocabulary — confirmed, not just theoretical.** Loading the
 grammar logs exactly which words it silently drops as unknown. Verified
-in this environment: `chatgpt`, `vscode`, `whatsapp`, and `figma` are
-**not** in `vosk-model-small-en-us-0.15`'s fixed lexicon — the
-recognizer will never match "open chatgpt" / "open vscode" / "open
-whatsapp" / "open figma" no matter how clearly they're spoken, since one
-of the words in each phrase can't be decoded at all. `discord`,
-`telegram`, `zoom`, `notion`, `notes`, `messages`, `spotify`, `slack`,
-`safari`, `chrome`, `calendar`, `settings`, `finder`, `photos`, `music`,
-`preview`, `browser`, `terminal`, `github` were **not** flagged, so
-those phrases should recognize normally (subject to normal accuracy
-limits — actual recognition quality wasn't tested, only vocabulary
-presence). Swapping the four failing phrases for the app's own
-executable/process name if it differs, or switching to a larger Vosk
-model, are the two ways to fix this if it matters in practice.
+in this environment: `chatgpt` and `vscode` are **not** in
+`vosk-model-small-en-us-0.15`'s fixed lexicon — the recognizer will
+never match "open chatgpt" / "open vscode" no matter how clearly they're
+spoken, since one of the words in each phrase can't be decoded at all.
+`discord`, `telegram`, `notion`, `notes`, `spotify`, `slack`, `safari`,
+`chrome`, `calendar`, `settings`, `finder`, `photos`, `preview`,
+`browser`, `terminal`, `github` were **not** flagged, so those phrases
+should recognize normally (subject to normal accuracy limits — actual
+recognition quality wasn't tested, only vocabulary presence). Swapping
+the two failing phrases for the app's own executable/process name if it
+differs, or switching to a larger Vosk model, are the two ways to fix
+this if it matters in practice.
 
 ---
 
@@ -356,13 +455,15 @@ model, are the two ways to fix this if it matters in practice.
 | `HAND_LEFT` / `HAND_RIGHT` / `HAND_UP` / `HAND_DOWN` | Computed from index-fingertip velocity during a swipe-tracking session | Flip mode, Quick Command Circle selection |
 | `HAND_SESSION_START` | Fired once on the Closed_Fist → Open_Palm transition that starts a swipe session | Quick Command Circle's entry trigger (idle-only, §2.4) |
 | `PINCH` | Computed from thumb-tip/index-tip landmark distance | Cursor mode's click (quick tap) — hold+drag instead scrolls, §2.3 |
+| `DOUBLE_PINCH` | Two `PINCH` taps inside `double_pinch_window` (0.3s) | Cursor mode's right-click, §2.3 |
+| `Thumb_Up` / `Thumb_Down` / `Victory` | MediaPipe canned gesture categories, gated to Call mode only | Call mode's unmute/mute/camera-toggle, §2.4 |
+| `OK_SIGN` | Hand-coded thumb/index-tip touch distance (same geometry as `PINCH`), gated to Call mode only | Call mode's raise-hand, §2.4 |
 
 `Open_Palm`/`Closed_Fist`/`Pointing_Up` are still recognized internally by
 `GestureRecognizer` (they drive the swipe session and the pointer stream)
 but are no longer exposed as directly rule-matchable signals — nothing in
-this design needs to react to them as discrete events. `OK`, `Victory`,
-`Thumb_Up`, `Thumb_Down`, `ILoveYou` are no longer used anywhere and were
-removed from `mapping.json`'s vocabulary.
+this design needs to react to them as discrete events. `ILoveYou` is
+recognized by the model but still unused anywhere in this system.
 
 ---
 
@@ -373,14 +474,16 @@ removed from `mapping.json`'s vocabulary.
 | `ctrl+shift+p` | Enter Presentation mode |
 | `ctrl+shift+f` | Enter Flip mode |
 | `ctrl+shift+c` | Enter Cursor mode |
-| `ctrl+shift+w` | Enter Window Management mode |
+| `ctrl+shift+w` | Enter Call mode |
+| `alt+shift` | Activates the face-gesture layer (§9) — works in any mode, or no mode at all |
 | Right arrow (bare) | Next slide, Presentation mode only |
 | Left arrow (bare) | Previous slide, Presentation mode only |
 | Esc (bare) | Exit whichever mode is active, from any mode, at any time |
 
 All four mode-entry combos share the `ctrl+shift` base, distinguished by
 a third key that's the first letter of the mode name (**p**resentation,
-**f**lip, **c**ursor, **w**indow management) — a single, consistent,
+**f**lip, **c**ursor, **w** — Call mode kept the `w` slot inherited from
+the Window Management mode it replaced, see §11) — a single, consistent,
 memorable pattern rather than four unrelated combos. `mapping.json`'s
 `keyboard` and `valid_signals.keyboard` must always list the exact same
 combo strings — a mismatch between the two silently drops every press of
@@ -427,16 +530,106 @@ would refire on every unrelated voice/gesture event that happens to
 arrive while the key stays down — the filter means it only fires on the
 actual edge of its own condition becoming satisfied.
 
-There is currently no rule in `fusion.json` that combines a held
-keyboard combo with a gesture or voice condition — `ctrl+alt+shift` is
-used only as Window Management mode's single-source entry trigger (see
-§2.4), not as a hidden-combo gate. This section documents the held/
-released mechanism, ready for whenever a genuine multi-source combo
-rule is added.
+Each of the four mode-entry combos is used only as that mode's
+single-source entry trigger, not as a hidden-combo gate. `alt+shift`,
+however, genuinely is a multi-source combo gate — four global `rules` in
+`fusion.json` require `{"keyboard": "SHIFT_ALT_KEY", "face": "..."}`
+together (§9.1). This is exactly the case this held/released mechanism
+was built for: holding `alt+shift` keeps `SHIFT_ALT_KEY` sitting in the
+signal buffer indefinitely, so whichever `face_signal` arrives next
+while it's held — a head tilt, a mouth-open, a double-blink — combines
+with it correctly, no matter how far into the hold that face signal
+happens to occur.
+
+**Cursor mode's old Alt+single-hand-pinch zoom mechanism, which used to
+be the one exception reading a raw modifier key outside `fusion.json`
+entirely, has been removed** — zoom is now two-hand distance-based with
+no keyboard involved at all (§2.3.1).
 
 ---
 
-## 9. Setup preconditions
+## 9. Face (FaceRecognizer — always on, no mode required)
+
+A second, independent recognizer (`src/processing/face/face_recognizer
+.py`, `src/processing/face/face_model.py`) running in parallel with the
+hand-gesture pipeline, both subscribed to the same `camera_frame`
+events. Uses `models/face_landmarker.task` (MediaPipe's Face Landmarker
+task, with `output_face_blendshapes` and
+`output_facial_transformation_matrixes` both enabled — the model bundle
+was confirmed to include the blendshapes and geometry-pipeline files
+needed for both, no custom training required).
+
+Unlike almost everything in `GestureRecognizer`, **nothing here is mode-
+gated** — every check runs and publishes regardless of `current_mode`.
+Whatever consumes a `face_signal` downstream (fusion rules) decides when
+it means something; this class stays unaware of modes entirely, by
+design, per the user's own framing of this feature ("works without a
+separate mode, always").
+
+| Signal | How it's detected | Status |
+|---|---|---|
+| `CONFIRM` | Nod — head pitch swings fast one way, then fast back the other way, within `NOD_PHASE_WINDOW` (0.6s) | Reserved, unbound (same status as voice `YES`/`NO`) |
+| `CANCEL` | Shake — identical two-phase swing detection, on head yaw instead of pitch | Reserved, unbound |
+| `HEAD_TILT_LEFT` / `HEAD_TILT_RIGHT` | Head roll past `TILT_ENTER_DEGREES` (15°); must return within `TILT_EXIT_DEGREES` (8°) of neutral before firing again | Wired — §9.1 |
+| `EYEBROWS_UP` / `EYEBROWS_DOWN` | `browInnerUp` blendshape crossing raise (0.5) / lower (0.3) thresholds, edge-triggered | Reserved, unbound — intended as a modifier for future features |
+| `MOUTH_OPEN` | `jawOpen` blendshape crossing 0.5, rising edge only (closing fires nothing) | Wired — §9.1 |
+| `DOUBLE_BLINK` | Two completed blinks (`eyeBlinkLeft`/`eyeBlinkRight` both crossing close/open thresholds) within `DOUBLE_BLINK_WINDOW` (0.5s) of each other. A single blink fires nothing — blinking is frequent and involuntary, only a deliberate double counts. | Wired — §9.1 |
+
+**Nod/shake use relative sign changes, not absolute pitch/yaw
+direction** — a "fast swing away, then fast swing back" round trip,
+regardless of which absolute direction it starts in. This makes them
+immune to the head-pose matrix's exact axis-sign convention, which was
+not empirically verified against a real camera (see below).
+
+**Head tilt's left/right labeling was not empirically verified** against
+a real camera, unlike nod/shake — `_check_tilt` picks a sign convention
+for roll that "should" correspond to a physical left/right tilt, but if
+next/previous track come out swapped in practice, flip the comparison
+in `FaceRecognizer._check_tilt`. This is the same category of
+unverified-mirroring caveat already documented for `PointerOverlay.
+MIRROR_X` (§4) — computed from a formula, not confirmed against a live
+camera in this environment.
+
+### 9.1 The Shift+Alt face layer
+
+Four global `rules` in `fusion.json` combine a held `alt+shift`
+(`SHIFT_ALT_KEY`) with a specific `face_signal`, firing regardless of
+mode (`rules`, not `mode_rules` — see §1):
+
+| Held + face signal | Action |
+|---|---|
+| `alt+shift` + `HEAD_TILT_RIGHT` | `NEXT_TRACK` |
+| `alt+shift` + `HEAD_TILT_LEFT` | `PREVIOUS_TRACK` |
+| `alt+shift` + `MOUTH_OPEN` | `MEDIA_PLAY_PAUSE` (same toggle as voice "start"/"stop", §5) |
+| `alt+shift` + `DOUBLE_BLINK` | `TAKE_SCREENSHOT` |
+
+`NEXT_TRACK`/`PREVIOUS_TRACK` post the real macOS system Next/Previous
+media keys (`OSController.next_track`/`previous_track`) — the exact
+same `NSEvent`/`Quartz` mechanism as `MEDIA_PLAY_PAUSE` (§5, now
+factored into a shared `_post_system_media_key` helper taking an
+`NX_KEYTYPE_*` constant), so it works with whichever player owns "now
+playing", not tied to one specific app. `TAKE_SCREENSHOT` sends
+Cmd+Shift+3 (macOS's built-in full-screen capture, saved to the
+desktop) — not the interactive region-select variant (Cmd+Shift+4),
+since that needs a follow-up mouse drag a gesture-only trigger can't
+provide.
+
+**"Reset" on mouth-open was interpreted as reusing the play/pause
+toggle**, not a separate "restart current track" action — no system-
+level API exists for the latter, and this reading matches the
+mouth-open example's other stated half ("pause") using an already-
+existing, already-documented action rather than inventing a new one.
+
+**Double-blink was explicitly removed from this system in an earlier
+round of design** (this project's very first redesign explicitly said
+to drop it) and has now been explicitly reintroduced, scoped narrowly
+to this one Shift+Alt-gated screenshot trigger rather than restored
+as a general-purpose gesture — worth knowing if `git log`/older docs
+still describe it as removed.
+
+---
+
+## 10. Setup preconditions
 
 - **Accessibility permission — the single most common cause of "nothing
   happens" with no error.** Must be granted to whatever process actually
@@ -445,14 +638,22 @@ rule is added.
   Privacy & Security → Accessibility. Every synthetic input event this
   app posts (cursor movement, clicks, scrolling, key presses) is
   silently dropped by macOS without raising any exception until this is
-  granted — this is different from `FLIP_NEXT`/`FLIP_PREVIOUS`'s and
-  Window Management's frontmost-app-name/window-bounds lookups
-  (`osascript`), which *do* print a visible `[APPLESCRIPT ERROR]` when
-  it's missing. `OSController` checks
+  granted — this is different from `FLIP_NEXT`/`FLIP_PREVIOUS`'s
+  frontmost-app-name lookup (`osascript`), which *does* print a visible
+  `[APPLESCRIPT ERROR]` when it's missing. `OSController` checks
   `ApplicationServices.AXIsProcessTrusted()` once at startup and prints
   a loud `[ACCESSIBILITY WARNING]` banner if it isn't granted —
   if Cursor mode's cursor-follow isn't moving anything, check the
   console for this banner first.
+- **`pyautogui.PAUSE`** — pyautogui inserts a 0.1s sleep after *every*
+  call by default. Cursor mode calls `moveTo()` once per camera frame,
+  synchronously on whichever thread published `pointer_position` — at
+  the default `PAUSE`, that capped cursor updates to ~10fps and stalled
+  the camera pipeline for 100ms per frame, which is what made the
+  cursor look like it was barely following the finger at all even with
+  Accessibility granted and every signal wired correctly. Fixed by
+  setting `pyautogui.PAUSE = 0` in `OSController.__init__`, alongside
+  `FAILSAFE = False`.
 - **Do Not Disturb automation** requires two Shortcuts authored once in
   the macOS Shortcuts app, named exactly: **"Enable Do Not Disturb"** and
   **"Disable Do Not Disturb"**. Modern macOS has no supported scriptable
@@ -462,23 +663,33 @@ rule is added.
 - **Spotify** must be installed for Study mode's focus music
   (`PLAY_FOCUS_MUSIC`/`PAUSE_FOCUS_MUSIC` silently no-op otherwise).
 - **VS Code's `code` CLI** must be on `PATH` for `OPEN_VSCODE`.
-- Third-party apps (Chrome, Slack, Discord, Zoom, WhatsApp, Telegram,
-  Notion, Figma) must be installed for their `open_*` voice commands to
-  do anything.
+- Third-party apps (Chrome, Slack, Discord, Telegram, Notion) must be
+  installed for their `open_*` voice commands to do anything.
+- **Microsoft Teams** installed, for Call mode's mute/camera/raise-hand
+  shortcuts (§2.4) to have an app actually listening for them — sending
+  Cmd+Shift+M/O/K with Teams not running or not the app in the call does
+  nothing useful.
+- **`models/face_landmarker.task`** must be present for `FaceRecognizer`
+  to start at all — verified present in this repo with the blendshapes
+  and geometry-pipeline components needed for §9's blendshape/head-pose
+  detection (not just bare landmarks).
 
 ---
 
-## 10. What changed from the previous design (removed features)
+## 11. What changed from the previous design (removed features)
 
 This system has gone through several rounds of revision. Rather than a
 single "before/after", here's the current, accurate state of what
 exists and what was tried and dropped along the way:
 
-- **Window Management is back**, as the 4th mode (§2.4) — it was removed
-  in an earlier round for not being described in that round's spec, then
-  reintroduced as the Quick Command Circle's 4th destination once the
-  circle was redefined as a mode selector (§2.5). Same behavior as its
-  original design: gesture-only maximize/minimize/snap-left/snap-right.
+- **Window Management existed briefly as the 4th mode, then was removed
+  again** and replaced by Call mode (§2.4) — same `ctrl+shift+w` slot,
+  same position as the Quick Command Circle's 4th destination (§2.5),
+  different purpose entirely (mic/camera/raise-hand for Microsoft Teams
+  instead of maximize/minimize/snap-left/snap-right). Its
+  `MAXIMIZE_WINDOW`/`MINIMIZE_WINDOW`/`MOVE_WINDOW_LEFT`/
+  `MOVE_WINDOW_RIGHT` commands and their `OSController`/`ActionExecutor`
+  entries were removed outright, not kept around unused.
 - **The Quick Command Circle no longer holds "hidden" system functions.**
   Its original role (admin terminal, lock screen, force-quit, toggle DND
   — one per direction) was replaced entirely: it's now a mode selector
@@ -504,18 +715,60 @@ exists and what was tried and dropped along the way:
 - **The original Study/Coding/Presentation/Window-Management "modes"**
   (each with app-opening side effects) were replaced by the
   Work/Study/Movie/News environments (§3, side effects) and the
-  Presentation/Flip/Cursor/Window-Management/Quick-Circle modes (§2,
-  pure gesture-scoping, no side effects) — not a 1:1 rename; Work
-  environment is a broader "office" app set rather than specifically
-  development tools.
+  Presentation/Flip/Cursor/Call/Quick-Circle modes (§2, pure
+  gesture-scoping, no side effects) — not a 1:1 rename; Work environment
+  is a broader "office" app set rather than specifically development
+  tools.
 
 If any of these turn out to be missed rather than intentionally dropped,
 they're easy to reintroduce — the mechanisms (`rules`, `mode_rules`,
 environment `enter_actions`/`exit_actions`) all still exist.
 
+- **`open zoom`/`open messages`/`open whatsapp`/`open figma`/`open
+  music`** were dropped — removed from `mapping.json` (`voice` +
+  `valid_signals.voice`), `fusion.json` (their five `rules` entries),
+  `ActionExecutor`'s command table, and `OSController`'s
+  `open_zoom`/`open_messages`/`open_whatsapp`/`open_figma`/`open_music`
+  methods. §6 now lists 19 apps instead of 24.
+- **Cursor mode gained `DOUBLE_PINCH`** (two quick pinches within 0.3s →
+  right-click, §2.3) — an addition, not a replacement; plain single-pinch
+  click and pinch-hold-drag scroll behave exactly as before.
+- **Cursor-follow root cause found and fixed**: `pyautogui.PAUSE`'s
+  default 100ms-per-call sleep was throttling every `moveTo()` call
+  Cursor mode made once per camera frame (see §10). This, not the
+  `valid_signals` keyboard mismatch fixed in an earlier round, was the
+  actual reason the cursor kept failing to visibly track the finger.
+- **Window Management mode was replaced by Call mode** (§2.4) — see the
+  bullet above.
+- **Cursor mode now supports a second hand** (§2.3.1): off-hand
+  `Closed_Fist` engages a 0.3x "precision mode" for fine cursor
+  positioning; an off-hand present but not fisted drives zoom by
+  two-hand fingertip distance. `GestureModel.num_hands` changed from 1
+  to 2 to support this — every existing single-hand check still operates
+  on exactly one "primary" hand, resolved per-frame, so single-hand use
+  is unaffected.
+- **Alt+single-hand-pinch zoom was removed and replaced** by the
+  two-hand distance zoom above — no keyboard involved in Cursor-mode
+  zoom anymore. `GestureRecognizer._handle_keyboard_raw`/`alt_held`/
+  `_check_zoom` no longer exist.
+- **A second, independent recognizer was added**: `FaceRecognizer`
+  (§9), running in parallel with `GestureRecognizer` off the same
+  camera frames, using `models/face_landmarker.task`. Publishes
+  `CONFIRM`/`CANCEL`/`HEAD_TILT_LEFT`/`HEAD_TILT_RIGHT`/`EYEBROWS_UP`/
+  `EYEBROWS_DOWN`/`MOUTH_OPEN`/`DOUBLE_BLINK` as a new `face` signal
+  source, parallel to `voice`/`gesture`/`keyboard` — required a new
+  `_handle_face` method in `CommandInterpreter` and a `face` section in
+  `mapping.json`/`valid_signals`, but needed zero changes to
+  `MultimodalFusion`, `TemporalSync`, or `SignalMapper`, which were
+  already fully generic over signal source.
+- **Double-blink was reintroduced**, narrowly, as one of the new
+  Shift+Alt face-layer triggers (§9.1) — it was explicitly removed from
+  this system in an earlier round of design and has now been brought
+  back for this one specific use, not restored as a general gesture.
+
 ---
 
-## 11. Testing / verification guide
+## 12. Testing / verification guide
 
 Cannot be fully automated headlessly — needs a real camera, microphone,
 macOS desktop, and Accessibility permission. Run `python src/main.py`
@@ -528,22 +781,46 @@ manually verify:
   only while in Presentation mode.
 - **Gestures**: use `--debug-gesture` to calibrate `pinch_distance_
   threshold` against your hand/camera distance; verify a quick pinch
-  clicks and a held-and-dragged pinch scrolls without also clicking.
-- **Modes**: confirm Presentation/Flip/Cursor/Window Management are
-  mutually exclusive and switching between them doesn't require going
-  through "exit mode" first; confirm the Quick Command Circle only opens
-  from idle (not while Flip mode's swipe session is active) and that
-  swiping in each of the 4 directions enters the right mode and closes
-  the circle.
+  clicks (after the ~0.3s double-pinch window passes) and a
+  held-and-dragged pinch scrolls without also clicking. Verify two quick
+  pinches in a row right-click instead of clicking twice.
+- **Two-hand Cursor mode**: with primary hand `Pointing_Up`, bring a
+  second hand into frame as a `Closed_Fist` — confirm cursor movement
+  visibly slows to roughly 0.3x, and that opening/removing that hand
+  snaps the cursor back to the primary fingertip's current absolute
+  position (an expected jump, not a bug — see §2.3.1). Then bring the
+  second hand in open (not fisted) and move both index fingertips apart/
+  together — confirm the frontmost app zooms in/out with no keyboard
+  involved.
+- **Call mode**: enter it, confirm Teams is running and in a call, then
+  thumbs-up/thumbs-down/peace-sign/OK-sign in turn — confirm each Teams
+  meeting control actually fires. Confirm doing an actual thumbs-up
+  gesture in Flip or Presentation mode does nothing (gated at the
+  source, §2.4).
+- **Modes**: confirm Presentation/Flip/Cursor/Call are mutually
+  exclusive and switching between them doesn't require going through
+  "exit mode" first; confirm the Quick Command Circle only opens from
+  idle (not while Flip mode's swipe session is active) and that swiping
+  in each of the 4 directions enters the right mode and closes the
+  circle.
 - **Environments**: confirm entering one runs its full `enter_actions` in
   order, and switching directly to a different environment runs the old
   one's `exit_actions` first.
 - **"exit mode" scope**: enter an environment, then a mode, say "exit
   mode", confirm only the mode cleared and the environment's apps/DND
   state are untouched.
+- **Face layer**: hold `alt+shift` and tilt your head right/left —
+  confirm next/previous track fires (and note which physical direction
+  actually maps to which, per the unverified-labeling caveat in §9).
+  Open your mouth — confirm play/pause. Blink twice quickly — confirm a
+  screenshot appears on the desktop; confirm a single blink does
+  nothing. Release `alt+shift` and repeat — confirm nothing fires
+  without it held. Separately, without `alt+shift` held, nod and shake
+  your head — confirm the console shows `CONFIRM`/`CANCEL` firing
+  (reserved, no visible effect yet).
 
 Visual-inspection-only: laser pointer / Cursor-mode cursor position
 accuracy and mirroring direction, the Quick Command Circle's on-screen
 appearance, Flip mode's frontmost-app heuristic (test with a flippable
 app like Preview vs. a non-flippable one to confirm the Space-switch
-fallback).
+fallback), precision-mode's cursor slowdown feel.

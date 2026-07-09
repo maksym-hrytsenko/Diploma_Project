@@ -34,11 +34,11 @@
         },
 
         {
-            "mode": "window_management",
+            "mode": "call",
 
             "triggers": [
-                { "source": "voice", "signal": "WINDOW_MANAGEMENT_MODE" },
-                { "source": "keyboard", "signal": "WINDOW_MANAGEMENT_MODE_KEY" }
+                { "source": "voice", "signal": "CALL_MODE" },
+                { "source": "keyboard", "signal": "CALL_MODE_KEY" }
             ]
         },
 
@@ -179,12 +179,6 @@
         },
 
         {
-            "name": "open_zoom",
-            "conditions": { "voice": "OPEN_ZOOM" },
-            "action": "OPEN_ZOOM"
-        },
-
-        {
             "name": "open_mail",
             "conditions": { "voice": "OPEN_MAIL" },
             "action": "OPEN_MAIL"
@@ -200,18 +194,6 @@
             "name": "open_notes",
             "conditions": { "voice": "OPEN_NOTES" },
             "action": "OPEN_NOTES"
-        },
-
-        {
-            "name": "open_messages",
-            "conditions": { "voice": "OPEN_MESSAGES" },
-            "action": "OPEN_MESSAGES"
-        },
-
-        {
-            "name": "open_whatsapp",
-            "conditions": { "voice": "OPEN_WHATSAPP" },
-            "action": "OPEN_WHATSAPP"
         },
 
         {
@@ -233,21 +215,9 @@
         },
 
         {
-            "name": "open_figma",
-            "conditions": { "voice": "OPEN_FIGMA" },
-            "action": "OPEN_FIGMA"
-        },
-
-        {
             "name": "open_photos",
             "conditions": { "voice": "OPEN_PHOTOS" },
             "action": "OPEN_PHOTOS"
-        },
-
-        {
-            "name": "open_music",
-            "conditions": { "voice": "OPEN_MUSIC" },
-            "action": "OPEN_MUSIC"
         },
 
         {
@@ -272,6 +242,30 @@
             "name": "media_stop",
             "conditions": { "voice": "STOP" },
             "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "face_layer_next_track",
+            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "HEAD_TILT_RIGHT" },
+            "action": "NEXT_TRACK"
+        },
+
+        {
+            "name": "face_layer_previous_track",
+            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "HEAD_TILT_LEFT" },
+            "action": "PREVIOUS_TRACK"
+        },
+
+        {
+            "name": "face_layer_pause",
+            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "MOUTH_OPEN" },
+            "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "face_layer_screenshot",
+            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "DOUBLE_BLINK" },
+            "action": "TAKE_SCREENSHOT"
         }
 
     ],
@@ -342,31 +336,38 @@
         },
 
         {
-            "name": "window_mgmt_left",
-            "mode": "window_management",
-            "conditions": { "gesture": "HAND_LEFT" },
-            "action": "MOVE_WINDOW_LEFT"
+            "name": "cursor_right_click",
+            "mode": "cursor",
+            "conditions": { "gesture": "DOUBLE_PINCH" },
+            "action": "RIGHT_CLICK"
         },
 
         {
-            "name": "window_mgmt_right",
-            "mode": "window_management",
-            "conditions": { "gesture": "HAND_RIGHT" },
-            "action": "MOVE_WINDOW_RIGHT"
+            "name": "call_unmute",
+            "mode": "call",
+            "conditions": { "gesture": "THUMB_UP" },
+            "action": "UNMUTE_MIC"
         },
 
         {
-            "name": "window_mgmt_maximize",
-            "mode": "window_management",
-            "conditions": { "gesture": "HAND_UP" },
-            "action": "MAXIMIZE_WINDOW"
+            "name": "call_mute",
+            "mode": "call",
+            "conditions": { "gesture": "THUMB_DOWN" },
+            "action": "MUTE_MIC"
         },
 
         {
-            "name": "window_mgmt_minimize",
-            "mode": "window_management",
-            "conditions": { "gesture": "HAND_DOWN" },
-            "action": "MINIMIZE_WINDOW"
+            "name": "call_toggle_camera",
+            "mode": "call",
+            "conditions": { "gesture": "VICTORY" },
+            "action": "TOGGLE_CAMERA"
+        },
+
+        {
+            "name": "call_raise_hand",
+            "mode": "call",
+            "conditions": { "gesture": "OK_SIGN" },
+            "action": "RAISE_HAND"
         },
 
         {
@@ -377,10 +378,10 @@
         },
 
         {
-            "name": "quick_circle_select_window_management",
+            "name": "quick_circle_select_call",
             "mode": "quick_circle",
             "conditions": { "gesture": "HAND_DOWN" },
-            "enters_mode": "window_management"
+            "enters_mode": "call"
         },
 
         {

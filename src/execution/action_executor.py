@@ -18,12 +18,22 @@ class ActionExecutor:
 
         # Which gesture mode is currently active, mirrored
         # from SignalMapper's "mode_changed" event. Needed
-        # only to route the two continuous, fusion-bypassing
-        # streams below (pointer position, pinch-drag) to
-        # the right place — every discrete command still
-        # arrives fully decided via command_event, with no
-        # branching here.
+        # only to route the three continuous, fusion-bypassing
+        # streams below (pointer position, pinch-drag,
+        # pinch-zoom) to the right place — every discrete
+        # command still arrives fully decided via
+        # command_event, with no branching here.
         self.active_mode = None
+
+        # Running total of raw pinch-distance change since the
+        # last zoom step fired. Firing a Cmd+"="/Cmd+"-" on
+        # every single frame's tiny delta would spam keystrokes
+        # far faster than any app's zoom animation can follow —
+        # this accumulates deltas and only fires once enough
+        # distance has been covered.
+        self.zoom_accumulator = 0.0
+
+        self.zoom_step_threshold = 0.05
 
     # ---------------------------------
     # Command Table
@@ -41,6 +51,7 @@ class ActionExecutor:
         return {
 
             "CLICK": controller.click,
+            "RIGHT_CLICK": controller.right_click,
 
             "SCROLL_UP": controller.scroll_up,
             "SCROLL_DOWN": controller.scroll_down,
@@ -61,27 +72,27 @@ class ActionExecutor:
             "OPEN_SPOTIFY": controller.open_spotify,
             "OPEN_SLACK": controller.open_slack,
             "OPEN_DISCORD": controller.open_discord,
-            "OPEN_ZOOM": controller.open_zoom,
             "OPEN_MAIL": controller.open_mail,
             "OPEN_CALENDAR": controller.open_calendar,
             "OPEN_NOTES": controller.open_notes,
-            "OPEN_MESSAGES": controller.open_messages,
-            "OPEN_WHATSAPP": controller.open_whatsapp,
             "OPEN_TELEGRAM": controller.open_telegram,
             "OPEN_FINDER": controller.open_finder,
             "OPEN_NOTION": controller.open_notion,
-            "OPEN_FIGMA": controller.open_figma,
             "OPEN_PHOTOS": controller.open_photos,
-            "OPEN_MUSIC": controller.open_music,
             "OPEN_PREVIEW": controller.open_preview,
             "OPEN_SETTINGS": controller.open_settings,
             "OPEN_TV": controller.open_tv,
             "OPEN_NEWS": controller.open_news,
 
-            "MAXIMIZE_WINDOW": controller.maximize_window,
-            "MINIMIZE_WINDOW": controller.minimize_window,
-            "MOVE_WINDOW_LEFT": controller.move_window_left,
-            "MOVE_WINDOW_RIGHT": controller.move_window_right,
+            "UNMUTE_MIC": controller.unmute_mic,
+            "MUTE_MIC": controller.mute_mic,
+            "TOGGLE_CAMERA": controller.toggle_camera,
+            "RAISE_HAND": controller.raise_hand,
+
+            "NEXT_TRACK": controller.next_track,
+            "PREVIOUS_TRACK": controller.previous_track,
+
+            "TAKE_SCREENSHOT": controller.take_screenshot,
 
             "ENABLE_DO_NOT_DISTURB": controller.enable_do_not_disturb,
             "DISABLE_DO_NOT_DISTURB": controller.disable_do_not_disturb,
@@ -117,6 +128,11 @@ class ActionExecutor:
         )
 
         self.event_bus.subscribe(
+            "pinch_zoom",
+            self._handle_pinch_zoom
+        )
+
+        self.event_bus.subscribe(
             "mode_changed",
             self._handle_mode_changed
         )
@@ -147,6 +163,11 @@ class ActionExecutor:
         self.event_bus.unsubscribe(
             "pinch_drag",
             self._handle_pinch_drag
+        )
+
+        self.event_bus.unsubscribe(
+            "pinch_zoom",
+            self._handle_pinch_zoom
         )
 
         self.event_bus.unsubscribe(
@@ -303,6 +324,40 @@ class ActionExecutor:
         self.os_controller.scroll_by(
             pixel_amount
         )
+
+    # ---------------------------------
+    # Handle Pinch-Zoom (Cursor Mode,
+    # Alt + pinch distance)
+    # ---------------------------------
+
+    def _handle_pinch_zoom(self, event):
+
+        if self.active_mode != "cursor":
+            return
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        delta_distance = data.get("delta_distance")
+
+        if delta_distance is None:
+            return
+
+        self.zoom_accumulator += delta_distance
+
+        while self.zoom_accumulator >= self.zoom_step_threshold:
+
+            self.os_controller.zoom_in()
+
+            self.zoom_accumulator -= self.zoom_step_threshold
+
+        while self.zoom_accumulator <= -self.zoom_step_threshold:
+
+            self.os_controller.zoom_out()
+
+            self.zoom_accumulator += self.zoom_step_threshold
 
     # ---------------------------------
     # Debug SignalMapper

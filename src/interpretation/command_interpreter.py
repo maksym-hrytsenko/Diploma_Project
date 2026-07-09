@@ -14,6 +14,8 @@ class CommandInterpreter:
 
         self.gesture_mapping = {}
 
+        self.face_mapping = {}
+
         self.valid_signals = {}
 
         self._load_mapping()
@@ -39,6 +41,11 @@ class CommandInterpreter:
             self._handle_gesture
         )
 
+        self.event_bus.subscribe(
+            "face_signal",
+            self._handle_face
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(
@@ -54,6 +61,11 @@ class CommandInterpreter:
         self.event_bus.unsubscribe(
             "gesture_signal",
             self._handle_gesture
+        )
+
+        self.event_bus.unsubscribe(
+            "face_signal",
+            self._handle_face
         )
 
     # ---------------------------------
@@ -99,6 +111,11 @@ class CommandInterpreter:
                 {}
             )
 
+            self.face_mapping = data.get(
+                "face",
+                {}
+            )
+
             self.valid_signals = data.get(
                 "valid_signals",
                 {}
@@ -111,6 +128,8 @@ class CommandInterpreter:
             self.voice_mapping = {}
 
             self.gesture_mapping = {}
+
+            self.face_mapping = {}
 
             self.valid_signals = {}
     # ---------------------------------
@@ -255,6 +274,53 @@ class CommandInterpreter:
                     "confidence",
                     1.0
                 )
+
+            }
+
+        )
+
+    # ---------------------------------
+    # Face
+    # ---------------------------------
+
+    def _handle_face(self, event):
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        signal = data.get(
+            "signal"
+        )
+
+        if signal is None:
+            return
+
+        if signal not in self.valid_signals.get(
+            "face",
+            []
+        ):
+            return
+
+        mapped_signal = self.face_mapping.get(
+            signal
+        )
+
+        if mapped_signal is None:
+            return
+
+        self.event_bus.publish(
+
+            "normalized_signal",
+
+            {
+
+                "source": "face",
+
+                "signal": mapped_signal,
+
+                "confidence": 1.0
 
             }
 

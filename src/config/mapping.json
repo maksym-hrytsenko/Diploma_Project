@@ -4,7 +4,9 @@
         "ctrl+shift+p": "PRESENTATION_MODE_KEY",
         "ctrl+shift+f": "FLIP_MODE_KEY",
         "ctrl+shift+c": "CURSOR_MODE_KEY",
-        "ctrl+shift+w": "WINDOW_MANAGEMENT_MODE_KEY",
+        "ctrl+shift+w": "CALL_MODE_KEY",
+
+        "alt+shift": "SHIFT_ALT_KEY",
 
         "right": "KEY_RIGHT",
         "left": "KEY_LEFT",
@@ -25,7 +27,7 @@
         "PRESENTATION_MODE": "presentation mode",
         "FLIP_MODE": "flip mode",
         "CURSOR_MODE": "cursor mode",
-        "WINDOW_MANAGEMENT_MODE": "window management mode",
+        "CALL_MODE": "call mode",
 
         "NEXT_SLIDE": "next slide",
         "PREVIOUS_SLIDE": "previous slide",
@@ -45,18 +47,13 @@
         "OPEN_SPOTIFY": "open spotify",
         "OPEN_SLACK": "open slack",
         "OPEN_DISCORD": "open discord",
-        "OPEN_ZOOM": "open zoom",
         "OPEN_MAIL": "open mail",
         "OPEN_CALENDAR": "open calendar",
         "OPEN_NOTES": "open notes",
-        "OPEN_MESSAGES": "open messages",
-        "OPEN_WHATSAPP": "open whatsapp",
         "OPEN_TELEGRAM": "open telegram",
         "OPEN_FINDER": "open finder",
         "OPEN_NOTION": "open notion",
-        "OPEN_FIGMA": "open figma",
         "OPEN_PHOTOS": "open photos",
-        "OPEN_MUSIC": "open music",
         "OPEN_PREVIEW": "open preview",
         "OPEN_SETTINGS": "open settings"
     },
@@ -70,7 +67,28 @@
 
         "HAND_SESSION_START": "HAND_SESSION_START",
 
-        "PINCH": "PINCH"
+        "PINCH": "PINCH",
+        "DOUBLE_PINCH": "DOUBLE_PINCH",
+
+        "Thumb_Up": "THUMB_UP",
+        "Thumb_Down": "THUMB_DOWN",
+        "Victory": "VICTORY",
+        "OK_SIGN": "OK_SIGN"
+    },
+
+    "face": {
+
+        "HEAD_TILT_LEFT": "HEAD_TILT_LEFT",
+        "HEAD_TILT_RIGHT": "HEAD_TILT_RIGHT",
+
+        "MOUTH_OPEN": "MOUTH_OPEN",
+        "DOUBLE_BLINK": "DOUBLE_BLINK",
+
+        "EYEBROWS_UP": "EYEBROWS_UP",
+        "EYEBROWS_DOWN": "EYEBROWS_DOWN",
+
+        "CONFIRM": "CONFIRM",
+        "CANCEL": "CANCEL"
     },
 
     "valid_signals": {
@@ -81,6 +99,8 @@
             "ctrl+shift+f",
             "ctrl+shift+c",
             "ctrl+shift+w",
+
+            "alt+shift",
 
             "right",
             "left",
@@ -101,7 +121,7 @@
             "PRESENTATION_MODE",
             "FLIP_MODE",
             "CURSOR_MODE",
-            "WINDOW_MANAGEMENT_MODE",
+            "CALL_MODE",
 
             "NEXT_SLIDE",
             "PREVIOUS_SLIDE",
@@ -121,18 +141,13 @@
             "OPEN_SPOTIFY",
             "OPEN_SLACK",
             "OPEN_DISCORD",
-            "OPEN_ZOOM",
             "OPEN_MAIL",
             "OPEN_CALENDAR",
             "OPEN_NOTES",
-            "OPEN_MESSAGES",
-            "OPEN_WHATSAPP",
             "OPEN_TELEGRAM",
             "OPEN_FINDER",
             "OPEN_NOTION",
-            "OPEN_FIGMA",
             "OPEN_PHOTOS",
-            "OPEN_MUSIC",
             "OPEN_PREVIEW",
             "OPEN_SETTINGS"
         ],
@@ -146,7 +161,28 @@
 
             "HAND_SESSION_START",
 
-            "PINCH"
+            "PINCH",
+            "DOUBLE_PINCH",
+
+            "Thumb_Up",
+            "Thumb_Down",
+            "Victory",
+            "OK_SIGN"
+        ],
+
+        "face": [
+
+            "HEAD_TILT_LEFT",
+            "HEAD_TILT_RIGHT",
+
+            "MOUTH_OPEN",
+            "DOUBLE_BLINK",
+
+            "EYEBROWS_UP",
+            "EYEBROWS_DOWN",
+
+            "CONFIRM",
+            "CANCEL"
         ]
     }
 }

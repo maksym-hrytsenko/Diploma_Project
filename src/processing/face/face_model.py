@@ -7,28 +7,30 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 
-class GestureModel:
+class FaceModel:
 
     def __init__(
         self,
-        model_path="models/gesture_recognizer.task"
+        model_path="models/face_landmarker.task"
     ):
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
         )
 
-        options = vision.GestureRecognizerOptions(
+        options = vision.FaceLandmarkerOptions(
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO,
-            num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+            output_face_blendshapes=True,
+            output_facial_transformation_matrixes=True
         )
 
-        self.recognizer = (
-            vision.GestureRecognizer.create_from_options(
+        self.landmarker = (
+            vision.FaceLandmarker.create_from_options(
                 options
             )
         )
@@ -50,26 +52,16 @@ class GestureModel:
             data=rgb_frame
         )
 
-        # VIDEO mode lets MediaPipe track the hand across
-        # frames instead of re-detecting the palm from
-        # scratch every time, which is what made tracking
-        # drop out on less palm-like shapes like a fist
+        # VIDEO mode, same reasoning as GestureModel: lets
+        # MediaPipe track the face across frames instead of
+        # re-detecting it from scratch every time.
         timestamp_ms = int(
             (time.time() - self.start_time) * 1000
         )
 
-        result = self.recognizer.recognize_for_video(
+        result = self.landmarker.detect_for_video(
             mp_image,
             timestamp_ms
         )
 
         return result
-
-    def draw_landmarks(
-        self,
-        frame,
-        hand_landmarks
-    ):
-
-        # Disabled for performance
-        return frame

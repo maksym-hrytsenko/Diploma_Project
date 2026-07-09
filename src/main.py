@@ -16,6 +16,7 @@ from interpretation.intent_model import IntentModel
 from input.camera_input import CameraInput
 from processing.gesture.gesture_recognizer import GestureRecognizer
 from processing.gesture.gesture_debug_view import GestureDebugView
+from processing.face.face_recognizer import FaceRecognizer
 
 from interpretation.command_interpreter import CommandInterpreter
 
@@ -94,6 +95,10 @@ def main():
             event_bus
         )
 
+    face_recognizer = FaceRecognizer(
+        event_bus
+    )
+
     # ---------------------------------
     # Core Pipeline
     # ---------------------------------
@@ -146,6 +151,8 @@ def main():
     if gesture_debug_view is not None:
 
         gesture_debug_view.start()
+
+    face_recognizer.start()
 
     keyboard_processor.start()
 
@@ -204,6 +211,8 @@ def main():
         if gesture_debug_view is not None:
 
             gesture_debug_view.stop()
+
+        face_recognizer.stop()
 
         interpreter.stop()
 
