@@ -20,13 +20,30 @@ class OSController:
 
     # macOS system media key codes (NSSystemDefined event
     # data1 high byte), the same codes a physical keyboard's
-    # media keys send.
+    # media keys send. Used for volume only — Sound Up/Down
+    # is handled by CoreAudio directly and doesn't depend on
+    # any app owning "Now Playing" (see volume_up/volume_down).
     NX_KEYTYPE_SOUND_UP = 0
     NX_KEYTYPE_SOUND_DOWN = 1
 
-    NX_KEYTYPE_PLAY = 16
-    NX_KEYTYPE_NEXT = 17
-    NX_KEYTYPE_PREVIOUS = 18
+    # MRMediaRemoteCommand values (MediaRemote.framework,
+    # private). This is the same command path macOS uses to
+    # route Control Center's Now Playing widget and Bluetooth
+    # headphone remote buttons (AVRCP) to whichever app owns
+    # "now playing" — used instead of NX_KEYTYPE HID media-key
+    # events for play/pause/next/previous, since on at least
+    # one dev machine the HID media-key path (both synthetic
+    # and a real physical key) silently reached no app at all,
+    # while this path — confirmed via headphone remote buttons
+    # and Control Center — worked. See
+    # tests/mediaremote_standalone_test.py.
+    MEDIA_REMOTE_BUNDLE_PATH = (
+        "/System/Library/PrivateFrameworks/MediaRemote.framework"
+    )
+
+    MR_COMMAND_TOGGLE_PLAY_PAUSE = 2
+    MR_COMMAND_NEXT_TRACK = 4
+    MR_COMMAND_PREVIOUS_TRACK = 5
 
     def __init__(self):
 
@@ -53,6 +70,11 @@ class OSController:
         # prevent_display_sleep, so allow_display_sleep can
         # stop the right one.
         self.caffeinate_process = None
+
+        # Cached MRMediaRemoteSendCommand function pointer —
+        # loading the private framework bundle is only needed
+        # once, not on every play/pause/next/previous call.
+        self.media_remote_send_command = None
 
     # ---------------------------------
     # Accessibility Permission Check
@@ -413,38 +435,41 @@ class OSController:
 
     # Works with whichever player currently owns "now
     # playing" (Spotify, Music, a browser tab, QuickTime,
-    # ...) by posting the real macOS system Play/Pause
-    # media key, the same event a physical keyboard's media
-    # key sends — not an app-specific AppleScript call.
+    # ...) by sending an MRMediaRemoteSendCommand, the same
+    # command path Control Center's Now Playing widget and
+    # Bluetooth headphone remote buttons use — not an
+    # app-specific AppleScript call, and not a synthetic
+    # NX_KEYTYPE HID key press (see MR_COMMAND_* comment
+    # above for why).
     #
-    # This is inherently a single toggle key, not separate
-    # absolute play/pause keys, so "start" and "stop" both
-    # send the identical event: saying "stop" while already
+    # This is inherently a single toggle command, not separate
+    # absolute play/pause commands, so "start" and "stop" both
+    # send the identical command: saying "stop" while already
     # paused resumes playback. See docs/SYSTEM_FUNCTIONS.md
     # for this accepted limitation.
     def media_play_pause(self):
 
-        self._post_system_media_key(
-            self.NX_KEYTYPE_PLAY
+        self._post_media_remote_command(
+            self.MR_COMMAND_TOGGLE_PLAY_PAUSE
         )
 
     # ---------------------------------
     # Next / Previous Track (Global)
     # ---------------------------------
 
-    # Same system media-key mechanism as media_play_pause —
+    # Same MediaRemote command mechanism as media_play_pause —
     # works with whichever player owns "now playing", not tied
     # to one specific app.
     def next_track(self):
 
-        self._post_system_media_key(
-            self.NX_KEYTYPE_NEXT
+        self._post_media_remote_command(
+            self.MR_COMMAND_NEXT_TRACK
         )
 
     def previous_track(self):
 
-        self._post_system_media_key(
-            self.NX_KEYTYPE_PREVIOUS
+        self._post_media_remote_command(
+            self.MR_COMMAND_PREVIOUS_TRACK
         )
 
     # ---------------------------------
@@ -517,6 +542,56 @@ class OSController:
             print(
                 f"[MEDIA ERROR] {e}"
             )
+
+    # ---------------------------------
+    # MediaRemote Command (Global Play/
+    # Pause/Next/Previous)
+    # ---------------------------------
+
+    def _post_media_remote_command(self, command):
+
+        try:
+
+            send_command = self._load_media_remote_send_command()
+
+            send_command(
+                command,
+                None
+            )
+
+        except Exception as e:
+
+            print(
+                f"[MEDIA ERROR] {e}"
+            )
+
+    def _load_media_remote_send_command(self):
+
+        if self.media_remote_send_command is not None:
+            return self.media_remote_send_command
+
+        import objc
+        from Foundation import NSBundle
+
+        bundle = NSBundle.bundleWithPath_(
+            self.MEDIA_REMOTE_BUNDLE_PATH
+        )
+
+        namespace = {}
+
+        objc.loadBundleFunctions(
+            bundle,
+            namespace,
+            [
+                ("MRMediaRemoteSendCommand", b"Bi@")
+            ]
+        )
+
+        self.media_remote_send_command = namespace[
+            "MRMediaRemoteSendCommand"
+        ]
+
+        return self.media_remote_send_command
 
     # ---------------------------------
     # Do Not Disturb
