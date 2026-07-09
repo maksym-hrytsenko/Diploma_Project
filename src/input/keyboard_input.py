@@ -1,11 +1,31 @@
 from pynput import keyboard
+import queue
 import time
 
 
 class KeyboardInput:
+
     def __init__(self, event_bus):
         self.event_bus = event_bus
         self.listener = None
+
+        # macOS delivers pynput's key events on a real-time
+        # CGEventTap callback thread, which the OS requires to
+        # return almost immediately. Everything downstream of a
+        # keyboard press (KeyboardProcessor -> ... -> ActionExecutor
+        # -> OSController) can end up doing real work on whichever
+        # thread calls event_bus.publish("keyboard_raw", ...) — for
+        # example the Alt/Ctrl face layer's first
+        # media_play_pause()/next_track() call, which loads a
+        # private framework bundle synchronously. If that ever ran
+        # directly on the CGEventTap thread and took too long, macOS
+        # would silently disable the tap, and pynput never
+        # re-enables it — the app would then stop hearing ANY key,
+        # including bare alt/ctrl, for the rest of the run. So this
+        # thread only ever enqueues the raw event; poll() (called
+        # from the main loop) is what actually publishes onto
+        # EventBus and lets the rest of the pipeline run.
+        self._raw_events = queue.Queue()
 
     def start(self):
         self.listener = keyboard.Listener(
@@ -21,11 +41,30 @@ class KeyboardInput:
             self.listener = None
             print("[KeyboardInput] Stopped")
 
+    # ---------------------------------
+    # Drain queued events (main thread)
+    # ---------------------------------
+
+    def poll(self):
+
+        while True:
+
+            try:
+                raw_event = self._raw_events.get_nowait()
+
+            except queue.Empty:
+                return
+
+            self.event_bus.publish(
+                "keyboard_raw",
+                raw_event
+            )
+
     def _on_press(self, key):
         key_name = self._get_key_name(key)
 
         if key_name:
-            self.event_bus.publish("keyboard_raw", {
+            self._raw_events.put({
                 "event": "press",
                 "key": key_name,
                 "timestamp": time.time()
@@ -35,7 +74,7 @@ class KeyboardInput:
         key_name = self._get_key_name(key)
 
         if key_name:
-            self.event_bus.publish("keyboard_raw", {
+            self._raw_events.put({
                 "event": "release",
                 "key": key_name,
                 "timestamp": time.time()

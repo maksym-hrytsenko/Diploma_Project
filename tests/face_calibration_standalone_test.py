@@ -26,11 +26,12 @@ from pynput import keyboard
 # it only ever displays whatever
 # FaceRecognizer publishes).
 #
-# Nod/shake (CONFIRM/CANCEL) are deliberately
-# left out of this test — they are reserved,
-# unbound features unrelated to the head-tilt/
-# eyebrows/mouth media-control use case this
-# script is for calibrating.
+# Nod (CONFIRM) is deliberately left out of
+# this test — it is a reserved, unbound feature
+# unrelated to the head-tilt/eyebrows/mouth
+# media-control use case this script is for
+# calibrating. Shake (CANCEL) has been removed
+# from the system entirely.
 # ---------------------------------
 
 BASE_DIR = os.path.dirname(

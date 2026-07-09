@@ -646,19 +646,18 @@ needed for both, no custom training required).
 **Gated on one single condition: `active_mode is None`.** `_handle_frame`
 returns immediately whenever any mode (Flip, Presentation, Cursor, Call,
 Quick Circle) is active — not just Cursor, as an earlier revision of this
-feature had it. Confirmed by hands-on testing that letting nod/shake/
+feature had it. Confirmed by hands-on testing that letting nod/
 tilt/eyebrows/mouth/blink detection keep running inside an active mode
 produced spurious reactions from incidental head movement mixed into
 that mode's own gesture flow (most noticeably Flip mode's swipes). So
 despite the Alt/Ctrl rules in `fusion.json` (§9.1) being written
 mode-independent (`rules`, not `mode_rules`), in practice this whole
-signal family — including the reserved, unbound `CONFIRM`/`CANCEL` —
-only ever fires from idle.
+signal family — including the reserved, unbound `CONFIRM` — only ever
+fires from idle.
 
 | Signal | How it's detected | Status |
 |---|---|---|
 | `CONFIRM` | Nod — head pitch swings fast one way, then fast back the other way, within `NOD_PHASE_WINDOW` (0.6s) | Reserved, unbound (same status as voice `YES`/`NO`) |
-| `CANCEL` | Shake — identical two-phase swing detection, on head yaw instead of pitch | Reserved, unbound |
 | `HEAD_TILT_LEFT` / `HEAD_TILT_RIGHT` | Head roll past `TILT_ENTER_DEGREES` (15°); must return within `TILT_EXIT_DEGREES` (8°) of neutral before firing again | Wired — §9.1 |
 | `EYEBROWS_UP` / `EYEBROWS_DOWN` | `browInnerUp` blendshape crossing raise (0.4) / lower (0.24) thresholds, edge-triggered | `EYEBROWS_UP` wired — §9.1 (volume). `EYEBROWS_DOWN` reserved, unbound |
 | `DOUBLE_EYEBROWS_UP` | Two `EYEBROWS_UP` rising edges within `DOUBLE_EYEBROWS_WINDOW` (0.6s) of each other. A single raise fires nothing further — same "must be deliberate" reasoning as `DOUBLE_BLINK`. | Detected, but currently unbound — see §9.1's note on why its screenshot binding was removed |
@@ -675,11 +674,11 @@ mouth-open/eye-close to cross reliably. Head tilt's
 `TILT_ENTER_DEGREES`/`TILT_EXIT_DEGREES` were left unchanged — only
 these three blendshape-based signals needed the adjustment.
 
-**Nod/shake use relative sign changes, not absolute pitch/yaw
-direction** — a "fast swing away, then fast swing back" round trip,
-regardless of which absolute direction it starts in. This makes them
-immune to the head-pose matrix's exact axis-sign convention, which was
-not empirically verified against a real camera (see below).
+**Nod uses relative sign changes, not absolute pitch direction** — a
+"fast swing away, then fast swing back" round trip, regardless of
+which absolute direction it starts in. This makes it immune to the
+head-pose matrix's exact axis-sign convention, which was not
+empirically verified against a real camera (see below).
 
 **Roll (used only for head tilt) is no longer read from the
 transformation matrix.** It originally used the same rotation-matrix ->
@@ -695,9 +694,11 @@ corners (landmark indices 33 and 263). Upright, that line is
 horizontal (roll ~ 0); tilting the head rotates it by exactly the
 physical tilt angle, with no 3D matrix convention involved at all —
 pure geometry, so this is the one signal here guaranteed to track
-physical head tilt cleanly. Pitch/yaw (nod/shake) are unaffected and
-still come from the matrix, since nod/shake only look at relative sign
-changes and were never reported as unreliable.
+physical head tilt cleanly. Pitch (nod) is unaffected and still comes
+from the matrix, since nod only looks at relative sign changes and was
+never reported as unreliable. Yaw is still computed from the matrix
+too (shown in `--debug-face`, §9.2) but is no longer read for gesture
+detection now that shake/`CANCEL` has been removed (§11).
 
 **Head tilt's left/right labeling WAS verified against a real camera,
 and came out backwards.** Tilting the head to the subject's own right
@@ -726,12 +727,12 @@ or `ctrl` (`CTRL_KEY`) with a specific `face_signal` (`rules`, not
 `mode_rules` — see §1). These rules themselves are written mode-
 independent, but `FaceRecognizer` only publishes any `face_signal` at
 all while idle (`active_mode is None`) — confirmed by hands-on testing
-that letting nod/shake/tilt/eyebrows/mouth/blink detection keep running
+that letting nod/tilt/eyebrows/mouth/blink detection keep running
 inside an active mode (Flip, Presentation, Cursor, Call, Quick Circle)
 produced spurious reactions from incidental head movement during that
 mode's own gesture flow (e.g. Flip mode's swipes). So in practice this
-whole layer, and `CONFIRM`/`CANCEL`, only ever fire from idle, not
-"regardless of mode" as the rules' own shape would suggest:
+whole layer, and `CONFIRM`, only ever fires from idle, not "regardless
+of mode" as the rules' own shape would suggest:
 
 | Held + face signal | Action |
 |---|---|
@@ -976,14 +977,29 @@ environment `enter_actions`/`exit_actions`) all still exist.
   exist; `_check_zoom` still does, it just never reads Alt.
 - **A second, independent recognizer was added**: `FaceRecognizer`
   (§9), running in parallel with `GestureRecognizer` off the same
-  camera frames, using `models/face_landmarker.task`. Publishes
-  `CONFIRM`/`CANCEL`/`HEAD_TILT_LEFT`/`HEAD_TILT_RIGHT`/`EYEBROWS_UP`/
-  `EYEBROWS_DOWN`/`MOUTH_OPEN`/`DOUBLE_BLINK` as a new `face` signal
-  source, parallel to `voice`/`gesture`/`keyboard` — required a new
-  `_handle_face` method in `CommandInterpreter` and a `face` section in
-  `mapping.json`/`valid_signals`, but needed zero changes to
-  `MultimodalFusion`, `TemporalSync`, or `SignalMapper`, which were
-  already fully generic over signal source.
+  camera frames, using `models/face_landmarker.task`. Originally
+  published `CONFIRM`/`CANCEL`/`HEAD_TILT_LEFT`/`HEAD_TILT_RIGHT`/
+  `EYEBROWS_UP`/`EYEBROWS_DOWN`/`MOUTH_OPEN`/`DOUBLE_BLINK` as a new
+  `face` signal source, parallel to `voice`/`gesture`/`keyboard` —
+  required a new `_handle_face` method in `CommandInterpreter` and a
+  `face` section in `mapping.json`/`valid_signals`, but needed zero
+  changes to `MultimodalFusion`, `TemporalSync`, or `SignalMapper`,
+  which were already fully generic over signal source. `CANCEL` was
+  later removed entirely (see below).
+- **Shake detection (`CANCEL`) was removed entirely**, at the user's
+  request — it had briefly ended up wired to `MEDIA_PLAY_PAUSE`
+  (`face_cancel_pause` in `fusion.json`) despite the signal table
+  above documenting it as "reserved, unbound," so an accidental head
+  shake could unexpectedly pause whatever was playing with no
+  indication of why. Removed: `FaceRecognizer`'s `SHAKE_*` constants,
+  `shake_phase_sign`/`shake_phase_time`/`last_shake_time` state, and
+  `_check_shake` (and, with it, yaw-velocity tracking — nod only ever
+  needed pitch velocity); `CANCEL` from `mapping.json`'s `face`
+  mapping and `valid_signals`; and the `face_cancel_pause` rule from
+  `fusion.json`. Nod (`CONFIRM`) is untouched and still reserved,
+  unbound. Raw `yaw` (the angle, not its velocity) is still computed
+  and shown in `--debug-face` (§9.2) — only shake's use of it as a
+  gesture trigger is gone.
 - **Double-blink was reintroduced**, narrowly, as one of the new
   Shift+Alt face-layer triggers (§9.1) — it was explicitly removed from
   this system in an earlier round of design and has now been brought
@@ -1045,9 +1061,9 @@ overlay — see §9.2) and manually verify:
   after any further change to `_compute_roll`). A tilt is a sideways
   lean (ear toward shoulder) with the face still pointed at the camera —
   turning/rotating the head to look left or right is a different motion
-  (yaw) and may instead fire `CANCEL` (shake) with no tilt effect at
-  all; use `--debug-face` to watch `roll` vs `yaw` live if it's unclear
-  which one a given movement produced. Open your mouth — confirm
+  (yaw) and produces no signal at all (shake/`CANCEL` was removed); use
+  `--debug-face` to watch `roll` vs `yaw` live if it's unclear which one
+  a given movement produced. Open your mouth — confirm
   play/pause. Blink twice quickly — confirm a screenshot appears on the
   desktop (check `defaults read com.apple.screencapture location` if the
   default save folder was changed); confirm a single blink does nothing.
@@ -1055,8 +1071,9 @@ overlay — see §9.2) and manually verify:
   one tick; hold `ctrl` and raise your eyebrows once — confirm it goes
   down one tick instead. Release `alt`/`ctrl` and repeat — confirm
   nothing fires without one of them held. Separately, without `alt` or
-  `ctrl` held, nod and shake your head — confirm the console shows
-  `CONFIRM`/`CANCEL` firing (reserved, no visible effect yet).
+  `ctrl` held, nod your head — confirm the console shows `CONFIRM`
+  firing (reserved, no visible effect yet). Shake your head — confirm
+  nothing fires at all (shake/`CANCEL` was removed, §11).
 - **Media keys vs. an app that doesn't register "Now Playing"**: if
   next/previous/play-pause print correctly in the console
   (`[EXECUTOR] NEXT_TRACK`, etc.) but nothing happens to the actual

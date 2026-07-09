@@ -43,6 +43,11 @@ def main():
     # thresholds they're compared against.
     debug_face = "--debug-face" in sys.argv
 
+    # Prints every recognized voice phrase and wake-word
+    # gate decision to the terminal — off by default so
+    # normal runs stay quiet.
+    debug_voice = "--debug-voice" in sys.argv
+
     # Must exist, on the main thread, before ActionExecutor
     # constructs PointerOverlay (a QWidget). Qt requires
     # its widgets to be created after a QApplication and
@@ -75,12 +80,14 @@ def main():
 
     speech_recognizer = SpeechRecognizer(
         event_bus,
-        state_manager
+        state_manager,
+        debug=debug_voice
     )
 
     intent_model = IntentModel(
         event_bus,
-        state_manager
+        state_manager,
+        debug=debug_voice
     )
 
     # ---------------------------------
@@ -191,6 +198,14 @@ def main():
     try:
 
         while True:
+
+            # Drains events pynput's callback thread only ever
+            # queued (never published directly — see
+            # KeyboardInput for why) and publishes them here on
+            # the main thread, where the rest of the pipeline
+            # (and any OSController side effect it triggers) is
+            # safe to actually run.
+            keyboard_input.poll()
 
             # cv2.imshow / cv2.waitKey must run on the main
             # thread, so the debug window is drawn here

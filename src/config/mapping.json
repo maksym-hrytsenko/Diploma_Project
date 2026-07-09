@@ -94,8 +94,7 @@
         "EYEBROWS_DOWN": "EYEBROWS_DOWN",
         "DOUBLE_EYEBROWS_UP": "DOUBLE_EYEBROWS_UP",
 
-        "CONFIRM": "CONFIRM",
-        "CANCEL": "CANCEL"
+        "CONFIRM": "CONFIRM"
     },
 
     "valid_signals": {
@@ -195,8 +194,7 @@
             "EYEBROWS_DOWN",
             "DOUBLE_EYEBROWS_UP",
 
-            "CONFIRM",
-            "CANCEL"
+            "CONFIRM"
         ]
     }
 }

@@ -287,12 +287,6 @@
         },
 
         {
-            "name": "face_cancel_pause",
-            "conditions": { "face": "CANCEL" },
-            "action": "MEDIA_PLAY_PAUSE"
-        },
-
-        {
             "name": "face_layer_screenshot",
             "conditions": { "keyboard": "ALT_KEY", "face": "DOUBLE_BLINK" },
             "action": "TAKE_SCREENSHOT"

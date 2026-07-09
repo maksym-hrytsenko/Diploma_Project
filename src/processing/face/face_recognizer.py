@@ -8,21 +8,18 @@ from processing.face.face_model import (
 
 class FaceRecognizer:
 
-    # Angular velocity (degrees/second) a pitch/yaw swing must
-    # exceed to count as the first half of a deliberate nod or
-    # shake — a slow, incidental head movement (reading text,
-    # glancing around) should not trigger anything.
+    # Angular velocity (degrees/second) a pitch swing must
+    # exceed to count as the first half of a deliberate nod —
+    # a slow, incidental head movement (reading text, glancing
+    # around) should not trigger anything.
     NOD_VELOCITY_THRESHOLD = 80
-    SHAKE_VELOCITY_THRESHOLD = 80
 
     # How long the return half of the swing has to arrive
-    # after the first half to still count as one nod/shake,
-    # and the minimum gap between two separate ones.
+    # after the first half to still count as one nod, and the
+    # minimum gap between two separate ones.
     NOD_PHASE_WINDOW = 0.6
-    SHAKE_PHASE_WINDOW = 0.6
 
     NOD_COOLDOWN = 1.0
-    SHAKE_COOLDOWN = 1.0
 
     # Roll magnitude (degrees) to enter a tilted zone, and to
     # return to neutral. The exit threshold is deliberately
@@ -66,32 +63,26 @@ class FaceRecognizer:
         # Head-Pose Velocity Baseline
         # ---------------------------------
 
-        # Previous frame's pitch/yaw (degrees), used only to
+        # Previous frame's pitch (degrees), used only to
         # compute instantaneous angular velocity — the same
         # frame-to-frame velocity approach GestureRecognizer
         # uses for swipe detection, applied to head rotation
         # instead of fingertip position.
         self.previous_pitch = None
-        self.previous_yaw = None
         self.previous_face_time = None
 
         # ---------------------------------
-        # Nod (Confirm) / Shake (Cancel)
+        # Nod (Confirm)
         # ---------------------------------
 
-        # A nod/shake is a two-phase swing: a fast rotation
-        # past the threshold in one direction (phase 1),
-        # followed within *_PHASE_WINDOW by a fast rotation
-        # back the other way (phase 2). Only the completed
-        # round trip fires — a single fast glance in one
-        # direction alone never does.
+        # A nod is a two-phase swing: a fast rotation past the
+        # threshold in one direction (phase 1), followed within
+        # NOD_PHASE_WINDOW by a fast rotation back the other way
+        # (phase 2). Only the completed round trip fires — a
+        # single fast glance in one direction alone never does.
         self.nod_phase_sign = None
         self.nod_phase_time = 0
         self.last_nod_time = 0
-
-        self.shake_phase_sign = None
-        self.shake_phase_time = 0
-        self.last_shake_time = 0
 
         # ---------------------------------
         # Head Tilt (direction selector)
@@ -137,8 +128,8 @@ class FaceRecognizer:
     # Start / Stop
     # ---------------------------------
 
-    # Every signal here (nod/shake, tilt, eyebrows, mouth,
-    # blink) is meant to work only from idle — i.e. no mode
+    # Every signal here (nod, tilt, eyebrows, mouth, blink) is
+    # meant to work only from idle — i.e. no mode
     # (Flip, Presentation, Cursor, Call, Quick Circle) active.
     # Confirmed by hands-on testing that letting these keep
     # firing inside an active mode (e.g. incidental head
@@ -183,7 +174,7 @@ class FaceRecognizer:
 
         # Suppressed while any mode is active — not just
         # Cursor — so a mode's own gesture flow (e.g. Flip
-        # mode's swipes) never gets a spurious CONFIRM/CANCEL/
+        # mode's swipes) never gets a spurious CONFIRM/
         # HEAD_TILT/etc. reaction mixed in from incidental head
         # movement. These signals only mean anything from idle.
         if self.active_mode is not None:
@@ -207,11 +198,10 @@ class FaceRecognizer:
             # reacquiring the face doesn't compute a huge,
             # meaningless spike from wherever the head last
             # was to wherever it is now. Everything else
-            # (blink/mouth/eyebrow edge state, nod/shake phase)
-            # is left as-is; a one-frame dropout is common and
+            # (blink/mouth/eyebrow edge state, nod phase) is
+            # left as-is; a one-frame dropout is common and
             # shouldn't cancel a swing already in progress.
             self.previous_pitch = None
-            self.previous_yaw = None
             self.previous_face_time = None
 
             self._publish_debug(
@@ -228,20 +218,14 @@ class FaceRecognizer:
 
         pitch, yaw, roll = self._head_pose(result)
 
-        pitch_velocity, yaw_velocity = self._compute_angular_velocity(
+        pitch_velocity = self._compute_angular_velocity(
             pitch,
-            yaw,
             current_time
         )
 
         self._check_nod(
             current_time,
             pitch_velocity
-        )
-
-        self._check_shake(
-            current_time,
-            yaw_velocity
         )
 
         self._check_tilt(
@@ -285,9 +269,9 @@ class FaceRecognizer:
     LEFT_EYE_OUTER_CORNER = 263
 
     # Pitch/yaw: standard rotation-matrix -> Euler-angle
-    # decomposition, unchanged. Nod/shake only ever look at
-    # relative sign changes (a swing away then back), so they
-    # are unaffected by the matrix's exact axis convention not
+    # decomposition, unchanged. Nod only ever looks at relative
+    # sign changes (a swing away then back), so it is
+    # unaffected by the matrix's exact axis convention not
     # having been empirically verified against a real camera.
     #
     # Roll: NOT taken from the matrix decomposition anymore.
@@ -364,10 +348,10 @@ class FaceRecognizer:
             )
         )
 
-    def _compute_angular_velocity(self, pitch, yaw, current_time):
+    def _compute_angular_velocity(self, pitch, current_time):
 
-        if pitch is None or yaw is None:
-            return None, None
+        if pitch is None:
+            return None
 
         if (
             self.previous_pitch is None
@@ -375,29 +359,23 @@ class FaceRecognizer:
         ):
 
             self.previous_pitch = pitch
-            self.previous_yaw = yaw
             self.previous_face_time = current_time
 
-            return None, None
+            return None
 
         delta_time = current_time - self.previous_face_time
 
         if delta_time <= 0:
-            return None, None
+            return None
 
         pitch_velocity = (
             (pitch - self.previous_pitch) / delta_time
         )
 
-        yaw_velocity = (
-            (yaw - self.previous_yaw) / delta_time
-        )
-
         self.previous_pitch = pitch
-        self.previous_yaw = yaw
         self.previous_face_time = current_time
 
-        return pitch_velocity, yaw_velocity
+        return pitch_velocity
 
     # ---------------------------------
     # Nod (Confirm)
@@ -445,53 +423,6 @@ class FaceRecognizer:
             self.nod_phase_sign = None
 
             self.last_nod_time = current_time
-
-    # ---------------------------------
-    # Shake (Cancel)
-    # ---------------------------------
-
-    def _check_shake(self, current_time, yaw_velocity):
-
-        if yaw_velocity is None:
-            return
-
-        if current_time - self.last_shake_time < self.SHAKE_COOLDOWN:
-            return
-
-        fast = (
-            abs(yaw_velocity) > self.SHAKE_VELOCITY_THRESHOLD
-        )
-
-        if self.shake_phase_sign is None:
-
-            if fast:
-
-                self.shake_phase_sign = (
-                    1 if yaw_velocity > 0 else -1
-                )
-
-                self.shake_phase_time = current_time
-
-            return
-
-        if (
-            current_time - self.shake_phase_time
-            > self.SHAKE_PHASE_WINDOW
-        ):
-
-            self.shake_phase_sign = None
-
-            return
-
-        swing_sign = 1 if yaw_velocity > 0 else -1
-
-        if fast and swing_sign != self.shake_phase_sign:
-
-            self._fire_face_signal("CANCEL")
-
-            self.shake_phase_sign = None
-
-            self.last_shake_time = current_time
 
     # ---------------------------------
     # Head Tilt (direction selector)

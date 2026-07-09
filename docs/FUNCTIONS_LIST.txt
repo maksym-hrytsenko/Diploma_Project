@@ -219,7 +219,6 @@ running in parallel with the hand-gesture pipeline. Publishes its own
 signals; nothing here requires being in any particular mode.
 
     Nod (head pitches down then back up quickly)     -> CONFIRM
-    Shake (head yaws side to side quickly)            -> CANCEL
     Head tilt left/right (held past ~15 degrees)      -> HEAD_TILT_LEFT
                                                           / HEAD_TILT_RIGHT
     Eyebrows raised / lowered                          -> EYEBROWS_UP /
@@ -229,8 +228,9 @@ signals; nothing here requires being in any particular mode.
                                                           (a single blink
                                                           fires nothing)
 
-CONFIRM, CANCEL, EYEBROWS_UP/DOWN are published but not wired to any
-action yet -- reserved, same status as voice's "yes"/"no".
+CONFIRM, EYEBROWS_UP/DOWN are published but not wired to any action
+yet -- reserved, same status as voice's "yes"/"no". (Shake/CANCEL
+existed here previously and has been removed entirely.)
 
 Wired today, ONLY while holding alt+shift (see KEYBOARD above):
     head tilt right  -> next track (system media key)

@@ -8,12 +8,15 @@ class SpeechRecognizer:
     def __init__(
         self,
         event_bus,
-        state_manager
+        state_manager,
+        debug=False
     ):
 
         self.event_bus = event_bus
 
         self.state_manager = state_manager
+
+        self.debug = debug
 
         self.vosk_model = (
             VoskSpeechModel()
@@ -68,9 +71,24 @@ class SpeechRecognizer:
         ):
             return
 
+        text = result.get(
+            "text"
+        )
+
+        if self.debug:
+
+            source = (
+                "open-vocab"
+                if result.get("open_vocab")
+                else "grammar"
+            )
+
+            print(
+                f"[voice heard] \"{text}\" "
+                f"({source})"
+            )
+
         self.event_bus.publish(
             "text_ready",
-            result.get(
-                "text"
-            )
+            text
         )
