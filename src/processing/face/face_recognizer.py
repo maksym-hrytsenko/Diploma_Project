@@ -32,16 +32,29 @@ class FaceRecognizer:
     TILT_ENTER_DEGREES = 15
     TILT_EXIT_DEGREES = 8
 
-    EYEBROWS_RAISE_THRESHOLD = 0.5
-    EYEBROWS_LOWER_THRESHOLD = 0.3
+    # Lowered 20% from the original 0.5/0.3 defaults after
+    # hands-on calibration with tests/face_calibration_
+    # standalone_test.py — the original values needed an
+    # unnaturally exaggerated brow-raise/mouth-open/eye-close
+    # to cross. Head tilt's thresholds were left unchanged;
+    # only these three needed the adjustment.
+    EYEBROWS_RAISE_THRESHOLD = 0.4
+    EYEBROWS_LOWER_THRESHOLD = 0.24
 
-    MOUTH_OPEN_THRESHOLD = 0.5
-    MOUTH_CLOSE_THRESHOLD = 0.3
+    MOUTH_OPEN_THRESHOLD = 0.4
+    MOUTH_CLOSE_THRESHOLD = 0.24
 
-    BLINK_CLOSE_THRESHOLD = 0.5
-    BLINK_OPEN_THRESHOLD = 0.3
+    BLINK_CLOSE_THRESHOLD = 0.4
+    BLINK_OPEN_THRESHOLD = 0.24
 
     DOUBLE_BLINK_WINDOW = 0.5
+
+    # Same "two within a window" idea as DOUBLE_BLINK, applied to
+    # the eyebrows-raised rising edge instead of a blink. Slightly
+    # more generous than DOUBLE_BLINK_WINDOW because deliberately
+    # raising the eyebrows twice is a slower motion than blinking
+    # twice.
+    DOUBLE_EYEBROWS_WINDOW = 0.6
 
     def __init__(self, event_bus):
 
@@ -95,6 +108,12 @@ class FaceRecognizer:
 
         self.eyebrows_raised = False
 
+        # Timestamp of the last EYEBROWS_UP rising edge, used only
+        # to detect a second raise following within
+        # DOUBLE_EYEBROWS_WINDOW — same pattern as last_blink_time
+        # below, applied to the eyebrow instead of the eyelid.
+        self.last_eyebrows_raise_time = 0
+
         # ---------------------------------
         # Mouth Open
         # ---------------------------------
@@ -109,21 +128,36 @@ class FaceRecognizer:
 
         self.last_blink_time = 0
 
+        # Mirrored from SignalMapper's "mode_changed" event —
+        # used to suppress head/face tracking entirely while
+        # ANY mode is active (see start()/_handle_frame).
+        self.active_mode = None
+
     # ---------------------------------
     # Start / Stop
     # ---------------------------------
 
-    # No mode gating anywhere in this class — unlike most of
-    # GestureRecognizer's checks, every signal here is meant to
-    # work "always", regardless of which mode (if any) is
-    # active. Whatever consumes a given face_signal (e.g. the
-    # Shift+Alt-held global rules in fusion.json) decides when
-    # it actually means something.
+    # Every signal here (nod/shake, tilt, eyebrows, mouth,
+    # blink) is meant to work only from idle — i.e. no mode
+    # (Flip, Presentation, Cursor, Call, Quick Circle) active.
+    # Confirmed by hands-on testing that letting these keep
+    # firing inside an active mode (e.g. incidental head
+    # movement while swiping in Flip mode) reads as noise, not
+    # a deliberate "global layer" action, even though the
+    # Alt/Ctrl-gated rules in fusion.json (see docs §9.1) are
+    # written as mode-independent — so tracking is suppressed
+    # outright per-mode here (see _handle_frame) rather than
+    # left to the consumer side.
     def start(self):
 
         self.event_bus.subscribe(
             "camera_frame",
             self._handle_frame
+        )
+
+        self.event_bus.subscribe(
+            "mode_changed",
+            self._handle_mode_changed
         )
 
     def stop(self):
@@ -133,7 +167,27 @@ class FaceRecognizer:
             self._handle_frame
         )
 
+        self.event_bus.unsubscribe(
+            "mode_changed",
+            self._handle_mode_changed
+        )
+
+    def _handle_mode_changed(self, event):
+
+        self.active_mode = event.get(
+            "data",
+            {}
+        ).get("mode")
+
     def _handle_frame(self, event):
+
+        # Suppressed while any mode is active — not just
+        # Cursor — so a mode's own gesture flow (e.g. Flip
+        # mode's swipes) never gets a spurious CONFIRM/CANCEL/
+        # HEAD_TILT/etc. reaction mixed in from incidental head
+        # movement. These signals only mean anything from idle.
+        if self.active_mode is not None:
+            return
 
         frame = event.get("data")
 
@@ -159,6 +213,14 @@ class FaceRecognizer:
             self.previous_pitch = None
             self.previous_yaw = None
             self.previous_face_time = None
+
+            self._publish_debug(
+                frame,
+                None,
+                None,
+                None,
+                {}
+            )
 
             return
 
@@ -191,7 +253,8 @@ class FaceRecognizer:
         )
 
         self._check_eyebrows(
-            blendshapes
+            blendshapes,
+            current_time
         )
 
         self._check_mouth(
@@ -203,21 +266,50 @@ class FaceRecognizer:
             current_time
         )
 
+        self._publish_debug(
+            frame,
+            pitch,
+            yaw,
+            roll,
+            blendshapes
+        )
+
     # ---------------------------------
-    # Head Pose (from the facial transformation matrix)
+    # Head Pose
     # ---------------------------------
 
-    # Standard rotation-matrix -> Euler-angle decomposition.
-    # The transformation matrix's exact axis convention has not
-    # been empirically verified against a real camera — pitch/
-    # yaw/roll's absolute signs may come out flipped from what
-    # "looks right". This only matters for the tilt-left/tilt-
-    # right labeling below (_check_tilt); nod and shake both
-    # work off relative sign changes (a swing away then back),
-    # so they are unaffected either way.
+    # Landmark index of each eye's OUTER corner in MediaPipe's
+    # 468/478-point face mesh — used only for _compute_roll,
+    # not the blendshape/matrix pipeline.
+    RIGHT_EYE_OUTER_CORNER = 33
+    LEFT_EYE_OUTER_CORNER = 263
+
+    # Pitch/yaw: standard rotation-matrix -> Euler-angle
+    # decomposition, unchanged. Nod/shake only ever look at
+    # relative sign changes (a swing away then back), so they
+    # are unaffected by the matrix's exact axis convention not
+    # having been empirically verified against a real camera.
+    #
+    # Roll: NOT taken from the matrix decomposition anymore.
+    # That decomposition assumes one specific Euler rotation
+    # order (Z then Y then X); MediaPipe's actual matrix
+    # convention doesn't necessarily match it, so the extracted
+    # roll came out coupled with pitch/yaw instead of tracking
+    # a pure sideways tilt — no threshold on a signal like that
+    # can ever behave well, however it's tuned. Roll is instead
+    # computed directly from the 2D angle between the two outer
+    # eye corners in image space: on an upright face this line
+    # is horizontal (roll ~ 0); tilting the head rotates it by
+    # exactly the same angle the head physically tilted, with
+    # no dependency on any 3D matrix convention at all — pure
+    # 2D geometry, so it is the one number here guaranteed to
+    # track physical head tilt cleanly.
     def _head_pose(self, result):
 
-        if not result.facial_transformation_matrixes:
+        if (
+            not result.facial_transformation_matrixes
+            or not result.face_landmarks
+        ):
             return None, None, None
 
         matrix = result.facial_transformation_matrixes[0]
@@ -241,14 +333,36 @@ class FaceRecognizer:
             )
         )
 
-        roll = math.degrees(
-            math.atan2(
-                rotation[2, 1],
-                rotation[2, 2]
-            )
+        roll = self._compute_roll(
+            result.face_landmarks[0]
         )
 
         return pitch, yaw, roll
+
+    def _compute_roll(self, face_landmarks):
+
+        right_eye = face_landmarks[self.RIGHT_EYE_OUTER_CORNER]
+        left_eye = face_landmarks[self.LEFT_EYE_OUTER_CORNER]
+
+        delta_x = left_eye.x - right_eye.x
+        delta_y = left_eye.y - right_eye.y
+
+        # Negated: confirmed by hands-on testing that the raw
+        # atan2 value came out with the opposite sign from the
+        # physical tilt direction (tilting the head to the
+        # subject's own right produced a NEGATIVE angle, firing
+        # HEAD_TILT_LEFT instead of HEAD_TILT_RIGHT). Negating
+        # here is the correct fix — swapping which landmark is
+        # called "left"/"right" instead would rotate the angle
+        # by 180 degrees (atan2(-y, -x) != -atan2(y, x)), which
+        # would wreck the roll ~ 0 upright baseline rather than
+        # just flipping left vs right.
+        return -math.degrees(
+            math.atan2(
+                delta_y,
+                delta_x
+            )
+        )
 
     def _compute_angular_velocity(self, pitch, yaw, current_time):
 
@@ -420,7 +534,7 @@ class FaceRecognizer:
             for category in result.face_blendshapes[0]
         }
 
-    def _check_eyebrows(self, blendshapes):
+    def _check_eyebrows(self, blendshapes, current_time):
 
         score = blendshapes.get("browInnerUp", 0.0)
 
@@ -432,6 +546,28 @@ class FaceRecognizer:
             self.eyebrows_raised = True
 
             self._fire_face_signal("EYEBROWS_UP")
+
+            # A single raise fires nothing further — resting
+            # the eyebrows naturally rises and falls sometimes.
+            # Only a second raise completing within
+            # DOUBLE_EYEBROWS_WINDOW of the first counts as the
+            # deliberate double-raise used for the screenshot
+            # trigger (§9.1), same idea as _check_blink below.
+            if (
+                current_time - self.last_eyebrows_raise_time
+                <= self.DOUBLE_EYEBROWS_WINDOW
+            ):
+
+                self._fire_face_signal("DOUBLE_EYEBROWS_UP")
+
+                # Reset rather than leaving it at current_time,
+                # so a third raise right after doesn't chain
+                # into a second DOUBLE_EYEBROWS_UP.
+                self.last_eyebrows_raise_time = 0
+
+            else:
+
+                self.last_eyebrows_raise_time = current_time
 
         elif (
             self.eyebrows_raised
@@ -521,5 +657,80 @@ class FaceRecognizer:
             {
                 "signal": signal,
                 "source": "face"
+            }
+        )
+
+    # ---------------------------------
+    # Debug Snapshot (for --debug-face calibration view)
+    # ---------------------------------
+
+    # Mirrors GestureRecognizer._publish_debug's approach: publish
+    # every raw number a threshold is compared against, plus the
+    # threshold itself, so FaceDebugView can render live values
+    # next to the line they need to cross — that is what makes
+    # tuning TILT_ENTER_DEGREES / EYEBROWS_RAISE_THRESHOLD /
+    # MOUTH_OPEN_THRESHOLD against a real face and camera possible
+    # instead of guessing from code alone.
+    def _publish_debug(
+        self,
+        frame,
+        pitch,
+        yaw,
+        roll,
+        blendshapes
+    ):
+
+        self.event_bus.publish(
+            "face_debug",
+            {
+                "frame": frame,
+
+                "pitch": pitch,
+                "yaw": yaw,
+                "roll": roll,
+
+                "tilt_zone": self.tilt_zone,
+                "tilt_enter_degrees": self.TILT_ENTER_DEGREES,
+                "tilt_exit_degrees": self.TILT_EXIT_DEGREES,
+
+                "brow_inner_up": blendshapes.get(
+                    "browInnerUp",
+                    0.0
+                ),
+                "eyebrows_raised": self.eyebrows_raised,
+                "eyebrows_raise_threshold": (
+                    self.EYEBROWS_RAISE_THRESHOLD
+                ),
+                "eyebrows_lower_threshold": (
+                    self.EYEBROWS_LOWER_THRESHOLD
+                ),
+
+                "jaw_open": blendshapes.get(
+                    "jawOpen",
+                    0.0
+                ),
+                "mouth_open": self.mouth_open,
+                "mouth_open_threshold": (
+                    self.MOUTH_OPEN_THRESHOLD
+                ),
+                "mouth_close_threshold": (
+                    self.MOUTH_CLOSE_THRESHOLD
+                ),
+
+                "eye_blink_left": blendshapes.get(
+                    "eyeBlinkLeft",
+                    0.0
+                ),
+                "eye_blink_right": blendshapes.get(
+                    "eyeBlinkRight",
+                    0.0
+                ),
+                "eyes_closed": self.eyes_closed,
+                "blink_close_threshold": (
+                    self.BLINK_CLOSE_THRESHOLD
+                ),
+                "blink_open_threshold": (
+                    self.BLINK_OPEN_THRESHOLD
+                )
             }
         )

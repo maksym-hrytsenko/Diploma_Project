@@ -157,8 +157,10 @@ closing the fist then opening the palm)
     -> inside Flip mode:
          hand UP    = scrolls to reveal LATER content (drag-up feel)
          hand DOWN  = scrolls to reveal EARLIER content (drag-down feel)
-         left/right = flip photo/page forward-back, OR switch desktop
-                       if the frontmost app has nothing to flip
+         hand RIGHT = switches to the previous macOS Space/desktop
+         hand LEFT  = switches to the next macOS Space/desktop
+                       (always switches desktops now -- no more
+                        per-app "flip the photo/page instead" case)
        (PINCH is ignored entirely here too -- swiping naturally passes
         through pinch-like hand poses, so detection only ever runs in
         Cursor mode, switched off everywhere else)

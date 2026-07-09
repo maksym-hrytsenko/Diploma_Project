@@ -17,6 +17,7 @@ from input.camera_input import CameraInput
 from processing.gesture.gesture_recognizer import GestureRecognizer
 from processing.gesture.gesture_debug_view import GestureDebugView
 from processing.face.face_recognizer import FaceRecognizer
+from processing.face.face_debug_view import FaceDebugView
 
 from interpretation.command_interpreter import CommandInterpreter
 
@@ -34,6 +35,13 @@ def main():
     # camera feed with the anchor point, tracked finger
     # and current zone drawn on top
     debug_gesture = "--debug-gesture" in sys.argv
+
+    # Same idea as --debug-gesture, but for FaceRecognizer's head
+    # tilt / eyebrows / mouth / blink thresholds (§9 in
+    # docs/SYSTEM_FUNCTIONS.md) — opens a window showing live
+    # pitch/yaw/roll and blendshape scores next to the exact
+    # thresholds they're compared against.
+    debug_face = "--debug-face" in sys.argv
 
     # Must exist, on the main thread, before ActionExecutor
     # constructs PointerOverlay (a QWidget). Qt requires
@@ -99,6 +107,14 @@ def main():
         event_bus
     )
 
+    face_debug_view = None
+
+    if debug_face:
+
+        face_debug_view = FaceDebugView(
+            event_bus
+        )
+
     # ---------------------------------
     # Core Pipeline
     # ---------------------------------
@@ -154,6 +170,10 @@ def main():
 
     face_recognizer.start()
 
+    if face_debug_view is not None:
+
+        face_debug_view.start()
+
     keyboard_processor.start()
 
     speech_recognizer.start()
@@ -179,6 +199,10 @@ def main():
 
                 gesture_debug_view.render()
 
+            if face_debug_view is not None:
+
+                face_debug_view.render()
+
             # Non-blocking; delivers the queued
             # position_updated signal onto this thread and
             # lets the pointer overlay's QTimer/paintEvent
@@ -186,7 +210,7 @@ def main():
             # the way app.exec() would.
             qt_app.processEvents()
 
-            if gesture_debug_view is None:
+            if gesture_debug_view is None and face_debug_view is None:
 
                 time.sleep(0.01)
 
@@ -213,6 +237,10 @@ def main():
             gesture_debug_view.stop()
 
         face_recognizer.stop()
+
+        if face_debug_view is not None:
+
+            face_debug_view.stop()
 
         interpreter.stop()
 

@@ -6,7 +6,8 @@
         "ctrl+shift+c": "CURSOR_MODE_KEY",
         "ctrl+shift+w": "CALL_MODE_KEY",
 
-        "alt+shift": "SHIFT_ALT_KEY",
+        "alt": "ALT_KEY",
+        "ctrl": "CTRL_KEY",
 
         "right": "KEY_RIGHT",
         "left": "KEY_LEFT",
@@ -55,7 +56,12 @@
         "OPEN_NOTION": "open notion",
         "OPEN_PHOTOS": "open photos",
         "OPEN_PREVIEW": "open preview",
-        "OPEN_SETTINGS": "open settings"
+        "OPEN_SETTINGS": "open settings",
+
+        "NEXT_TRACK": "next track",
+        "PREVIOUS_TRACK": "previous track",
+        "PAUSE": "pause",
+        "RESET": "reset"
     },
 
     "gesture": {
@@ -86,6 +92,7 @@
 
         "EYEBROWS_UP": "EYEBROWS_UP",
         "EYEBROWS_DOWN": "EYEBROWS_DOWN",
+        "DOUBLE_EYEBROWS_UP": "DOUBLE_EYEBROWS_UP",
 
         "CONFIRM": "CONFIRM",
         "CANCEL": "CANCEL"
@@ -100,7 +107,8 @@
             "ctrl+shift+c",
             "ctrl+shift+w",
 
-            "alt+shift",
+            "alt",
+            "ctrl",
 
             "right",
             "left",
@@ -149,7 +157,12 @@
             "OPEN_NOTION",
             "OPEN_PHOTOS",
             "OPEN_PREVIEW",
-            "OPEN_SETTINGS"
+            "OPEN_SETTINGS",
+
+            "NEXT_TRACK",
+            "PREVIOUS_TRACK",
+            "PAUSE",
+            "RESET"
         ],
 
         "gesture": [
@@ -180,6 +193,7 @@
 
             "EYEBROWS_UP",
             "EYEBROWS_DOWN",
+            "DOUBLE_EYEBROWS_UP",
 
             "CONFIRM",
             "CANCEL"

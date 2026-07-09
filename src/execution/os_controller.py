@@ -10,28 +10,20 @@ class OSController:
     # Total on-screen distance (real pixels) a single Flip
     # Mode swipe scrolls, spread across many small ticks
     # with a short pause between each so it reads as a
-    # smooth glide rather than one abrupt jump.
-    FLIP_SCROLL_PIXELS = 90
+    # smooth glide rather than one abrupt jump. Raised from
+    # an original 90px, then again (200px -> 500px, a 2.5x
+    # jump) after further user feedback that up/down swipes
+    # still needed to travel noticeably farther.
+    FLIP_SCROLL_PIXELS = 500
     FLIP_SCROLL_TICKS = 18
     FLIP_SCROLL_TICK_DELAY = 0.014
-
-    # Frontmost apps that actually respond to arrow-key
-    # "next/previous" navigation (photo viewers, browsers,
-    # video players). Everywhere else, Flip mode falls back
-    # to switching macOS Spaces instead — there is no
-    # generic macOS API to ask an arbitrary app "is there
-    # more content in this direction".
-    FLIPPABLE_APPS = {
-        "Preview",
-        "Photos",
-        "Safari",
-        "Google Chrome",
-        "QuickTime Player"
-    }
 
     # macOS system media key codes (NSSystemDefined event
     # data1 high byte), the same codes a physical keyboard's
     # media keys send.
+    NX_KEYTYPE_SOUND_UP = 0
+    NX_KEYTYPE_SOUND_DOWN = 1
+
     NX_KEYTYPE_PLAY = 16
     NX_KEYTYPE_NEXT = 17
     NX_KEYTYPE_PREVIOUS = 18
@@ -134,9 +126,12 @@ class OSController:
                 f"[CURSOR ERROR] {e}"
             )
 
-    def scroll_by(self, pixel_amount):
+    def scroll_by(self, pixel_amount_x, pixel_amount_y):
 
-        self._post_pixel_scroll(pixel_amount)
+        self._post_pixel_scroll(
+            pixel_amount_y,
+            pixel_amount_x
+        )
 
     # ---------------------------------
     # Zoom (Cursor Mode, Alt + pinch distance)
@@ -193,20 +188,27 @@ class OSController:
     # scroll units — this is what makes both the Flip Mode
     # glide and the Cursor Mode drag-to-scroll move the
     # content by an actual, predictable number of pixels.
-    def _post_pixel_scroll(self, pixel_amount):
+    # pixel_amount_x defaults to 0 since every other caller
+    # (Flip Mode's vertical-only glide) never needs a
+    # horizontal component.
+    def _post_pixel_scroll(self, pixel_amount_y, pixel_amount_x=0):
 
-        if pixel_amount == 0:
+        if pixel_amount_y == 0 and pixel_amount_x == 0:
             return
 
         try:
 
             import Quartz
 
+            # wheelCount=2 tells Quartz to read a second
+            # (horizontal) wheel delta alongside the vertical
+            # one, same pixel-unit event either way.
             event = Quartz.CGEventCreateScrollWheelEvent(
                 None,
                 Quartz.kCGScrollEventUnitPixel,
-                1,
-                pixel_amount
+                2,
+                pixel_amount_y,
+                pixel_amount_x
             )
 
             Quartz.CGEventPost(
@@ -224,60 +226,20 @@ class OSController:
     # Flip Next / Previous (Flip Mode)
     # ---------------------------------
 
+    # Always switches macOS Spaces/desktops — no longer tries to
+    # guess whether the frontmost app has its own "next/previous"
+    # arrow-key navigation. That per-app heuristic (an AppleScript
+    # frontmost-app-name lookup against a hardcoded allowlist) was
+    # removed at the user's request: left/right swipes in Flip
+    # mode should do one predictable thing every time, not a
+    # different action depending on what's in front.
     def flip_next(self):
 
-        if self._frontmost_app_is_flippable():
-
-            pyautogui.press("right")
-
-        else:
-
-            pyautogui.hotkey("ctrl", "right")
+        pyautogui.hotkey("ctrl", "right")
 
     def flip_previous(self):
 
-        if self._frontmost_app_is_flippable():
-
-            pyautogui.press("left")
-
-        else:
-
-            pyautogui.hotkey("ctrl", "left")
-
-    def _frontmost_app_is_flippable(self):
-
-        app_name = self._run_applescript(
-            'tell application "System Events" to get name of '
-            'first process whose frontmost is true'
-        )
-
-        return app_name in self.FLIPPABLE_APPS
-
-    # ---------------------------------
-    # AppleScript Helper
-    # ---------------------------------
-
-    def _run_applescript(self, script):
-
-        try:
-
-            result = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-
-            return result.stdout.strip()
-
-        except Exception as e:
-
-            print(
-                f"[APPLESCRIPT ERROR] {e} "
-                f"(Accessibility permission granted?)"
-            )
-
-            return None
+        pyautogui.hotkey("ctrl", "left")
 
     # ---------------------------------
     # Applications
@@ -483,6 +445,32 @@ class OSController:
 
         self._post_system_media_key(
             self.NX_KEYTYPE_PREVIOUS
+        )
+
+    # ---------------------------------
+    # Volume (Global)
+    # ---------------------------------
+
+    # Unlike media_play_pause/next_track/previous_track, these
+    # do NOT depend on any app registering itself as macOS's
+    # "Now Playing" — Sound Up/Down are handled directly by
+    # CoreAudio at the system level, so they change the actual
+    # output volume regardless of which (if any) app is
+    # playing anything. Each call is one "tick" (the same
+    # ~6.25%-of-full-range step a physical volume key press
+    # does), not a custom percentage — matching a single
+    # eyebrow-raise to a single discrete step rather than a
+    # continuous ramp.
+    def volume_up(self):
+
+        self._post_system_media_key(
+            self.NX_KEYTYPE_SOUND_UP
+        )
+
+    def volume_down(self):
+
+        self._post_system_media_key(
+            self.NX_KEYTYPE_SOUND_DOWN
         )
 
     def _post_system_media_key(self, nx_keytype):

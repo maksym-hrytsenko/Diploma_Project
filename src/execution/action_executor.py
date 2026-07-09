@@ -92,6 +92,9 @@ class ActionExecutor:
             "NEXT_TRACK": controller.next_track,
             "PREVIOUS_TRACK": controller.previous_track,
 
+            "VOLUME_UP": controller.volume_up,
+            "VOLUME_DOWN": controller.volume_down,
+
             "TAKE_SCREENSHOT": controller.take_screenshot,
 
             "ENABLE_DO_NOT_DISTURB": controller.enable_do_not_disturb,
@@ -302,27 +305,36 @@ class ActionExecutor:
             {}
         )
 
+        delta_x = data.get("delta_x")
         delta_y = data.get("delta_y")
 
-        if delta_y is None:
+        if delta_x is None or delta_y is None:
             return
 
-        _, screen_height = pyautogui.size()
+        screen_width, screen_height = pyautogui.size()
 
         # Natural/drag scrolling: the content moves WITH
         # the hand, as if physically grabbed — dragging up
         # (delta_y < 0) pulls later content into view (same
         # direction as OSController.scroll_down), dragging
         # down (delta_y > 0) reveals earlier content (same
-        # direction as scroll_up). Converted to real screen
-        # pixels so the content moves by roughly the same
-        # distance the hand moved.
-        pixel_amount = int(
+        # direction as scroll_up). Same idea horizontally:
+        # dragging left (delta_x < 0) pulls content on the
+        # right into view, dragging right (delta_x > 0)
+        # reveals content on the left. Converted to real
+        # screen pixels so the content moves by roughly the
+        # same distance the hand moved.
+        pixel_amount_x = int(
+            delta_x * screen_width
+        )
+
+        pixel_amount_y = int(
             delta_y * screen_height
         )
 
         self.os_controller.scroll_by(
-            pixel_amount
+            pixel_amount_x,
+            pixel_amount_y
         )
 
     # ---------------------------------

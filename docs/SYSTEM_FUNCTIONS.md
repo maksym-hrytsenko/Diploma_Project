@@ -71,8 +71,8 @@ photos, pages) or scrolling websites:
 |---|---|
 | `HAND_UP` | `SCROLL_DOWN` (smooth multi-tick scroll — see inversion note below) |
 | `HAND_DOWN` | `SCROLL_UP` (smooth multi-tick scroll) |
-| `HAND_RIGHT` | `FLIP_NEXT` |
-| `HAND_LEFT` | `FLIP_PREVIOUS` |
+| `HAND_RIGHT` | `FLIP_PREVIOUS` (inverted from the physical swipe direction — see below) |
+| `HAND_LEFT` | `FLIP_NEXT` (inverted from the physical swipe direction — see below) |
 
 **Natural/drag scrolling, not wheel scrolling.** Moving the hand up feels
 like grabbing the content and dragging it up with your hand — which
@@ -83,6 +83,18 @@ touchscreens and macOS's default "natural scrolling" trackpad behavior
 work, rather than an old-style scroll wheel where wheel-up and
 content-up are the same direction. Cursor mode's pinch-drag scroll
 (§2.3) uses the identical convention.
+
+**Left/right is inverted, same idea as the up/down inversion above.**
+`HAND_RIGHT` (physically swiping the hand to the right) maps to
+`FLIP_PREVIOUS`, and `HAND_LEFT` to `FLIP_NEXT` — confirmed by hands-on
+testing to read as the more natural drag direction (swiping right
+"pulls" earlier content into view from off-screen left, the same
+"grab and drag the content" feel as the vertical case), rather than
+mapping the swipe direction directly onto the same-named action. Set in
+`fusion.json`'s `flip_right`/`flip_left` mode_rules — `GestureRecognizer`
+itself still reports raw, uninverted `HAND_LEFT`/`HAND_RIGHT`, exactly
+as Quick Circle mode (§2.5) also consumes them; only Flip mode's own
+rule mapping is inverted.
 
 **`PINCH` is only ever recognized in Cursor mode** (§2.3) — nowhere
 else, including Flip mode. Swiping (or any other gesture) naturally
@@ -95,27 +107,28 @@ only runs the pinch/hold-and-drag check when `active_mode == "cursor"`
 — not just "no rule fires from it downstream", the geometry is never
 computed at all outside Cursor mode.
 
-`FLIP_NEXT`/`FLIP_PREVIOUS` behave differently depending on what's in
-front, since macOS has no generic way to ask an arbitrary app "is there
-more content in this direction":
+`FLIP_NEXT`/`FLIP_PREVIOUS` always send `Ctrl+Right`/`Ctrl+Left`
+(macOS's built-in shortcut for switching between Spaces/desktops) —
+one predictable action every time. An earlier revision tried to guess
+the frontmost app via an AppleScript lookup against a hardcoded
+allowlist (Preview/Photos/Safari/Chrome/QuickTime Player) and sent a
+plain arrow key instead when the app "looked flippable"; that
+context-dependent heuristic was removed at the user's request, since a
+left/right swipe should mean the same thing regardless of what's in
+front.
 
-- If the frontmost app is one that actually responds to arrow-key
-  navigation (**Preview, Photos, Safari, Google Chrome, QuickTime
-  Player** — `OSController.FLIPPABLE_APPS`) → sends a Right/Left arrow
-  key press (flips the photo/page).
-- Otherwise → sends `Ctrl+Right`/`Ctrl+Left` (macOS's built-in shortcut
-  for switching between Spaces/desktops).
-
-**Smooth, short-distance scroll.** `SCROLL_UP`/`SCROLL_DOWN` no longer
-jump the full distance in one motion — each swipe scrolls a total of
-`OSController.FLIP_SCROLL_PIXELS` (90px) split across
-`FLIP_SCROLL_TICKS` (18) small ticks with a `FLIP_SCROLL_TICK_DELAY`
-(14ms) pause between each, using a real pixel-precise scroll event
-(`Quartz.CGEventCreateScrollWheelEvent` with `kCGScrollEventUnitPixel`,
-not `pyautogui`'s coarser line/click units) so the glide is both visibly
-animated (~250ms total) and covers noticeably less on-screen distance
-per swipe than before. Tune `FLIP_SCROLL_PIXELS` up/down if it still
-feels too far or too short.
+**Smooth scroll, tuned for a longer glide.** `SCROLL_UP`/`SCROLL_DOWN`
+don't jump the full distance in one motion — each swipe scrolls a total
+of `OSController.FLIP_SCROLL_PIXELS` (500px, raised in two rounds of
+user feedback: an original 90px, then 200px, then a further 2.5x jump
+to 500px after up/down swipes still needed to travel noticeably
+farther) split across `FLIP_SCROLL_TICKS` (18) small ticks with a
+`FLIP_SCROLL_TICK_DELAY` (14ms) pause between each, using a real
+pixel-precise scroll event (`Quartz.CGEventCreateScrollWheelEvent` with
+`kCGScrollEventUnitPixel`, not `pyautogui`'s coarser line/click units)
+so the glide stays visibly animated (~250ms total) despite covering
+much more on-screen distance per swipe. Tune `FLIP_SCROLL_PIXELS`
+up/down further if it still feels too far or too short.
 
 Gestures reuse the same Closed_Fist → Open_Palm swipe-tracking session
 as everywhere else in the system (see `src/processing/gesture/
@@ -138,8 +151,7 @@ One hand is all Cursor mode needs and behaves exactly as before. A
 | Quick pinch (touch and release) | `CLICK` |
 | Quick pinch **twice** in a row | `RIGHT_CLICK` (instead of two clicks) |
 | Pinch, **held or moved**, then dragged | Scroll (see below) — no click fires |
-| Off-hand Closed_Fist, held | Precision mode — see §2.3.1 |
-| Off-hand present, not fisted, primary hand pointing | Two-hand zoom — see §2.3.1 |
+| Off-hand pinch (thumb+index touching), held | Precision mode AND zoom engage together — see §2.3.1 |
 
 **Cursor motion is absolute, mapped directly from the camera frame** —
 the same mechanism the laser pointer (§4) uses. Every frame,
@@ -187,48 +199,97 @@ later frame once the window has passed.
 
 #### 2.3.1 Two-hand functions (off-hand)
 
-`GestureModel` tracks up to two hands (`num_hands=2`). Every check
-described above still operates on exactly one "primary" hand — with
-two hands visible in Cursor mode, primary is whichever one is currently
-doing `Pointing_Up` (`GestureRecognizer._resolve_primary_index`); the
-other is the "off-hand". Outside Cursor mode, or with only one hand
-visible, primary is always hand 0 — identical to pre-two-hand behavior,
-so nothing here can regress any other mode.
+**The off-hand is tracked by a completely separate model from the
+primary hand — not by asking the primary gesture model to track two
+hands.** The primary hand's identity/gesture always comes from
+`GestureModel` (`num_hands=1`, VIDEO mode, exactly as before this
+feature existed — zero change in behavior for the primary hand or any
+mode other than Cursor). A second, independent model,
+`OffHandModel` (`src/processing/gesture/gesture_model.py`,
+`models/hand_landmarker.task`, `num_hands=2`, IMAGE mode, landmarks
+only — no gesture classification step at all) runs in parallel,
+**only while `active_mode == "cursor"`**, purely to find a second hand.
 
-**Precision mode (off-hand `Closed_Fist`)**: like lowering a mouse's
-DPI. Engaging it anchors the primary fingertip's current position;
-while the off-hand fist is held, the published cursor position only
-moves `PRECISION_SCALE` (0.3) of however far the primary hand actually
-moves from that anchor point — fine, deliberate positioning instead of
-the normal full-speed 1:1 follow. This is necessarily a *relative*
-mechanism layered on top of the otherwise strictly *absolute* mapping
-described above — releasing the off-hand fist snaps straight back to
-absolute 1:1 tracking, which means the cursor visibly jumps to match
-wherever the primary fingertip currently, actually is. That jump is an
-intentional, honest consequence of mixing a temporary relative "clutch"
-into an absolute mapping, not a bug — same as lifting and repositioning
-a physical mouse. See `GestureRecognizer._update_pointer`.
+This split exists because of a confirmed MediaPipe bug: `GestureRecognizer`
+with `num_hands > 1` combined with `running_mode=VIDEO` corrupts its
+internal tensor-concatenation calculator
+(`multiplehandgesturerecognizergraph`'s `ConcatenateTensorVectorCalculator`,
+error: `"Packet isn't the sole owner of the holder"`) the first time two
+hands are genuinely detected in the same frame — and the graph does
+**not** recover: every frame afterward fails identically, permanently
+killing gesture recognition, not just the two-hand feature, until the
+process is restarted. `HandLandmarker` (no gesture classification, so
+it never reaches the buggy calculator at all) does not have this bug
+even with `num_hands=2`, which is why the off-hand uses it instead.
 
-**Two-hand zoom (off-hand present, not fisted)**: replaces the earlier
-Alt+single-hand-pinch zoom entirely — no keyboard involved at all now.
-Requires the primary hand to be doing `Pointing_Up` (the same gesture
-already required for the cursor to track anything) and the off-hand to
-be visible but not a fist. The distance between the two hands' index
-fingertips is compared frame-to-frame and published as a `pinch_zoom`
-delta (`GestureRecognizer._check_two_hand_zoom`) — spreading the two
-hands apart zooms in, bringing them together zooms out, the same
-real-world gesture as a two-handed photo pinch-zoom. `ActionExecutor`'s
-consumption of `pinch_zoom` (accumulate deltas, fire
-`OSController.zoom_in()`/`zoom_out()` per `zoom_step_threshold`, 0.05)
-is completely unchanged from the old Alt+pinch mechanism — only the
-*source* of the delta changed, from single-hand pinch distance under
-Alt to two-hand fingertip distance. `zoom_in`/`zoom_out` still send
-Cmd+"="/Cmd+"-", the standard zoom shortcut in Safari, Preview, Photos
-and most other macOS apps.
+**Matching the off-hand to the primary hand**: `OffHandModel` has no
+concept of "primary" vs. "off" — it just returns up to two detected
+hands, in no particular guaranteed order. `GestureRecognizer._find_off_hand`
+resolves this by comparing each of `OffHandModel`'s detected wrists
+against the primary hand's wrist (from `GestureModel`'s own, separate
+result) and picking whichever is **farthest away** — if even the
+farthest candidate is within `SAME_HAND_DISTANCE` (0.15, normalized),
+it's rejected as just `OffHandModel` re-detecting the primary hand
+itself, not a genuine second one, and there is no off-hand this frame.
 
-Precision mode and two-hand zoom are mutually exclusive by construction
-— an off-hand fist has no meaningful "index fingertip" position to zoom
-from, so `_check_off_hand` only ever runs one or the other per frame.
+**Off-hand pinch detection reuses the exact same thumb/index geometry as
+the primary hand's own `PINCH`** (`GestureRecognizer._pinch_distance` <
+`pinch_distance_threshold`) — not a fist shape, and not a MediaPipe
+gesture category (`HandLandmarker` provides no gesture classification at
+all). One off-hand state — pinched or not — now drives both precision
+mode and zoom engagement together, rather than a fist-vs-open shape
+choosing between them.
+
+**Precision mode (off-hand pinch, held)**: like lowering a mouse's DPI.
+Engaging it anchors the primary fingertip's current position; while the
+off-hand pinch is held, the published cursor position only moves
+`PRECISION_SCALE` (0.5) of however far the primary hand actually moves
+from that anchor point — fine, deliberate positioning instead of the
+normal full-speed 1:1 follow. This is necessarily a *relative* mechanism
+layered on top of the otherwise strictly *absolute* mapping described
+above — releasing the off-hand pinch snaps straight back to absolute
+1:1 tracking, which means the cursor visibly jumps to match wherever the
+primary fingertip currently, actually is. That jump is an intentional,
+honest consequence of mixing a temporary relative "clutch" into an
+absolute mapping, not a bug — same as lifting and repositioning a
+physical mouse. See `GestureRecognizer._update_pointer`.
+
+**Zoom (off-hand pinch, held, primary hand's own pinch distance)**: the
+off-hand pinch simultaneously *engages* zoom; the *amount* comes from
+spreading or closing the **primary** hand's own thumb and index apart
+(`GestureRecognizer._check_zoom`, reusing `_pinch_distance` on the
+primary hand) — spreading zooms in, closing zooms out. While zoom is
+engaged this way, the primary hand's own pinch no longer means `CLICK`/
+drag-scroll (see `_handle_frame`'s `zoom_engaged` branch) — the same
+physical touch means one thing or the other depending on whether the
+off-hand is currently pinched. `ActionExecutor`'s consumption of
+`pinch_zoom` (accumulate deltas, fire `OSController.zoom_in()`/
+`zoom_out()` per `zoom_step_threshold`, 0.05) is unchanged; only the
+*source* of the delta changed over this feature's history — first
+single-hand pinch distance while holding Alt, then two-hand fingertip
+distance, now primary-hand pinch distance engaged by an off-hand pinch.
+`zoom_in`/`zoom_out` still send Cmd+"="/Cmd+"-", the standard zoom
+shortcut in Safari, Preview, Photos and most other macOS apps.
+
+**Holding Alt to engage zoom (as a one-handed alternative to the
+off-hand pinch) was removed.** It existed for a while as an `OR`
+alongside the off-hand pinch (`zoom_engaged = self.alt_held or
+off_hand_pinching`, tracked via a raw `keyboard_raw` subscription in
+`GestureRecognizer`, bypassing `KeyboardProcessor`/`mapping.json`
+entirely). Once Alt became the global face-layer modifier (§9.1) —
+`ALT_KEY` held plus `HEAD_TILT_*`/`MOUTH_OPEN`/`DOUBLE_BLINK`/
+`EYEBROWS_UP` firing track-switch/pause/screenshot/volume actions — the
+two uses of Alt collided: holding it to zoom in Cursor mode would
+simultaneously arm all of those face-layer actions, so any incidental
+head movement while zooming (very likely, since zooming draws the eyes
+to the screen) fired an unrelated command. Zoom is off-hand-pinch-only
+now — confirmed by testing to be unambiguous, since it is the only zoom
+trigger that shares no gesture or modifier key with anything else Alt
+now does.
+
+Precision mode and zoom are **not** mutually exclusive anymore — both
+are driven by the same off-hand-pinch state simultaneously, unlike the
+earlier fist-vs-open-shape design that chose one or the other.
 
 ### 2.4 Call — `"call mode"` or `ctrl+shift+w`
 
@@ -396,6 +457,10 @@ screen position.
 |---|---|---|
 | `START` | "start" | `MEDIA_PLAY_PAUSE` |
 | `STOP` | "stop" | `MEDIA_PLAY_PAUSE` |
+| `PAUSE` | "pause" | `MEDIA_PLAY_PAUSE` |
+| `RESET` | "reset" | `MEDIA_PLAY_PAUSE` |
+| `NEXT_TRACK` | "next track" | `NEXT_TRACK` |
+| `PREVIOUS_TRACK` | "previous track" | `PREVIOUS_TRACK` |
 | `EXIT_MODE` | "exit mode" | Leaves the active mode only (§1) |
 | `YES` / `NO` | "yes" / "no" | Reserved, unbound — for a future confirmation prompt |
 
@@ -403,15 +468,27 @@ screen position.
 (via `pyobjc`'s `NSEvent`/`Quartz`, the same event a physical keyboard's
 media key sends) — this is what lets it control **whichever** player
 currently owns "now playing" (Spotify, Music, a browser tab, QuickTime,
-...) rather than being tied to one specific app.
+...) rather than being tied to one specific app. `NEXT_TRACK`/
+`PREVIOUS_TRACK` use the matching system Next/Previous media keys
+(`OSController.next_track`/`previous_track`), same universal reach.
 
 **Known limitation**: macOS only exposes a single toggle-style
 Play/Pause media key, not separate absolute Play-only/Pause-only system
-keys. So "start" and "stop" both send the *identical* event — saying
-"stop" while already paused resumes playback. This is an honest
-consequence of using the one truly universal mechanism rather than
-app-specific AppleScript (which would only work for one player, breaking
-the "any open player" requirement).
+keys. So "start", "stop", "pause" and "reset" all send the *identical*
+event — saying "stop" or "reset" while already paused resumes playback
+instead of restarting the track. This is an honest consequence of using
+the one truly universal mechanism rather than app-specific AppleScript
+(which would only work for one player, breaking the "any open player"
+requirement). "Reset" was deliberately given no separate "restart from
+the beginning" behavior — no cross-player system API for that exists —
+matching the same reasoning already applied to the face layer's
+mouth-open "reset" (§9.1).
+
+**Voice recognition is English-only** (`vosk-model-small-en-us-0.15`) —
+every phrase above must be spoken in English; there is no Ukrainian
+grammar loaded. Grammar is generated automatically from this file's
+`voice` section (`VoskSpeechModel._load_grammar`), so a phrase not
+listed here will never be recognized, no matter how clearly it's said.
 
 ---
 
@@ -475,7 +552,8 @@ recognized by the model but still unused anywhere in this system.
 | `ctrl+shift+f` | Enter Flip mode |
 | `ctrl+shift+c` | Enter Cursor mode |
 | `ctrl+shift+w` | Enter Call mode |
-| `alt+shift` | Activates the face-gesture layer (§9) — works in any mode, or no mode at all |
+| `alt` (bare) | Activates the face-gesture layer (§9) — works in any mode, or no mode at all |
+| `ctrl` (bare) | Volume-down variant of the face-gesture layer (§9.1) — `ctrl` + `EYEBROWS_UP` only, nothing else is bound to bare `ctrl` |
 | Right arrow (bare) | Next slide, Presentation mode only |
 | Left arrow (bare) | Previous slide, Presentation mode only |
 | Esc (bare) | Exit whichever mode is active, from any mode, at any time |
@@ -531,15 +609,21 @@ arrive while the key stays down — the filter means it only fires on the
 actual edge of its own condition becoming satisfied.
 
 Each of the four mode-entry combos is used only as that mode's
-single-source entry trigger, not as a hidden-combo gate. `alt+shift`,
-however, genuinely is a multi-source combo gate — four global `rules` in
-`fusion.json` require `{"keyboard": "SHIFT_ALT_KEY", "face": "..."}`
-together (§9.1). This is exactly the case this held/released mechanism
-was built for: holding `alt+shift` keeps `SHIFT_ALT_KEY` sitting in the
-signal buffer indefinitely, so whichever `face_signal` arrives next
-while it's held — a head tilt, a mouth-open, a double-blink — combines
-with it correctly, no matter how far into the hold that face signal
-happens to occur.
+single-source entry trigger, not as a hidden-combo gate. Bare `alt`,
+however, genuinely is a multi-source combo gate — five global `rules` in
+`fusion.json` require `{"keyboard": "ALT_KEY", "face": "..."}` together
+(§9.1). This is exactly the case this held/released mechanism was built
+for: holding `alt` keeps `ALT_KEY` sitting in the signal buffer
+indefinitely, so whichever `face_signal` arrives next while it's held —
+a head tilt, a mouth-open, a double-blink, a double eyebrow-raise —
+combines with it correctly, no matter how far into the hold that face
+signal happens to occur.
+
+**Originally gated on `alt+shift`, simplified to bare `alt`** after
+hands-on testing showed the extra modifier added friction without
+adding anything — one held key plus a face movement is enough, and nothing
+else in this app's keyboard section uses bare `alt` alone, so there is
+no collision risk.
 
 **Cursor mode's old Alt+single-hand-pinch zoom mechanism, which used to
 be the one exception reading a raw modifier key outside `fusion.json`
@@ -548,7 +632,7 @@ no keyboard involved at all (§2.3.1).
 
 ---
 
-## 9. Face (FaceRecognizer — always on, no mode required)
+## 9. Face (FaceRecognizer — idle-only, suppressed while any mode is active)
 
 A second, independent recognizer (`src/processing/face/face_recognizer
 .py`, `src/processing/face/face_model.py`) running in parallel with the
@@ -559,21 +643,37 @@ task, with `output_face_blendshapes` and
 was confirmed to include the blendshapes and geometry-pipeline files
 needed for both, no custom training required).
 
-Unlike almost everything in `GestureRecognizer`, **nothing here is mode-
-gated** — every check runs and publishes regardless of `current_mode`.
-Whatever consumes a `face_signal` downstream (fusion rules) decides when
-it means something; this class stays unaware of modes entirely, by
-design, per the user's own framing of this feature ("works without a
-separate mode, always").
+**Gated on one single condition: `active_mode is None`.** `_handle_frame`
+returns immediately whenever any mode (Flip, Presentation, Cursor, Call,
+Quick Circle) is active — not just Cursor, as an earlier revision of this
+feature had it. Confirmed by hands-on testing that letting nod/shake/
+tilt/eyebrows/mouth/blink detection keep running inside an active mode
+produced spurious reactions from incidental head movement mixed into
+that mode's own gesture flow (most noticeably Flip mode's swipes). So
+despite the Alt/Ctrl rules in `fusion.json` (§9.1) being written
+mode-independent (`rules`, not `mode_rules`), in practice this whole
+signal family — including the reserved, unbound `CONFIRM`/`CANCEL` —
+only ever fires from idle.
 
 | Signal | How it's detected | Status |
 |---|---|---|
 | `CONFIRM` | Nod — head pitch swings fast one way, then fast back the other way, within `NOD_PHASE_WINDOW` (0.6s) | Reserved, unbound (same status as voice `YES`/`NO`) |
 | `CANCEL` | Shake — identical two-phase swing detection, on head yaw instead of pitch | Reserved, unbound |
 | `HEAD_TILT_LEFT` / `HEAD_TILT_RIGHT` | Head roll past `TILT_ENTER_DEGREES` (15°); must return within `TILT_EXIT_DEGREES` (8°) of neutral before firing again | Wired — §9.1 |
-| `EYEBROWS_UP` / `EYEBROWS_DOWN` | `browInnerUp` blendshape crossing raise (0.5) / lower (0.3) thresholds, edge-triggered | Reserved, unbound — intended as a modifier for future features |
-| `MOUTH_OPEN` | `jawOpen` blendshape crossing 0.5, rising edge only (closing fires nothing) | Wired — §9.1 |
-| `DOUBLE_BLINK` | Two completed blinks (`eyeBlinkLeft`/`eyeBlinkRight` both crossing close/open thresholds) within `DOUBLE_BLINK_WINDOW` (0.5s) of each other. A single blink fires nothing — blinking is frequent and involuntary, only a deliberate double counts. | Wired — §9.1 |
+| `EYEBROWS_UP` / `EYEBROWS_DOWN` | `browInnerUp` blendshape crossing raise (0.4) / lower (0.24) thresholds, edge-triggered | `EYEBROWS_UP` wired — §9.1 (volume). `EYEBROWS_DOWN` reserved, unbound |
+| `DOUBLE_EYEBROWS_UP` | Two `EYEBROWS_UP` rising edges within `DOUBLE_EYEBROWS_WINDOW` (0.6s) of each other. A single raise fires nothing further — same "must be deliberate" reasoning as `DOUBLE_BLINK`. | Detected, but currently unbound — see §9.1's note on why its screenshot binding was removed |
+| `MOUTH_OPEN` | `jawOpen` blendshape crossing 0.4, rising edge only (closing fires nothing) | Wired — §9.1 |
+| `DOUBLE_BLINK` | Two completed blinks (`eyeBlinkLeft`/`eyeBlinkRight` both crossing close (0.4) / open (0.24) thresholds) within `DOUBLE_BLINK_WINDOW` (0.5s) of each other. A single blink fires nothing — blinking is frequent and involuntary, only a deliberate double counts. | Wired — §9.1 |
+
+**Eyebrows/mouth/blink thresholds were lowered 20% from their original
+0.5/0.3 defaults** (`EYEBROWS_RAISE_THRESHOLD`/`MOUTH_OPEN_THRESHOLD`/
+`BLINK_CLOSE_THRESHOLD` 0.5 → 0.4, `EYEBROWS_LOWER_THRESHOLD`/
+`MOUTH_CLOSE_THRESHOLD`/`BLINK_OPEN_THRESHOLD` 0.3 → 0.24) after
+hands-on calibration with `tests/face_calibration_standalone_test.py`
+— the original values needed an unnaturally exaggerated brow-raise/
+mouth-open/eye-close to cross reliably. Head tilt's
+`TILT_ENTER_DEGREES`/`TILT_EXIT_DEGREES` were left unchanged — only
+these three blendshape-based signals needed the adjustment.
 
 **Nod/shake use relative sign changes, not absolute pitch/yaw
 direction** — a "fast swing away, then fast swing back" round trip,
@@ -581,27 +681,66 @@ regardless of which absolute direction it starts in. This makes them
 immune to the head-pose matrix's exact axis-sign convention, which was
 not empirically verified against a real camera (see below).
 
-**Head tilt's left/right labeling was not empirically verified** against
-a real camera, unlike nod/shake — `_check_tilt` picks a sign convention
-for roll that "should" correspond to a physical left/right tilt, but if
-next/previous track come out swapped in practice, flip the comparison
-in `FaceRecognizer._check_tilt`. This is the same category of
-unverified-mirroring caveat already documented for `PointerOverlay.
-MIRROR_X` (§4) — computed from a formula, not confirmed against a live
-camera in this environment.
+**Roll (used only for head tilt) is no longer read from the
+transformation matrix.** It originally used the same rotation-matrix ->
+Euler-angle decomposition as pitch/yaw, but that decomposition assumes
+one specific Euler rotation order; MediaPipe's actual matrix convention
+did not match it in practice, so the extracted roll came out coupled
+with pitch/yaw instead of tracking a clean sideways tilt — no
+`TILT_ENTER_DEGREES`/`TILT_EXIT_DEGREES` value behaved well against a
+signal like that, confirmed by hands-on calibration testing.
+`FaceRecognizer._compute_roll` now computes it directly from 2D image
+geometry instead: the angle of the line between the two outer eye
+corners (landmark indices 33 and 263). Upright, that line is
+horizontal (roll ~ 0); tilting the head rotates it by exactly the
+physical tilt angle, with no 3D matrix convention involved at all —
+pure geometry, so this is the one signal here guaranteed to track
+physical head tilt cleanly. Pitch/yaw (nod/shake) are unaffected and
+still come from the matrix, since nod/shake only look at relative sign
+changes and were never reported as unreliable.
 
-### 9.1 The Shift+Alt face layer
+**Head tilt's left/right labeling WAS verified against a real camera,
+and came out backwards.** Tilting the head to the subject's own right
+produced a *negative* `roll` from the raw `atan2(delta_y, delta_x)`
+geometry, which fired `HEAD_TILT_LEFT` instead of `HEAD_TILT_RIGHT` —
+confirmed by hands-on testing (physical right tilt was switching to
+the *previous* track, not the next one). `_compute_roll` now negates
+the whole angle to correct this: `return -math.degrees(atan2(...))`.
 
-Four global `rules` in `fusion.json` combine a held `alt+shift`
-(`SHIFT_ALT_KEY`) with a specific `face_signal`, firing regardless of
-mode (`rules`, not `mode_rules` — see §1):
+**Do not "fix" a direction flip like this by swapping
+`RIGHT_EYE_OUTER_CORNER`/`LEFT_EYE_OUTER_CORNER` instead** — that
+negates *both* `delta_x` and `delta_y`, which rotates the angle by 180
+degrees (`atan2(-y, -x) != -atan2(y, x)`), wrecking the roll ~ 0
+upright baseline rather than just flipping which physical tilt reads
+as positive vs negative. Negating the final returned angle is the only
+correct way to mirror this signal. This is the same category of
+unverified-mirroring caveat already documented for
+`PointerOverlay.MIRROR_X` (§4) — computed from a formula, and now
+actually confirmed (and corrected) against a live camera, unlike that
+one.
+
+### 9.1 The Alt/Ctrl face layer
+
+Six global `rules` in `fusion.json` combine a held bare `alt` (`ALT_KEY`)
+or `ctrl` (`CTRL_KEY`) with a specific `face_signal` (`rules`, not
+`mode_rules` — see §1). These rules themselves are written mode-
+independent, but `FaceRecognizer` only publishes any `face_signal` at
+all while idle (`active_mode is None`) — confirmed by hands-on testing
+that letting nod/shake/tilt/eyebrows/mouth/blink detection keep running
+inside an active mode (Flip, Presentation, Cursor, Call, Quick Circle)
+produced spurious reactions from incidental head movement during that
+mode's own gesture flow (e.g. Flip mode's swipes). So in practice this
+whole layer, and `CONFIRM`/`CANCEL`, only ever fire from idle, not
+"regardless of mode" as the rules' own shape would suggest:
 
 | Held + face signal | Action |
 |---|---|
-| `alt+shift` + `HEAD_TILT_RIGHT` | `NEXT_TRACK` |
-| `alt+shift` + `HEAD_TILT_LEFT` | `PREVIOUS_TRACK` |
-| `alt+shift` + `MOUTH_OPEN` | `MEDIA_PLAY_PAUSE` (same toggle as voice "start"/"stop", §5) |
-| `alt+shift` + `DOUBLE_BLINK` | `TAKE_SCREENSHOT` |
+| `alt` + `HEAD_TILT_RIGHT` | `NEXT_TRACK` |
+| `alt` + `HEAD_TILT_LEFT` | `PREVIOUS_TRACK` |
+| `alt` + `MOUTH_OPEN` | `MEDIA_PLAY_PAUSE` (same toggle as voice "start"/"stop"/"pause"/"reset", §5) |
+| `alt` + `DOUBLE_BLINK` | `TAKE_SCREENSHOT` |
+| `alt` + `EYEBROWS_UP` | `VOLUME_UP` |
+| `ctrl` + `EYEBROWS_UP` | `VOLUME_DOWN` |
 
 `NEXT_TRACK`/`PREVIOUS_TRACK` post the real macOS system Next/Previous
 media keys (`OSController.next_track`/`previous_track`) — the exact
@@ -612,7 +751,14 @@ playing", not tied to one specific app. `TAKE_SCREENSHOT` sends
 Cmd+Shift+3 (macOS's built-in full-screen capture, saved to the
 desktop) — not the interactive region-select variant (Cmd+Shift+4),
 since that needs a follow-up mouse drag a gesture-only trigger can't
-provide.
+provide. `VOLUME_UP`/`VOLUME_DOWN` post `NX_KEYTYPE_SOUND_UP`/
+`NX_KEYTYPE_SOUND_DOWN` through the same helper — unlike the other
+three, these are handled directly by CoreAudio at the system level and
+do **not** depend on any app registering as "Now Playing", so they work
+regardless of what (if anything) is playing. One eyebrow-raise = one
+volume tick (the same step a physical volume key press does, ~6.25% of
+the range), not a continuous ramp — `_check_eyebrows` is edge-triggered,
+so holding the eyebrows raised does not repeat-fire it.
 
 **"Reset" on mouth-open was interpreted as reusing the play/pause
 toggle**, not a separate "restart current track" action — no system-
@@ -623,9 +769,61 @@ existing, already-documented action rather than inventing a new one.
 **Double-blink was explicitly removed from this system in an earlier
 round of design** (this project's very first redesign explicitly said
 to drop it) and has now been explicitly reintroduced, scoped narrowly
-to this one Shift+Alt-gated screenshot trigger rather than restored
-as a general-purpose gesture — worth knowing if `git log`/older docs
-still describe it as removed.
+to this one Alt-gated screenshot trigger rather than restored as a
+general-purpose gesture — worth knowing if `git log`/older docs still
+describe it as removed.
+
+**`DOUBLE_EYEBROWS_UP`'s screenshot binding (`face_layer_screenshot_
+eyebrows`) was added, then removed.** It briefly existed as a second way
+to trigger the screenshot, alongside double-blink. Once `EYEBROWS_UP`
+(the single-raise signal) was wired to `alt` + `EYEBROWS_UP` for volume,
+keeping it would have meant every double-raise-for-screenshot attempt
+under `alt` *also* bumped the volume up twice as an unwanted side
+effect — `_check_eyebrows` always fires the plain `EYEBROWS_UP` signal
+on every rising edge, including both raises that make up a double-raise.
+Removing the eyebrows screenshot rule keeps double-blink as the sole
+screenshot trigger and eyebrows dedicated to volume, with no overlap.
+`FaceRecognizer` still detects and publishes `DOUBLE_EYEBROWS_UP` (see
+the signal table above) — it's just unbound again, the same "reserved"
+status `EYEBROWS_DOWN` already has.
+
+**Known limitation: system media keys don't reach video played
+*through* an app that doesn't register as "Now Playing".** Confirmed in
+practice with a YouTube video played inside Zoom (e.g. via its
+screen-share "optimize for video clip" path, which renders through
+Zoom's own engine rather than a real browser tab) — `NEXT_TRACK`/
+`PREVIOUS_TRACK`/`MEDIA_PLAY_PAUSE` printed correctly in the console
+(the pipeline and `OSController` both did their job) but had no effect,
+because Zoom itself never told macOS it has a "Now Playing" session for
+that content. A real physical hardware media key would face the
+identical limitation — this is not something fixable from this app's
+side. The same YouTube video played in a plain Safari/Chrome tab (which
+*does* use the Media Session API) is the way to confirm the feature
+itself works.
+
+### 9.2 `--debug-face` calibration view
+
+`src/processing/face/face_debug_view.py` — same role as
+`GestureDebugView` (§2), for `FaceRecognizer`'s thresholds instead of
+the hand. Subscribes to a new `face_debug` event (published every frame
+by `FaceRecognizer._publish_debug`) carrying pitch/yaw/roll,
+`tilt_zone`, and the raw `browInnerUp`/`jawOpen`/`eyeBlinkLeft`/
+`eyeBlinkRight` blendshape scores alongside the exact threshold
+constants each one is compared against.
+
+Opened with `python src/main.py --debug-face`. Draws pitch/yaw/roll as
+text, the current `tilt_zone` next to its enter/exit degrees, and one
+progress bar per blendshape score with a red tick at the "enter"
+threshold and a blue tick at the "exit" (hysteresis) threshold — the
+bar visibly crossing a tick is the same moment the matching
+`face_signal` fires in the console, which is what makes it useful for
+tuning `TILT_ENTER_DEGREES`/`EYEBROWS_RAISE_THRESHOLD`/
+`MOUTH_OPEN_THRESHOLD`/etc. against a specific face and camera instead
+of guessing at the numbers from source alone. Like
+`GestureDebugView`, rendering happens on the main thread only (`main
+()`'s loop calls `render()`), since `cv2.imshow`/`cv2.waitKey` require
+that on macOS; `_handle_debug` just stores the latest snapshot from
+whichever thread published it.
 
 ---
 
@@ -673,6 +871,12 @@ still describe it as removed.
   to start at all — verified present in this repo with the blendshapes
   and geometry-pipeline components needed for §9's blendshape/head-pose
   detection (not just bare landmarks).
+- **`models/hand_landmarker.task`** must be present for `OffHandModel`
+  (Cursor mode's off-hand tracking, §2.3.1) — verified present in this
+  repo. Like the other two model files, a missing file raises at
+  `GestureRecognizer` construction time (app startup), not a silent
+  no-op — `OffHandModel` is built unconditionally in `__init__`, same as
+  `GestureModel` and `FaceModel`.
 
 ---
 
@@ -740,17 +944,36 @@ environment `enter_actions`/`exit_actions`) all still exist.
   actual reason the cursor kept failing to visibly track the finger.
 - **Window Management mode was replaced by Call mode** (§2.4) — see the
   bullet above.
-- **Cursor mode now supports a second hand** (§2.3.1): off-hand
-  `Closed_Fist` engages a 0.3x "precision mode" for fine cursor
-  positioning; an off-hand present but not fisted drives zoom by
-  two-hand fingertip distance. `GestureModel.num_hands` changed from 1
-  to 2 to support this — every existing single-hand check still operates
-  on exactly one "primary" hand, resolved per-frame, so single-hand use
-  is unaffected.
-- **Alt+single-hand-pinch zoom was removed and replaced** by the
-  two-hand distance zoom above — no keyboard involved in Cursor-mode
-  zoom anymore. `GestureRecognizer._handle_keyboard_raw`/`alt_held`/
-  `_check_zoom` no longer exist.
+- **Cursor mode now supports a second hand** (§2.3.1): an off-hand pinch,
+  held, engages a 0.5x "precision mode" for fine cursor positioning and
+  simultaneously arms zoom, whose amount then comes from the primary
+  hand's own pinch distance (this design has since moved twice more —
+  see §2.3.1 for its current, accurate description; treat the shape/
+  distance details in this bullet as history, not current behavior).
+  Tracked by a brand new, separate `OffHandModel`
+  (`HandLandmarker`, landmarks only), not by giving the primary
+  `GestureModel` `num_hands=2` — see the crash/fix bullet immediately
+  below for why. Every existing single-hand check (motion tracking,
+  pinch, static gestures) is completely untouched — the primary hand's
+  model, options, and running mode are byte-for-byte what they were
+  before this feature existed.
+- **Fixed: `GestureModel` with `num_hands=2` crashed gesture recognition
+  entirely once two hands appeared in frame together** —
+  `RuntimeError: CalculatorGraph::Run() failed: ... "Packet isn't the
+  sole owner of the holder"`, and every frame afterward failed
+  identically (the graph does not self-recover). This was the two-hand
+  Cursor mode's first implementation, briefly in this codebase's history
+  — reverted to `num_hands=1` for `GestureModel`, off-hand tracking
+  moved entirely to the separate `OffHandModel` described above. See
+  §2.3.1 for the full explanation.
+- **Alt+single-hand-pinch zoom was removed, replaced by two-hand
+  fingertip-distance zoom, which was itself later replaced** by the
+  off-hand-pinch-engages/primary-hand-pinch-drives design in §2.3.1 —
+  and Alt came back a second time (as an alternative "or" alongside the
+  off-hand pinch) before being removed again for good once Alt became
+  the global face-layer modifier (§9.1), which it could no longer share
+  cleanly. `GestureRecognizer._handle_keyboard_raw`/`alt_held` no longer
+  exist; `_check_zoom` still does, it just never reads Alt.
 - **A second, independent recognizer was added**: `FaceRecognizer`
   (§9), running in parallel with `GestureRecognizer` off the same
   camera frames, using `models/face_landmarker.task`. Publishes
@@ -772,11 +995,17 @@ environment `enter_actions`/`exit_actions`) all still exist.
 
 Cannot be fully automated headlessly — needs a real camera, microphone,
 macOS desktop, and Accessibility permission. Run `python src/main.py`
-(add `--debug-gesture` for a live gesture-calibration overlay) and
-manually verify:
+(add `--debug-gesture` for a live gesture-calibration overlay, or
+`--debug-face` for the equivalent head-pose/eyebrows/mouth/blink
+overlay — see §9.2) and manually verify:
 
 - **Voice**: speak each app-opening phrase and each mode/environment
   trigger, confirm `[EXECUTOR] <ACTION>` prints and the effect happens.
+  Also test the media phrases with something actually playing (Spotify,
+  a YouTube tab, ...): "next track", "previous track", "pause", "reset",
+  "start", "stop" — confirm each fires and that "pause"/"reset"/"stop"
+  all just toggle play/pause (§5's documented single-toggle-key
+  limitation), they do not restart the track.
 - **Keyboard**: hold each mode-entry combo; press bare Right/Left arrows
   only while in Presentation mode.
 - **Gestures**: use `--debug-gesture` to calibrate `pinch_distance_
@@ -809,18 +1038,46 @@ manually verify:
 - **"exit mode" scope**: enter an environment, then a mode, say "exit
   mode", confirm only the mode cleared and the environment's apps/DND
   state are untouched.
-- **Face layer**: hold `alt+shift` and tilt your head right/left —
-  confirm next/previous track fires (and note which physical direction
-  actually maps to which, per the unverified-labeling caveat in §9).
-  Open your mouth — confirm play/pause. Blink twice quickly — confirm a
-  screenshot appears on the desktop; confirm a single blink does
-  nothing. Release `alt+shift` and repeat — confirm nothing fires
-  without it held. Separately, without `alt+shift` held, nod and shake
-  your head — confirm the console shows `CONFIRM`/`CANCEL` firing
-  (reserved, no visible effect yet).
+- **Face layer**: hold `alt` and tilt your head right/left — confirm
+  next/previous track fires (and note which physical direction actually
+  maps to which, per the unverified-labeling caveat in §9 — this was
+  checked against a real camera and corrected once already, but re-verify
+  after any further change to `_compute_roll`). A tilt is a sideways
+  lean (ear toward shoulder) with the face still pointed at the camera —
+  turning/rotating the head to look left or right is a different motion
+  (yaw) and may instead fire `CANCEL` (shake) with no tilt effect at
+  all; use `--debug-face` to watch `roll` vs `yaw` live if it's unclear
+  which one a given movement produced. Open your mouth — confirm
+  play/pause. Blink twice quickly — confirm a screenshot appears on the
+  desktop (check `defaults read com.apple.screencapture location` if the
+  default save folder was changed); confirm a single blink does nothing.
+  Hold `alt` and raise your eyebrows once — confirm the volume goes up
+  one tick; hold `ctrl` and raise your eyebrows once — confirm it goes
+  down one tick instead. Release `alt`/`ctrl` and repeat — confirm
+  nothing fires without one of them held. Separately, without `alt` or
+  `ctrl` held, nod and shake your head — confirm the console shows
+  `CONFIRM`/`CANCEL` firing (reserved, no visible effect yet).
+- **Media keys vs. an app that doesn't register "Now Playing"**: if
+  next/previous/play-pause print correctly in the console
+  (`[EXECUTOR] NEXT_TRACK`, etc.) but nothing happens to the actual
+  video, first confirm the video is playing in a real Safari/Chrome tab,
+  not embedded in another app (Zoom's screen-share "optimize for video
+  clip" path was confirmed to swallow these keys with no error at all —
+  see §9.1). If it works in a plain browser tab but not elsewhere,
+  that's this limitation, not a bug in this app.
+- **`--debug-face` calibration**: run with the flag, confirm a "Face
+  Debug" window opens showing live pitch/yaw/roll and a bar per
+  blendshape (eyebrows/mouth/blink) with red/blue tick marks at the
+  enter/exit thresholds. Tilt your head until `tilt_zone` flips to
+  `left`/`right` at roughly `TILT_ENTER_DEGREES`; raise your eyebrows
+  and confirm the bar crosses the red tick at the same moment
+  `EYEBROWS_UP` prints in the console. If a threshold fires too early/
+  late/not at all for your face and lighting, adjust the matching
+  constant in `FaceRecognizer` (`TILT_ENTER_DEGREES`,
+  `EYEBROWS_RAISE_THRESHOLD`, `MOUTH_OPEN_THRESHOLD`, etc.) and re-run.
 
 Visual-inspection-only: laser pointer / Cursor-mode cursor position
 accuracy and mirroring direction, the Quick Command Circle's on-screen
-appearance, Flip mode's frontmost-app heuristic (test with a flippable
-app like Preview vs. a non-flippable one to confirm the Space-switch
-fallback), precision-mode's cursor slowdown feel.
+appearance, Flip mode's left/right Space-switch (`Ctrl+Right`/
+`Ctrl+Left`, now unconditional — see §2.2), precision-mode's cursor
+slowdown feel.

@@ -245,27 +245,69 @@
         },
 
         {
+            "name": "media_pause_voice",
+            "conditions": { "voice": "PAUSE" },
+            "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "media_reset_voice",
+            "conditions": { "voice": "RESET" },
+            "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "media_next_track_voice",
+            "conditions": { "voice": "NEXT_TRACK" },
+            "action": "NEXT_TRACK"
+        },
+
+        {
+            "name": "media_previous_track_voice",
+            "conditions": { "voice": "PREVIOUS_TRACK" },
+            "action": "PREVIOUS_TRACK"
+        },
+
+        {
             "name": "face_layer_next_track",
-            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "HEAD_TILT_RIGHT" },
+            "conditions": { "keyboard": "ALT_KEY", "face": "HEAD_TILT_RIGHT" },
             "action": "NEXT_TRACK"
         },
 
         {
             "name": "face_layer_previous_track",
-            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "HEAD_TILT_LEFT" },
+            "conditions": { "keyboard": "ALT_KEY", "face": "HEAD_TILT_LEFT" },
             "action": "PREVIOUS_TRACK"
         },
 
         {
             "name": "face_layer_pause",
-            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "MOUTH_OPEN" },
+            "conditions": { "keyboard": "ALT_KEY", "face": "MOUTH_OPEN" },
+            "action": "MEDIA_PLAY_PAUSE"
+        },
+
+        {
+            "name": "face_cancel_pause",
+            "conditions": { "face": "CANCEL" },
             "action": "MEDIA_PLAY_PAUSE"
         },
 
         {
             "name": "face_layer_screenshot",
-            "conditions": { "keyboard": "SHIFT_ALT_KEY", "face": "DOUBLE_BLINK" },
+            "conditions": { "keyboard": "ALT_KEY", "face": "DOUBLE_BLINK" },
             "action": "TAKE_SCREENSHOT"
+        },
+
+        {
+            "name": "face_layer_volume_up",
+            "conditions": { "keyboard": "ALT_KEY", "face": "EYEBROWS_UP" },
+            "action": "VOLUME_UP"
+        },
+
+        {
+            "name": "face_layer_volume_down",
+            "conditions": { "keyboard": "CTRL_KEY", "face": "EYEBROWS_UP" },
+            "action": "VOLUME_DOWN"
         }
 
     ],
@@ -318,14 +360,14 @@
             "name": "flip_right",
             "mode": "flip",
             "conditions": { "gesture": "HAND_RIGHT" },
-            "action": "FLIP_NEXT"
+            "action": "FLIP_PREVIOUS"
         },
 
         {
             "name": "flip_left",
             "mode": "flip",
             "conditions": { "gesture": "HAND_LEFT" },
-            "action": "FLIP_PREVIOUS"
+            "action": "FLIP_NEXT"
         },
 
         {
