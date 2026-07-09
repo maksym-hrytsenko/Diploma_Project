@@ -1,9 +1,15 @@
 import json
 import os
 
+from concurrent.futures import ProcessPoolExecutor
+
 from vosk import (
     Model,
     KaldiRecognizer
+)
+
+from processing.speech.open_vocab_worker import (
+    transcribe_task
 )
 
 
@@ -31,7 +37,14 @@ class VoskSpeechModel:
 
         self.utterance_chunks = []
 
-        self.open_vocab_model = None
+        # Lazily created. Whisper transcription runs in a
+        # separate OS process (not just a thread) so that a
+        # slow/cold model load or a long transcription can
+        # never hold the CPython GIL and stall other threads
+        # in this process — in particular the pynput
+        # CGEventTap callback thread, which macOS will
+        # permanently disable if it does not return quickly.
+        self.open_vocab_executor = None
 
         self._load_nlu_fallback_config()
 
@@ -275,16 +288,31 @@ class VoskSpeechModel:
         if len(audio_bytes) < self.min_fallback_audio_bytes:
             return None
 
-        if self.open_vocab_model is None:
+        if self.open_vocab_executor is None:
 
-            from processing.speech.open_vocab_model import (
-                OpenVocabSpeechModel
+            self.open_vocab_executor = ProcessPoolExecutor(
+                max_workers=1
             )
 
-            self.open_vocab_model = OpenVocabSpeechModel(
-                model_repo=self.open_vocab_model_id
-            )
-
-        return self.open_vocab_model.transcribe(
+        future = self.open_vocab_executor.submit(
+            transcribe_task,
+            self.open_vocab_model_id,
             audio_bytes
         )
+
+        return future.result()
+
+    # ---------------------------------
+    # Shutdown
+    # ---------------------------------
+
+    def close(self):
+
+        if self.open_vocab_executor is not None:
+
+            self.open_vocab_executor.shutdown(
+                wait=False,
+                cancel_futures=True
+            )
+
+            self.open_vocab_executor = None

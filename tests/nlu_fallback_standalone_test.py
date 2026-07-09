@@ -59,85 +59,106 @@ TEST_CASES = [
 
 # =====================================
 # RUN
+#
+# Semantic/LLM matching now runs in a
+# separate worker process (see
+# ProcessPoolExecutor in intent_model.py),
+# which on macOS requires the process-
+# spawning code to sit behind a
+# `if __name__ == "__main__":` guard.
 # =====================================
 
-print("Loading IntentModel...")
+def run():
 
-model = IntentModel(
-    event_bus=None,
-    state_manager=None
-)
+    print("Loading IntentModel...")
 
-print(
-    f"nlu_fallback.enabled = {model.nlu_fallback_enabled}"
-)
-
-print(
-    f"semantic_threshold = {model.semantic_threshold}, "
-    f"llm_model = {model.llm_model_id}\n"
-)
-
-passed = 0
-
-for phrase, expected in TEST_CASES:
-
-    # Wake word must precede every command now that the
-    # wake-word window gate is active.
-    model.process_text(
-        model.wake_word
+    model = IntentModel(
+        event_bus=None,
+        state_manager=None
     )
-
-    start_time = time.time()
-
-    result = model.process_text(phrase)
-
-    latency = time.time() - start_time
-
-    command = (
-        result.get("command")
-        if result
-        else None
-    )
-
-    confidence = (
-        result.get("confidence")
-        if result
-        else None
-    )
-
-    if confidence == 1.0:
-        tier = "exact"
-
-    elif confidence == model.llm_confidence:
-        tier = "llm"
-
-    elif confidence is not None:
-        tier = "semantic"
-
-    else:
-        tier = "none"
-
-    ok = command == expected
-
-    passed += int(ok)
-
-    status = "PASS" if ok else "FAIL"
 
     print(
-        f"[{status}] \"{phrase}\" -> {command} "
-        f"(tier={tier}, confidence={confidence}, "
-        f"{latency:.3f}s)"
+        f"nlu_fallback.enabled = {model.nlu_fallback_enabled}"
     )
 
-print(
-    f"\n{passed}/{len(TEST_CASES)} passed"
-)
+    print(
+        f"semantic_threshold = {model.semantic_threshold}, "
+        f"llm_model = {model.llm_model_id}\n"
+    )
 
-print(
-    "\nNote: this only covers text -> intent matching. "
-    "The audio -> text side (grammar miss -> [unk] -> "
-    "open-vocab Whisper re-transcription) needs a live "
-    "microphone; run `python src/main.py` and speak an "
-    "unregistered phrase to exercise that path manually, "
-    "per the checklist in docs/SYSTEM_FUNCTIONS.md."
-)
+    passed = 0
+
+    for phrase, expected in TEST_CASES:
+
+        # Wake word must precede every command now that the
+        # wake-word window gate is active.
+        model.process_text(
+            model.wake_word
+        )
+
+        start_time = time.time()
+
+        result = model.process_text(phrase)
+
+        latency = time.time() - start_time
+
+        command = (
+            result.get("command")
+            if result
+            else None
+        )
+
+        confidence = (
+            result.get("confidence")
+            if result
+            else None
+        )
+
+        if confidence == 1.0:
+            tier = "exact"
+
+        elif confidence == model.llm_confidence:
+            tier = "llm"
+
+        elif confidence is not None:
+            tier = "semantic"
+
+        else:
+            tier = "none"
+
+        ok = command == expected
+
+        passed += int(ok)
+
+        status = "PASS" if ok else "FAIL"
+
+        print(
+            f"[{status}] \"{phrase}\" -> {command} "
+            f"(tier={tier}, confidence={confidence}, "
+            f"{latency:.3f}s)"
+        )
+
+    print(
+        f"\n{passed}/{len(TEST_CASES)} passed"
+    )
+
+    print(
+        "\nNote: this only covers text -> intent matching. "
+        "The audio -> text side (grammar miss -> [unk] -> "
+        "open-vocab Whisper re-transcription) needs a live "
+        "microphone; run `python src/main.py` and speak an "
+        "unregistered phrase to exercise that path manually, "
+        "per the checklist in docs/SYSTEM_FUNCTIONS.md."
+    )
+
+    if model.nlu_executor is not None:
+
+        model.nlu_executor.shutdown(
+            wait=False,
+            cancel_futures=True
+        )
+
+
+if __name__ == "__main__":
+
+    run()

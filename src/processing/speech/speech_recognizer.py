@@ -44,6 +44,8 @@ class SpeechRecognizer:
             self.on_audio
         )
 
+        self.vosk_model.close()
+
     # ---------------------------------
     # Audio Handler
     # ---------------------------------

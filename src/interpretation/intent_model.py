@@ -1,6 +1,13 @@
 import json
 import time
 
+from concurrent.futures import ProcessPoolExecutor
+
+from interpretation.nlu_fallback_worker import (
+    semantic_match_task,
+    llm_interpret_task
+)
+
 
 class IntentModel:
 
@@ -101,9 +108,15 @@ class IntentModel:
             "mlx-community/Llama-3.2-3B-Instruct-4bit"
         )
 
-        self.semantic_matcher = None
-
-        self.llm_fallback = None
+        # Lazily created. Semantic matching and LLM
+        # inference run in a separate OS process (not just
+        # a thread) so a slow/cold model load or a long LLM
+        # generation can never hold the CPython GIL and
+        # stall other threads in this process — in
+        # particular the pynput CGEventTap callback thread,
+        # which macOS will permanently disable if it does
+        # not return quickly.
+        self.nlu_executor = None
 
     # ---------------------------------
     # Start / Stop
@@ -122,6 +135,15 @@ class IntentModel:
             "text_ready",
             self._handle_text
         )
+
+        if self.nlu_executor is not None:
+
+            self.nlu_executor.shutdown(
+                wait=False,
+                cancel_futures=True
+            )
+
+            self.nlu_executor = None
 
     # ---------------------------------
     # Handle Text
@@ -305,7 +327,21 @@ class IntentModel:
         )
 
     # ---------------------------------
-    # Semantic Fallback (lazy)
+    # NLU Worker Process (lazy)
+    # ---------------------------------
+
+    def _get_nlu_executor(self):
+
+        if self.nlu_executor is None:
+
+            self.nlu_executor = ProcessPoolExecutor(
+                max_workers=1
+            )
+
+        return self.nlu_executor
+
+    # ---------------------------------
+    # Semantic Fallback
     # ---------------------------------
 
     def _match_semantic(
@@ -313,23 +349,19 @@ class IntentModel:
         text
     ):
 
-        if self.semantic_matcher is None:
+        executor = self._get_nlu_executor()
 
-            from interpretation.semantic_matcher import (
-                SemanticMatcher
-            )
-
-            self.semantic_matcher = SemanticMatcher(
-                self.voice_commands
-            )
-
-        return self.semantic_matcher.match(
-            text,
-            self.semantic_threshold
+        future = executor.submit(
+            semantic_match_task,
+            self.voice_commands,
+            self.semantic_threshold,
+            text
         )
 
+        return future.result()
+
     # ---------------------------------
-    # LLM Fallback (lazy)
+    # LLM Fallback
     # ---------------------------------
 
     def _match_llm(
@@ -337,20 +369,16 @@ class IntentModel:
         text
     ):
 
-        if self.llm_fallback is None:
+        executor = self._get_nlu_executor()
 
-            from interpretation.llm_intent_fallback import (
-                LLMIntentFallback
-            )
-
-            self.llm_fallback = LLMIntentFallback(
-                self.voice_commands,
-                model_repo=self.llm_model_id
-            )
-
-        return self.llm_fallback.interpret(
+        future = executor.submit(
+            llm_interpret_task,
+            self.voice_commands,
+            self.llm_model_id,
             text
         )
+
+        return future.result()
 
     # ---------------------------------
     # Normalize Text
