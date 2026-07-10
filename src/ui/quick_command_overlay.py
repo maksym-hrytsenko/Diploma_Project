@@ -12,6 +12,8 @@ from PyQt6.QtGui import (
 
 from PyQt6.QtWidgets import QWidget
 
+from ui.native_window import configure_overlay_window
+
 
 class QuickCommandOverlay(QWidget):
 
@@ -20,10 +22,10 @@ class QuickCommandOverlay(QWidget):
     # as display labels, the actual gesture -> mode wiring
     # lives entirely in fusion.json / SignalMapper.
     LABELS = {
-        "up": "Presentation",
-        "down": "Window Management",
-        "left": "Flip",
-        "right": "Cursor"
+        "up": "Flip",
+        "down": "Cursor",
+        "left": "Presentation",
+        "right": "Call Mode"
     }
 
     RADIUS = 140
@@ -55,6 +57,14 @@ class QuickCommandOverlay(QWidget):
 
         self.setGeometry(
             screen.geometry()
+        )
+
+        # Must run after every setWindowFlags/setAttribute
+        # call above — Qt may rebuild the native NSWindow
+        # when those change, silently discarding whatever
+        # collectionBehavior/level was set on the old one.
+        configure_overlay_window(
+            self
         )
 
         self.circle_visible = False

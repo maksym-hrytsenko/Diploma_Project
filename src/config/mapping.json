@@ -32,6 +32,7 @@
 
         "NEXT_SLIDE": "next slide",
         "PREVIOUS_SLIDE": "previous slide",
+        "START_SLIDESHOW": "start presentation",
 
         "WORK_MODE": "work mode",
         "STUDY_MODE": "study mode",
@@ -72,6 +73,7 @@
         "HAND_DOWN": "HAND_DOWN",
 
         "HAND_SESSION_START": "HAND_SESSION_START",
+        "HAND_SESSION_END": "HAND_SESSION_END",
 
         "PINCH": "PINCH",
         "DOUBLE_PINCH": "DOUBLE_PINCH",
@@ -132,6 +134,7 @@
 
             "NEXT_SLIDE",
             "PREVIOUS_SLIDE",
+            "START_SLIDESHOW",
 
             "WORK_MODE",
             "STUDY_MODE",
@@ -172,6 +175,7 @@
             "HAND_DOWN",
 
             "HAND_SESSION_START",
+            "HAND_SESSION_END",
 
             "PINCH",
             "DOUBLE_PINCH",

@@ -18,7 +18,8 @@ class TemporalSync:
         source,
         signal,
         confidence=1.0,
-        persistent=False
+        persistent=False,
+        tier=None
     ):
 
         self.signals[source] = {
@@ -35,7 +36,12 @@ class TemporalSync:
             # — a key held longer than the timeout should
             # not silently drop out of the buffer while
             # still physically pressed.
-            "persistent": persistent
+            "persistent": persistent,
+
+            # Voice-only: "exact" / "semantic" / "llm" —
+            # which tier of IntentModel resolved this signal.
+            # None for every other source.
+            "tier": tier
         }
 
         self.cleanup()

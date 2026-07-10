@@ -35,6 +35,36 @@ class CameraInput:
 
             return
 
+        # Request a higher capture resolution than most
+        # webcams default to. More pixels on the hand matters
+        # most at Presentation Mode's typical 2-4m distance,
+        # where a hand covers a much smaller part of the frame
+        # than it does at desk distance — the camera may not
+        # honor this exactly, so the actually granted size is
+        # read back and logged.
+        self.cap.set(
+            cv2.CAP_PROP_FRAME_WIDTH,
+            1280
+        )
+
+        self.cap.set(
+            cv2.CAP_PROP_FRAME_HEIGHT,
+            720
+        )
+
+        actual_width = self.cap.get(
+            cv2.CAP_PROP_FRAME_WIDTH
+        )
+
+        actual_height = self.cap.get(
+            cv2.CAP_PROP_FRAME_HEIGHT
+        )
+
+        print(
+            f"[CameraInput] Resolution: "
+            f"{int(actual_width)}x{int(actual_height)}"
+        )
+
         self.running = True
 
         self.thread = threading.Thread(

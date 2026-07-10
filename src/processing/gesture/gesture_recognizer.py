@@ -24,6 +24,15 @@ class GestureRecognizer:
     # already reaches the screen's edge.
     ACTIVE_ZONE_MARGIN = 0.1
 
+    # Presentation mode's own pointer (see
+    # _update_presentation_pointer) measures its relative
+    # control box in units of the presenter's own hand size —
+    # this many hand-widths, centered on wherever pointing
+    # started, sweep the full screen. Deliberately an
+    # approximate, user-tuned comfort setting rather than
+    # something derived geometrically.
+    PRESENTATION_POINTER_BOX_HANDS = 4.0
+
     # Below this normalized distance between two detected
     # wrists, OffHandModel's result is treated as re-detecting
     # the SAME physical hand GestureModel already found as
@@ -172,6 +181,68 @@ class GestureRecognizer:
         self.last_motion_time = 0
 
         self.motion_cooldown = 0.5
+
+        # ---------------------------------
+        # Presentation Mode: Fist Swipe
+        # ---------------------------------
+
+        # Unlike the swipe above (armed by a Closed_Fist ->
+        # Open_Palm transition, tracks the index fingertip),
+        # Presentation mode's slide-switch gesture needs no
+        # separate "arm" step: holding a closed fist IS the
+        # active state, and the WRIST (landmark 0, larger and
+        # more central than a fingertip) is tracked instead,
+        # since it stays reliably trackable even clenched and
+        # farther from the camera than desk-distance gestures
+        # were tuned for. Kept as its own detector — reusing
+        # _resolve_signal's direction math, but with its own
+        # thresholds below — so calibrating it for presenting
+        # distance never touches the Flip-mode swipe above.
+        self.presentation_fist_previous_x = None
+        self.presentation_fist_previous_y = None
+        self.presentation_fist_previous_time = None
+
+        self.presentation_fist_last_motion_time = 0
+
+        # Tuned down from the Flip-mode swipe's defaults
+        # (1.8 / 0.015) after live testing at actual
+        # presenting distance with
+        # tests/presentation_fist_swipe_standalone_test.py —
+        # a wrist swipe reads as slower/smaller motion than a
+        # fingertip swipe at the same physical speed, and this
+        # is meant to be comfortable a few meters from the
+        # camera.
+        self.presentation_fist_velocity_threshold = 0.5
+
+        self.presentation_fist_min_frame_distance = 0.0075
+
+        self.presentation_fist_vertical_cone_degrees = 25
+
+        self.presentation_fist_motion_cooldown = 0.5
+
+        # ---------------------------------
+        # Presentation Mode: Relative Laser Pointer
+        # ---------------------------------
+
+        # Distance-invariant alternative to the absolute
+        # fingertip mapping _update_pointer otherwise uses
+        # (Cursor mode's real cursor, and every other mode's
+        # overlay dot): the moment Pointing_Up starts, the
+        # pointer snaps to the screen center, and hand
+        # movement from there is measured in units of the
+        # presenter's own hand size — see
+        # _update_presentation_pointer. An absolute mapping
+        # would otherwise force a physically larger sweep the
+        # farther the presenter stands, since the camera's
+        # field of view covers more real-world space at range.
+        self.presentation_pointer_anchor_x = None
+        self.presentation_pointer_anchor_y = None
+
+        # Frozen the moment pointing starts, not re-measured
+        # every frame, so the control box doesn't subtly
+        # resize (and the pointer drift) if the hand-size
+        # estimate jitters slightly while pointing continues.
+        self.presentation_pointer_hand_size = None
 
         # ---------------------------------
         # Pinch / Hold-and-Drag Geometry
@@ -391,6 +462,21 @@ class GestureRecognizer:
 
             self.locked_toggle_gestures = set()
 
+        # Leaving Presentation mode mid-fist-move would otherwise
+        # let a stale previous wrist position survive into a
+        # later Presentation session and produce one large,
+        # spurious delta on the first frame back — same idea as
+        # the Cursor/Call resets above.
+        if self.active_mode != "presentation":
+
+            self.presentation_fist_previous_x = None
+            self.presentation_fist_previous_y = None
+            self.presentation_fist_previous_time = None
+
+            self.presentation_pointer_anchor_x = None
+            self.presentation_pointer_anchor_y = None
+            self.presentation_pointer_hand_size = None
+
         # A swipe session started to pick a mode via Quick
         # Circle (or one already in progress in Flip mode) has
         # no further reason to keep running once the resulting
@@ -600,6 +686,15 @@ class GestureRecognizer:
         if self.active_mode == "call":
 
             self._check_ok_sign(
+                result
+            )
+
+        # Wrist-based fist swipe (slide navigation) only means
+        # anything in Presentation mode.
+        if self.active_mode == "presentation":
+
+            self._check_fist_motion(
+                confirmed_gesture,
                 result
             )
 
@@ -894,6 +989,24 @@ class GestureRecognizer:
 
             self.last_gesture = "Closed_Fist"
 
+            # Mirrors HAND_SESSION_START above — a discrete,
+            # mode-agnostic marker for the reverse transition.
+            # SignalMapper decides what it means right now
+            # (e.g. closing the Quick Command Circle without
+            # picking anything) — this class stays unaware of
+            # modes.
+            print(
+                "[GESTURE] HAND_SESSION_END"
+            )
+
+            self.event_bus.publish(
+                "gesture_signal",
+                {
+                    "signal": "HAND_SESSION_END",
+                    "source": "gesture"
+                }
+            )
+
     def _end_session(self):
 
         self.tracking_active = False
@@ -919,12 +1032,23 @@ class GestureRecognizer:
         velocity_x,
         velocity_y,
         distance_x,
-        distance_y
+        distance_y,
+        velocity_threshold,
+        min_frame_distance,
+        vertical_cone_degrees
     ):
 
         # Speed decides the direction. Distance only
         # filters out landmark jitter — it is not a "must
         # travel this far" zone.
+
+        # Thresholds are passed in rather than read from
+        # self.*, so this same direction math can be shared
+        # by more than one detector — the index-tip swipe
+        # below (Flip/Quick Circle) and the wrist-based fist
+        # swipe used by Presentation mode (see
+        # _check_fist_motion) — while each keeps its own
+        # independently tunable thresholds.
 
         # 0 degrees = straight up/down, 90 degrees =
         # straight left/right
@@ -937,29 +1061,29 @@ class GestureRecognizer:
 
         vertical_motion = (
             angle_from_vertical <=
-            self.vertical_cone_degrees
+            vertical_cone_degrees
         )
 
         if (
             not vertical_motion
-            and distance_x > self.min_frame_distance
+            and distance_x > min_frame_distance
         ):
 
-            if velocity_x > self.velocity_threshold:
+            if velocity_x > velocity_threshold:
                 return "HAND_LEFT"
 
-            if velocity_x < -self.velocity_threshold:
+            if velocity_x < -velocity_threshold:
                 return "HAND_RIGHT"
 
         if (
             vertical_motion
-            and distance_y > self.min_frame_distance
+            and distance_y > min_frame_distance
         ):
 
-            if velocity_y > self.velocity_threshold:
+            if velocity_y > velocity_threshold:
                 return "HAND_DOWN"
 
-            if velocity_y < -self.velocity_threshold:
+            if velocity_y < -velocity_threshold:
                 return "HAND_UP"
 
         return None
@@ -1067,7 +1191,10 @@ class GestureRecognizer:
                 velocity_x,
                 velocity_y,
                 abs(delta_x),
-                abs(delta_y)
+                abs(delta_y),
+                self.velocity_threshold,
+                self.min_frame_distance,
+                self.vertical_cone_degrees
             )
 
             cooldown_ready = (
@@ -1099,6 +1226,114 @@ class GestureRecognizer:
         self.previous_y = current_y
 
         self.previous_time = current_time
+
+    # ---------------------------------
+    # Presentation Mode: Fist Swipe
+    # ---------------------------------
+
+    # No arm/disarm gesture pair here — the closed fist itself
+    # is the active state. As long as the confirmed gesture is
+    # Closed_Fist, the wrist's frame-to-frame velocity is fed
+    # through the same direction math as the index-tip swipe
+    # (_resolve_signal), just with its own thresholds so tuning
+    # for presenting distance never affects Flip mode's swipe.
+    def _check_fist_motion(self, confirmed_gesture, result):
+
+        if confirmed_gesture != "Closed_Fist":
+
+            # Hand relaxed (or lost) — the next fist starts a
+            # fresh baseline instead of computing one big,
+            # spurious delta across the gap.
+            self.presentation_fist_previous_x = None
+            self.presentation_fist_previous_y = None
+            self.presentation_fist_previous_time = None
+
+            return
+
+        hand_landmarks = (
+            result.hand_landmarks[0]
+        )
+
+        # Wrist, not fingertip — stays reliably trackable even
+        # with the hand clenched into a fist.
+        wrist = hand_landmarks[0]
+
+        current_x = wrist.x
+        current_y = wrist.y
+
+        current_time = time.time()
+
+        if (
+            self.presentation_fist_previous_x is None
+            or self.presentation_fist_previous_y is None
+            or self.presentation_fist_previous_time is None
+        ):
+
+            self.presentation_fist_previous_x = current_x
+            self.presentation_fist_previous_y = current_y
+
+            self.presentation_fist_previous_time = current_time
+
+            return
+
+        delta_time = (
+            current_time -
+            self.presentation_fist_previous_time
+        )
+
+        if delta_time > 0:
+
+            delta_x = (
+                current_x -
+                self.presentation_fist_previous_x
+            )
+
+            delta_y = (
+                current_y -
+                self.presentation_fist_previous_y
+            )
+
+            velocity_x = delta_x / delta_time
+
+            velocity_y = delta_y / delta_time
+
+            signal = self._resolve_signal(
+                velocity_x,
+                velocity_y,
+                abs(delta_x),
+                abs(delta_y),
+                self.presentation_fist_velocity_threshold,
+                self.presentation_fist_min_frame_distance,
+                self.presentation_fist_vertical_cone_degrees
+            )
+
+            cooldown_ready = (
+                current_time -
+                self.presentation_fist_last_motion_time
+            ) > self.presentation_fist_motion_cooldown
+
+            if signal is not None and cooldown_ready:
+
+                print(
+                    f"[GESTURE] {signal} (fist)"
+                )
+
+                self.event_bus.publish(
+                    "gesture_signal",
+                    {
+                        "signal": signal,
+                        "source": "gesture"
+                    }
+                )
+
+                self.presentation_fist_last_motion_time = (
+                    current_time
+                )
+
+        self.presentation_fist_previous_x = current_x
+        self.presentation_fist_previous_y = current_y
+
+        self.presentation_fist_previous_time = current_time
 
     # ---------------------------------
     # Pinch / Hold-and-Drag Geometry
@@ -1439,6 +1674,16 @@ class GestureRecognizer:
             # to the next time pointing resumes.
             self.precision_active = False
 
+            # Presentation's own pointer re-anchors to the
+            # screen center fresh every time pointing starts
+            # (see _update_presentation_pointer) — clearing
+            # this here, not just in _handle_mode_changed,
+            # covers re-arming within the same Presentation
+            # session too, not just leaving the mode entirely.
+            self.presentation_pointer_anchor_x = None
+            self.presentation_pointer_anchor_y = None
+            self.presentation_pointer_hand_size = None
+
             return
 
         hand_landmarks = (
@@ -1447,58 +1692,70 @@ class GestureRecognizer:
 
         index_tip = hand_landmarks[8]
 
-        raw_x = self._expand_active_zone(index_tip.x)
-        raw_y = self._expand_active_zone(index_tip.y)
+        if self.active_mode == "presentation":
 
-        if off_hand_pinching:
-
-            # Precision mode: a temporary relative "clutch"
-            # layered on top of the otherwise-always-absolute
-            # mapping below. Engaging it anchors the current
-            # raw position; while held, the published position
-            # only moves PRECISION_SCALE of however far the
-            # hand actually moves from that anchor — exactly
-            # like lowering a mouse's DPI. Releasing the
-            # off-hand pinch snaps straight back to plain
-            # absolute 1:1 tracking, which means the cursor
-            # jumps to match the finger's current raw position
-            # — an intentional, honest consequence of mixing a
-            # relative clutch into an otherwise-absolute
-            # mapping, not a bug.
-            if not self.precision_active:
-
-                self.precision_active = True
-
-                self.precision_anchor_x = raw_x
-                self.precision_anchor_y = raw_y
-
-            effective_x = (
-                self.precision_anchor_x
-                + (raw_x - self.precision_anchor_x)
-                * self.PRECISION_SCALE
-            )
-
-            effective_y = (
-                self.precision_anchor_y
-                + (raw_y - self.precision_anchor_y)
-                * self.PRECISION_SCALE
+            effective_x, effective_y = (
+                self._update_presentation_pointer(
+                    hand_landmarks,
+                    index_tip
+                )
             )
 
         else:
 
-            # Default: absolute mapping, unchanged from before
-            # off-hand precision mode existed — take a camera
-            # frame, find the finger, that IS the position.
-            self.precision_active = False
+            raw_x = self._expand_active_zone(index_tip.x)
+            raw_y = self._expand_active_zone(index_tip.y)
 
-            effective_x = raw_x
-            effective_y = raw_y
+            if off_hand_pinching:
 
-        effective_x = min(1.0, max(0.0, effective_x))
-        effective_y = min(1.0, max(0.0, effective_y))
+                # Precision mode: a temporary relative "clutch"
+                # layered on top of the otherwise-always-absolute
+                # mapping below. Engaging it anchors the current
+                # raw position; while held, the published position
+                # only moves PRECISION_SCALE of however far the
+                # hand actually moves from that anchor — exactly
+                # like lowering a mouse's DPI. Releasing the
+                # off-hand pinch snaps straight back to plain
+                # absolute 1:1 tracking, which means the cursor
+                # jumps to match the finger's current raw position
+                # — an intentional, honest consequence of mixing a
+                # relative clutch into an otherwise-absolute
+                # mapping, not a bug.
+                if not self.precision_active:
 
-        # Raw, absolute (or precision-scaled) fingertip
-        # position for this frame — the consumer
+                    self.precision_active = True
+
+                    self.precision_anchor_x = raw_x
+                    self.precision_anchor_y = raw_y
+
+                effective_x = (
+                    self.precision_anchor_x
+                    + (raw_x - self.precision_anchor_x)
+                    * self.PRECISION_SCALE
+                )
+
+                effective_y = (
+                    self.precision_anchor_y
+                    + (raw_y - self.precision_anchor_y)
+                    * self.PRECISION_SCALE
+                )
+
+            else:
+
+                # Default: absolute mapping, unchanged from before
+                # off-hand precision mode existed — take a camera
+                # frame, find the finger, that IS the position.
+                self.precision_active = False
+
+                effective_x = raw_x
+                effective_y = raw_y
+
+            effective_x = min(1.0, max(0.0, effective_x))
+            effective_y = min(1.0, max(0.0, effective_y))
+
+        # Raw absolute, precision-scaled, or Presentation
+        # relative-box (see _update_presentation_pointer)
+        # fingertip position for this frame — the consumer
         # (ActionExecutor) maps it straight onto the screen.
         self.event_bus.publish(
             "pointer_position",
@@ -1508,6 +1765,77 @@ class GestureRecognizer:
                 "source": "gesture"
             }
         )
+
+    # ---------------------------------
+    # Presentation Mode: Relative Laser Pointer
+    # ---------------------------------
+
+    # Wrist (0) to middle-finger MCP (9) distance — a rough
+    # proxy for how big the hand currently looks in frame, i.e.
+    # how close the presenter is standing. Used as the unit
+    # _update_presentation_pointer measures its control box in.
+    def _hand_scale(self, hand_landmarks):
+
+        wrist = hand_landmarks[0]
+        middle_mcp = hand_landmarks[9]
+
+        return math.hypot(
+            middle_mcp.x - wrist.x,
+            middle_mcp.y - wrist.y
+        )
+
+    # Distance-invariant alternative to the absolute fingertip
+    # mapping used everywhere else _update_pointer applies: the
+    # moment Pointing_Up starts, the pointer snaps to the screen
+    # CENTER, and the presenter's hand size at that instant is
+    # frozen as the unit a PRESENTATION_POINTER_BOX_HANDS-wide
+    # virtual box (centered on that starting hand position) is
+    # measured in. Moving the hand across that box sweeps the
+    # pointer across the whole screen, so the same comfortable
+    # hand motion works whether presenting from 1m or 4m away —
+    # an absolute mapping would otherwise force a physically
+    # larger sweep the farther the presenter stands, since the
+    # camera's field of view covers more real-world space at
+    # range.
+    def _update_presentation_pointer(self, hand_landmarks, index_tip):
+
+        if self.presentation_pointer_anchor_x is None:
+
+            self.presentation_pointer_anchor_x = index_tip.x
+            self.presentation_pointer_anchor_y = index_tip.y
+
+            self.presentation_pointer_hand_size = (
+                self._hand_scale(hand_landmarks)
+            )
+
+            return 0.5, 0.5
+
+        if self.presentation_pointer_hand_size <= 0:
+            return 0.5, 0.5
+
+        delta_x = (
+            index_tip.x -
+            self.presentation_pointer_anchor_x
+        )
+
+        delta_y = (
+            index_tip.y -
+            self.presentation_pointer_anchor_y
+        )
+
+        box_half_extent = (
+            self.PRESENTATION_POINTER_BOX_HANDS
+            * self.presentation_pointer_hand_size
+            / 2
+        )
+
+        effective_x = 0.5 + delta_x / box_half_extent
+        effective_y = 0.5 + delta_y / box_half_extent
+
+        effective_x = min(1.0, max(0.0, effective_x))
+        effective_y = min(1.0, max(0.0, effective_y))
+
+        return effective_x, effective_y
 
     # ---------------------------------
     # Publish Static Gesture

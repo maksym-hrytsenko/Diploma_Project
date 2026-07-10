@@ -42,15 +42,39 @@ only left by entering a different environment — there is no dedicated
 
 ### 2.1 Presentation — `"presentation mode"` or `ctrl+shift+p`
 
-Controls slides two ways at once — by key or by voice, no gesture
-involved (gestures are reserved for Flip mode, so the two can't collide):
+Controls slides by key, by voice, or by a hand gesture meant to be
+comfortable from a few meters away (e.g. while actually presenting,
+away from the keyboard):
 
 | Trigger | Action |
 |---|---|
+| voice "start presentation" | `START_SLIDESHOW` |
 | Right arrow key (bare, no modifier) | `NEXT_SLIDE` |
 | Left arrow key (bare, no modifier) | `PREVIOUS_SLIDE` |
 | voice "next slide" | `NEXT_SLIDE` |
 | voice "previous slide" | `PREVIOUS_SLIDE` |
+| Closed fist, wrist moved right | `NEXT_SLIDE` |
+| Closed fist, wrist moved left | `PREVIOUS_SLIDE` |
+
+`START_SLIDESHOW` sends a plain **F5** keypress — PowerPoint/Keynote's
+own "start slideshow from the beginning" shortcut. Entering Presentation
+mode only arms this app's next/previous-slide mapping; it does not by
+itself start the on-screen slideshow, so saying "start presentation"
+once you're already in the mode is what actually begins it.
+
+The gesture needs no separate "arm" step — holding a closed fist up and
+moving it decisively left or right fires the switch as soon as the
+motion is fast enough (mirrored the same way pointer tracking is, so it
+moves the same direction as the presenter's own hand from their point
+of view). It is tracked from the wrist rather than the fingertip and
+uses its own thresholds, independent from Flip mode's swipe, so it can
+be tuned separately for typical presenting distance without affecting
+Flip mode.
+
+Raising the index finger (`Pointing_Up`) shows the same translucent
+on-screen pointer dot used elsewhere in the system (§4), acting as
+a lightweight laser pointer for the current slide — no separate toggle
+needed.
 
 `NEXT_SLIDE`/`PREVIOUS_SLIDE` send a plain Right/Left arrow key press —
 the same thing a real presentation clicker does, so it works with
@@ -355,10 +379,10 @@ keyboard combo:
 
 | Selection gesture | Enters |
 |---|---|
-| `HAND_UP` | Presentation mode (§2.1) |
-| `HAND_DOWN` | Call mode (§2.4) |
-| `HAND_LEFT` | Flip mode (§2.2) |
-| `HAND_RIGHT` | Cursor mode (§2.3) |
+| `HAND_UP` | Flip mode (§2.2) |
+| `HAND_DOWN` | Cursor mode (§2.3) |
+| `HAND_LEFT` | Presentation mode (§2.1) |
+| `HAND_RIGHT` | Call mode (§2.4) |
 
 Picking a direction is a genuine mode **transition** (`SignalMapper`'s
 `enters_mode` mechanism on a `mode_rule` — exits `quick_circle`, enters
@@ -448,6 +472,36 @@ screen position.
   empirically — flip `PointerOverlay.MIRROR_X` / the mirroring line in
   `ActionExecutor._move_real_cursor` if it moves backwards for your
   camera setup.
+- **Targets the projector, not the laptop screen.** When a second
+  display is connected (`PointerOverlay._select_presentation_screen`),
+  the overlay places itself on the first non-primary screen it finds —
+  the projector/external display an audience actually sees — rather
+  than the primary screen, which normally stays with the presenter's
+  own view. Falls back to the primary screen when only one is
+  connected. Selected once at construction, so connect the projector
+  before starting the app — plugging it in mid-session needs a
+  restart to be picked up.
+
+**Presentation mode maps the fingertip differently from every other
+mode** (`GestureRecognizer._update_presentation_pointer`). Cursor mode
+and every other mode use an absolute mapping — the fingertip's raw
+position in the camera frame directly is the screen position. In
+Presentation mode, the pointer instead:
+
+1. Snaps to the **screen center** the instant `Pointing_Up` starts.
+2. Freezes the presenter's current hand size (wrist-to-middle-knuckle
+   distance) as a unit.
+3. Maps hand movement from the starting position onto the whole
+   screen across a virtual box `PRESENTATION_POINTER_BOX_HANDS` (4.0)
+   hand-widths wide, centered on that starting position.
+
+This makes the same comfortable hand movement sweep the whole screen
+whether presenting from 1m or 4m away — an absolute mapping would
+otherwise need a physically larger sweep the farther the presenter
+stands, since the camera's field of view covers more real-world space
+at range. The box re-anchors to center every time pointing restarts
+(lowering the finger and raising it again), it does not persist across
+a session the way Cursor mode's cursor position does.
 
 ---
 
@@ -530,7 +584,9 @@ this if it matters in practice.
 | Gesture | Source | Used by |
 |---|---|---|
 | `HAND_LEFT` / `HAND_RIGHT` / `HAND_UP` / `HAND_DOWN` | Computed from index-fingertip velocity during a swipe-tracking session | Flip mode, Quick Command Circle selection |
+| `HAND_LEFT` / `HAND_RIGHT` | Computed from wrist velocity while the gesture is held as `Closed_Fist` — no separate arm/disarm step, own thresholds (`presentation_fist_*`) independent of the swipe above | Presentation mode's slide navigation, §2.1 |
 | `HAND_SESSION_START` | Fired once on the Closed_Fist → Open_Palm transition that starts a swipe session | Quick Command Circle's entry trigger (idle-only, §2.4) |
+| `HAND_SESSION_END` | Fired once on the Open_Palm → Closed_Fist transition that ends a swipe session | Closes the Quick Command Circle without picking a mode (§2.5), quick_circle only |
 | `PINCH` | Computed from thumb-tip/index-tip landmark distance | Cursor mode's click (quick tap) — hold+drag instead scrolls, §2.3 |
 | `DOUBLE_PINCH` | Two `PINCH` taps inside `double_pinch_window` (0.3s) | Cursor mode's right-click, §2.3 |
 | `Thumb_Up` / `Thumb_Down` / `Victory` | MediaPipe canned gesture categories, gated to Call mode only | Call mode's unmute/mute/camera-toggle, §2.4 |

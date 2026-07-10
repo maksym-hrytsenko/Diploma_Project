@@ -84,6 +84,13 @@ VOICE -- GLOBAL, ALWAYS ACTIVE
 "yes" / "no" -> reserved, not wired to anything yet
 
 "next slide" / "previous slide" -> only work while in Presentation mode
+    (also: right/left arrow keys, or a closed-fist wrist swipe --
+     see GESTURES section below)
+"start presentation" -> only works while in Presentation mode --
+    sends F5 (PowerPoint/Keynote's own "start slideshow from the
+    beginning" shortcut). Entering Presentation mode only arms the
+    next/previous-slide mapping above, it does not itself start the
+    on-screen slideshow -- this is the command that does.
 
 
 MODE: CALL (Microsoft Teams) -- "call mode" or ctrl+shift+w
@@ -150,6 +157,13 @@ GESTURES (general)
 Pointing_Up (index finger extended), held
     -> outside Cursor mode: shows a laser-pointer dot on screen
        (purely visual, cannot click or interact with anything)
+    -> inside Presentation mode specifically: the dot snaps to
+       screen CENTER the instant you start pointing, then hand
+       movement from there sweeps the whole screen across a
+       virtual box ~4 hand-widths wide (measured from your own
+       hand size at that moment) -- same comfortable movement
+       works whether you're 1m or 4m from the camera, unlike
+       the 1:1 absolute mapping used everywhere else
     -> inside Cursor mode: see MODE: CURSOR above
 
 HAND_LEFT / HAND_RIGHT / HAND_UP / HAND_DOWN (a swipe, started by
@@ -165,6 +179,16 @@ closing the fist then opening the palm)
         through pinch-like hand poses, so detection only ever runs in
         Cursor mode, switched off everywhere else)
     -> inside Quick Command Circle: picks one of the 4 modes below
+
+HAND_LEFT / HAND_RIGHT (closed fist, wrist moved sideways -- no
+open-palm arming step needed, unlike the swipe above)
+    -> inside Presentation mode only:
+         hand RIGHT = next slide
+         hand LEFT  = previous slide
+       Tracked from the wrist (not the fingertip) and uses its own
+       thresholds, tuned independently from the Flip-mode swipe above
+       so it can be adjusted for presenting distance (2-4m) without
+       affecting Flip mode.
 
 NOTE on scroll direction (Flip mode and Cursor mode): both use
 "natural"/drag scrolling, same as a touchscreen or a Mac trackpad with
@@ -185,10 +209,10 @@ A circle appears on screen with the system's 4 other modes laid out
 around it. Swipe in a direction to enter that mode -- the circle closes
 automatically. Only opens when you're not already in a mode.
 
-    swipe UP     -> enters Presentation mode
-    swipe DOWN   -> enters Call mode
-    swipe LEFT   -> enters Flip mode
-    swipe RIGHT  -> enters Cursor mode
+    swipe UP     -> enters Flip mode
+    swipe DOWN   -> enters Cursor mode
+    swipe LEFT   -> enters Presentation mode
+    swipe RIGHT  -> enters Call mode
 
 
 KEYBOARD

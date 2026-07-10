@@ -59,10 +59,8 @@ class PointerOverlay(QWidget):
             Qt.WidgetAttribute.WA_ShowWithoutActivating
         )
 
-        screen = QGuiApplication.primaryScreen()
-
         self.setGeometry(
-            screen.geometry()
+            self._select_presentation_screen().geometry()
         )
 
         self.dot_x = None
@@ -79,6 +77,33 @@ class PointerOverlay(QWidget):
         self.hide_timer.timeout.connect(
             self.hide
         )
+
+    # ---------------------------------
+    # Screen Selection
+    # ---------------------------------
+
+    # Presenting is normally done with a projector/external
+    # display attached as a SECOND screen showing the actual
+    # slides to the audience, while the primary screen (the
+    # laptop's own) stays with the presenter's own view/notes.
+    # The overlay is only useful pointing at whatever the
+    # audience actually sees, so it targets the first
+    # non-primary screen it finds rather than defaulting to
+    # the primary one. Falls back to the primary screen when
+    # only one is connected (e.g. testing without a projector
+    # attached). Selected once, at construction — connect the
+    # projector before starting the app; hot-plugging it in
+    # mid-session needs a restart to be picked up.
+    def _select_presentation_screen(self):
+
+        primary_screen = QGuiApplication.primaryScreen()
+
+        for screen in QGuiApplication.screens():
+
+            if screen != primary_screen:
+                return screen
+
+        return primary_screen
 
     # ---------------------------------
     # Public API (safe to call from any thread)

@@ -27,6 +27,7 @@ from fusion.signal_mapper import SignalMapper
 from execution.action_executor import ActionExecutor
 
 from ui.quick_command_overlay import QuickCommandOverlay
+from ui.native_window import configure_accessory_app
 
 
 def main():
@@ -53,6 +54,13 @@ def main():
     # its widgets to be created after a QApplication and
     # on the thread that owns the application.
     qt_app = QApplication(sys.argv)
+
+    # Must run before any overlay widget (PointerOverlay,
+    # QuickCommandOverlay) is constructed — see
+    # configure_accessory_app's own comment for why this is
+    # what actually stops the quick-circle overlay from
+    # spawning its own empty Space.
+    configure_accessory_app()
 
     event_bus = EventBus()
 

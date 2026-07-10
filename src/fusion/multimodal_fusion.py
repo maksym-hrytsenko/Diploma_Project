@@ -108,6 +108,10 @@ class MultimodalFusion:
             1.0
         )
 
+        tier = data.get(
+            "tier"
+        )
+
         keyboard_event = data.get(
             "event"
         )
@@ -140,7 +144,9 @@ class MultimodalFusion:
 
                 confidence=confidence,
 
-                persistent=(source == "keyboard")
+                persistent=(source == "keyboard"),
+
+                tier=tier
 
             )
 

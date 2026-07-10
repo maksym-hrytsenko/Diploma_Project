@@ -309,6 +309,13 @@
     "mode_rules": [
 
         {
+            "name": "presentation_start_slideshow",
+            "mode": "presentation",
+            "conditions": { "voice": "START_SLIDESHOW" },
+            "action": "START_SLIDESHOW"
+        },
+
+        {
             "name": "presentation_next_voice",
             "mode": "presentation",
             "conditions": { "voice": "NEXT_SLIDE" },
@@ -333,6 +340,20 @@
             "name": "presentation_previous_key",
             "mode": "presentation",
             "conditions": { "keyboard": "KEY_LEFT" },
+            "action": "PREVIOUS_SLIDE"
+        },
+
+        {
+            "name": "presentation_next_gesture",
+            "mode": "presentation",
+            "conditions": { "gesture": "HAND_RIGHT" },
+            "action": "NEXT_SLIDE"
+        },
+
+        {
+            "name": "presentation_previous_gesture",
+            "mode": "presentation",
+            "conditions": { "gesture": "HAND_LEFT" },
             "action": "PREVIOUS_SLIDE"
         },
 
@@ -409,28 +430,28 @@
         {
             "name": "quick_circle_select_presentation",
             "mode": "quick_circle",
-            "conditions": { "gesture": "HAND_UP" },
+            "conditions": { "gesture": "HAND_LEFT" },
             "enters_mode": "presentation"
         },
 
         {
             "name": "quick_circle_select_call",
             "mode": "quick_circle",
-            "conditions": { "gesture": "HAND_DOWN" },
+            "conditions": { "gesture": "HAND_RIGHT" },
             "enters_mode": "call"
         },
 
         {
             "name": "quick_circle_select_flip",
             "mode": "quick_circle",
-            "conditions": { "gesture": "HAND_LEFT" },
+            "conditions": { "gesture": "HAND_UP" },
             "enters_mode": "flip"
         },
 
         {
             "name": "quick_circle_select_cursor",
             "mode": "quick_circle",
-            "conditions": { "gesture": "HAND_RIGHT" },
+            "conditions": { "gesture": "HAND_DOWN" },
             "enters_mode": "cursor"
         }
 

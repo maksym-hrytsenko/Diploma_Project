@@ -3,9 +3,17 @@ import os
 
 from concurrent.futures import ProcessPoolExecutor
 
+import numpy as np
+import torch
+
 from vosk import (
     Model,
     KaldiRecognizer
+)
+
+from silero_vad import (
+    load_silero_vad,
+    get_speech_timestamps
 )
 
 from processing.speech.open_vocab_worker import (
@@ -27,6 +35,8 @@ class VoskSpeechModel:
             model_path
         )
 
+        self.wake_word = self._load_wake_word()
+
         grammar = self._load_grammar()
 
         self.recognizer = KaldiRecognizer(
@@ -36,6 +46,16 @@ class VoskSpeechModel:
         )
 
         self.utterance_chunks = []
+
+        # True the moment the grammar recognizer sees the
+        # wake word in ANY partial or final hypothesis during
+        # the utterance currently being spoken — tracked
+        # independently of what the final text ends up being,
+        # since Whisper's open-vocab re-transcription of the
+        # rest of the utterance can (and does) fail to
+        # reproduce "jack" even when Vosk's own grammar
+        # decoder caught it clearly a moment earlier.
+        self.utterance_heard_wake_word = False
 
         # Lazily created. Whisper transcription runs in a
         # separate OS process (not just a thread) so that a
@@ -47,6 +67,17 @@ class VoskSpeechModel:
         self.open_vocab_executor = None
 
         self._load_nlu_fallback_config()
+
+        # Tiny/fast (~1s load, ~40ms per check) — safe to
+        # run in-process, unlike Whisper/LLM. Filters out
+        # ambient sound (background video/music/room noise)
+        # so it never reaches the grammar result or the
+        # open-vocab fallback in the first place.
+        self.vad_model = (
+            load_silero_vad()
+            if self.vad_enabled
+            else None
+        )
 
     # ---------------------------------
     # Load Grammar
@@ -75,12 +106,10 @@ class VoskSpeechModel:
             ).values()
         )
 
-        wake_word = self._load_wake_word()
-
-        if wake_word and wake_word not in grammar:
+        if self.wake_word and self.wake_word not in grammar:
 
             grammar.append(
-                wake_word
+                self.wake_word
             )
 
         grammar.append(
@@ -134,6 +163,11 @@ class VoskSpeechModel:
 
             system = json.load(f)
 
+        self.vad_enabled = system.get(
+            "vad_enabled",
+            True
+        )
+
         nlu_fallback = system.get(
             "nlu_fallback",
             {}
@@ -146,7 +180,7 @@ class VoskSpeechModel:
 
         self.open_vocab_model_id = nlu_fallback.get(
             "open_vocab_whisper_model",
-            "mlx-community/whisper-tiny"
+            "mlx-community/whisper-base.en-mlx"
         )
 
         min_fallback_audio_seconds = nlu_fallback.get(
@@ -206,15 +240,39 @@ class VoskSpeechModel:
                 ""
             ).strip()
 
+            heard_wake_word = (
+                self.utterance_heard_wake_word
+                or self.wake_word in text.split()
+            )
+
+            self.utterance_heard_wake_word = False
+
             buffered_audio = b"".join(
                 self.utterance_chunks
             )
 
             self.utterance_chunks = []
 
+            # Discard the whole utterance if no actual
+            # speech was detected in it. This is what keeps
+            # a TV/video/music playing nearby from being
+            # treated as spoken commands.
+            if not self._has_speech(buffered_audio):
+
+                return None
+
             used_open_vocab = False
 
-            if text == "[unk]":
+            # Vosk's phrase-list grammar can chain multiple
+            # list entries into one final result, so any
+            # "[unk]" token anywhere means part of the
+            # utterance fell outside the ~38-phrase grammar —
+            # re-transcribe the whole thing with the open-
+            # vocabulary model rather than only acting on an
+            # exact "[unk]" match (which would miss this and
+            # leave the literal token "[unk]" to be matched
+            # against commands downstream).
+            if "[unk]" in text.split():
 
                 fallback_text = self._fallback_transcribe(
                     buffered_audio
@@ -238,7 +296,9 @@ class VoskSpeechModel:
 
                     "is_final": True,
 
-                    "open_vocab": used_open_vocab
+                    "open_vocab": used_open_vocab,
+
+                    "wake_word_heard": heard_wake_word
 
                 }
 
@@ -255,6 +315,10 @@ class VoskSpeechModel:
             ""
         ).strip()
 
+        if self.wake_word in partial_text.split():
+
+            self.utterance_heard_wake_word = True
+
         if partial_text:
 
             return {
@@ -266,6 +330,38 @@ class VoskSpeechModel:
             }
 
         return None
+
+    # ---------------------------------
+    # Voice Activity Detection
+    # ---------------------------------
+
+    def _has_speech(
+        self,
+        audio_bytes
+    ):
+
+        if not self.vad_enabled:
+            return True
+
+        if not audio_bytes:
+            return False
+
+        samples = np.frombuffer(
+            audio_bytes,
+            dtype=np.int16
+        )
+
+        audio_tensor = torch.from_numpy(
+            samples.astype(np.float32) / 32768.0
+        )
+
+        speech_timestamps = get_speech_timestamps(
+            audio_tensor,
+            self.vad_model,
+            sampling_rate=16000
+        )
+
+        return len(speech_timestamps) > 0
 
     # ---------------------------------
     # Open-Vocabulary Fallback

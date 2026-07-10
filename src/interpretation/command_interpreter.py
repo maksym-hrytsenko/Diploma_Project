@@ -223,6 +223,11 @@ class CommandInterpreter:
                 "confidence": data.get(
                     "confidence",
                     1.0
+                ),
+
+                "tier": data.get(
+                    "tier",
+                    "exact"
                 )
 
             }

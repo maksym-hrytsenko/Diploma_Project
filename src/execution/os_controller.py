@@ -672,6 +672,17 @@ class OSController:
     # Slides (Presentation Mode)
     # ---------------------------------
 
+    # Entering Presentation mode only arms this app's own
+    # next/previous-slide mapping — it does not itself start
+    # the on-screen slideshow. F5 is PowerPoint/Keynote's own
+    # "start slideshow from the beginning" shortcut, sent as a
+    # real keystroke so it reaches whichever presentation app
+    # currently has focus, the same app-agnostic approach as
+    # next_slide/previous_slide below.
+    def start_slideshow(self):
+
+        pyautogui.press("f5")
+
     def next_slide(self):
 
         pyautogui.press("right")

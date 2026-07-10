@@ -61,6 +61,7 @@ class ActionExecutor:
 
             "NEXT_SLIDE": controller.next_slide,
             "PREVIOUS_SLIDE": controller.previous_slide,
+            "START_SLIDESHOW": controller.start_slideshow,
 
             "OPEN_BROWSER": controller.open_browser,
             "OPEN_CHATGPT": controller.open_chatgpt,

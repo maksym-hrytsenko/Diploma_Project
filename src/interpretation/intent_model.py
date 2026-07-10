@@ -74,14 +74,24 @@ class IntentModel:
             )
         )
 
-        self.wake_word_window_seconds = (
+        self.silence_timeout_seconds = (
             self.system.get(
-                "wake_word_window_seconds",
-                5
+                "wake_word_silence_timeout_seconds",
+                2
             )
         )
 
-        self.awaiting_command_until = None
+        # None means no session is open. While a session is
+        # open, this holds the time.time() deadline by which
+        # more speech must arrive or the session is considered
+        # gone silent. Every new utterance inside an open
+        # session pushes the deadline forward by another
+        # silence_timeout_seconds — it is a rolling "still
+        # talking" window, not a fixed deadline from the wake
+        # word itself.
+        self.session_deadline = None
+
+        self.pending_command_text = ""
 
         nlu_fallback = self.system.get(
             "nlu_fallback",
@@ -151,12 +161,20 @@ class IntentModel:
 
     def _handle_text(self, event):
 
-        text = event.get("data")
+        data = event.get("data") or {}
+
+        text = data.get("text")
 
         if not text:
             return
 
-        result = self.process_text(text)
+        result = self.process_text(
+            text,
+            wake_word_heard=data.get(
+                "wake_word_heard",
+                False
+            )
+        )
 
         if result:
 
@@ -170,7 +188,11 @@ class IntentModel:
     # Process Text
     # ---------------------------------
 
-    def process_text(self, text):
+    def process_text(
+        self,
+        text,
+        wake_word_heard=False
+    ):
 
         if not text:
             return None
@@ -184,16 +206,29 @@ class IntentModel:
 
         cleaned_text = text
 
+        # A previous session went silent for too long — close
+        # it out and report whatever never turned into a
+        # command before considering this new text at all, so
+        # a fresh wake word right after a timed-out session
+        # starts clean instead of inheriting stale pending text.
+        if self._session_timed_out():
+
+            if self.pending_command_text:
+
+                self._print_not_understood(
+                    self.pending_command_text
+                )
+
+            self._end_session()
+
         # ---------------------------------
         # Wake Word Gate
         #
-        # "jack" alone opens a time-limited
-        # window; only the next recognized
-        # phrase inside that window is
-        # treated as a command. Everything
-        # heard outside the window is
-        # ignored, so the system does not
-        # act on background speech.
+        # "jack" opens a listening session. Every utterance
+        # heard while the session is open pushes the silence
+        # deadline forward — the session only ends when a
+        # command is recognized or nothing new is heard for
+        # silence_timeout_seconds.
         # ---------------------------------
 
         normalized_wake_word = (
@@ -209,7 +244,7 @@ class IntentModel:
 
         if cleaned_text == normalized_wake_word:
 
-            self._open_wake_window()
+            self._start_session()
 
             return None
 
@@ -218,11 +253,11 @@ class IntentModel:
             # Vosk sometimes packs the wake word and the
             # following (possibly unclear) speech into a
             # single final result, e.g. "jack [unk]" or
-            # "jack open browser". Open the grace window
-            # either way, then try the remainder as the
-            # command right away.
+            # "jack open browser". Start the session either
+            # way, then try the remainder as the command
+            # right away.
 
-            self._open_wake_window()
+            self._start_session()
 
             cleaned_text = cleaned_text[
                 len(wake_prefix):
@@ -231,20 +266,49 @@ class IntentModel:
             if not cleaned_text:
                 return None
 
-        elif not self._is_awaiting_command():
+            self.pending_command_text = cleaned_text
+
+        elif wake_word_heard:
+
+            # The grammar recognizer caught the wake word
+            # somewhere in this utterance (partial or final),
+            # even though the text here — possibly rewritten
+            # by the open-vocab fallback — no longer starts
+            # with it. Trust Vosk's own detection rather than
+            # requiring the (sometimes lossy) free-text
+            # transcription to still contain "jack".
+
+            self._start_session()
+
+            self.pending_command_text = cleaned_text
+
+        elif self._session_is_active():
+
+            # A continuation within an already-open session.
+            # Vosk sometimes finalizes one spoken command as
+            # several separate utterances (a brief mid-
+            # sentence pause is enough to trigger an early
+            # endpoint), so accumulate instead of replacing.
+
+            if self.pending_command_text:
+
+                cleaned_text = (
+                    f"{self.pending_command_text} "
+                    f"{cleaned_text}"
+                ).strip()
+
+            self.pending_command_text = cleaned_text
+
+        else:
 
             if self.debug:
 
                 print(
                     f"[wake word] ignored \"{cleaned_text}\" "
-                    f"(no active window)"
+                    f"(no active session)"
                 )
 
             return None
-
-        else:
-
-            self.awaiting_command_until = None
 
         # ---------------------------------
         # Match Commands
@@ -262,68 +326,121 @@ class IntentModel:
 
             if cleaned_text == normalized_phrase:
 
+                self._end_session()
+
                 return {
                     "command": command,
                     "confidence": 1.0,
-                    "source": "voice"
+                    "source": "voice",
+                    "tier": "exact"
                 }
 
-        if not self.nlu_fallback_enabled:
-            return None
+        if self.nlu_fallback_enabled:
 
-        semantic_result = self._match_semantic(
-            cleaned_text
-        )
+            semantic_result = self._match_semantic(
+                cleaned_text
+            )
 
-        if semantic_result:
+            if semantic_result:
 
-            return {
-                "command": semantic_result["command"],
-                "confidence": semantic_result["confidence"],
-                "source": "voice"
-            }
+                self._end_session()
 
-        llm_command = self._match_llm(
-            cleaned_text
-        )
+                return {
+                    "command": semantic_result["command"],
+                    "confidence": semantic_result["confidence"],
+                    "source": "voice",
+                    "tier": "semantic"
+                }
 
-        if llm_command:
+            llm_command = self._match_llm(
+                cleaned_text
+            )
 
-            return {
-                "command": llm_command,
-                "confidence": self.llm_confidence,
-                "source": "voice"
-            }
+            if llm_command:
+
+                self._end_session()
+
+                return {
+                    "command": llm_command,
+                    "confidence": self.llm_confidence,
+                    "source": "voice",
+                    "tier": "llm"
+                }
+
+        # No match yet — keep the session open (the deadline
+        # was already pushed forward by _start_session /
+        # this method's callers) so a continuation utterance
+        # can still complete the command before it goes quiet.
+        self._renew_session()
 
         return None
 
     # ---------------------------------
-    # Wake Word Window
+    # Session (wake word / silence timeout)
     # ---------------------------------
 
-    def _open_wake_window(self):
+    def _start_session(self):
 
-        self.awaiting_command_until = (
-            time.time()
-            + self.wake_word_window_seconds
-        )
+        self.pending_command_text = ""
+
+        self._renew_session()
 
         if self.debug:
 
             print(
                 f"[wake word] \"{self.wake_word}\" "
-                f"detected, listening for "
-                f"{self.wake_word_window_seconds}s"
+                f"detected, session started "
+                f"({self.silence_timeout_seconds}s "
+                f"silence timeout)"
             )
 
-    def _is_awaiting_command(self):
+    def _renew_session(self):
 
-        if self.awaiting_command_until is None:
+        self.session_deadline = (
+            time.time()
+            + self.silence_timeout_seconds
+        )
+
+    def _end_session(self):
+
+        self.session_deadline = None
+
+        self.pending_command_text = ""
+
+    def _session_is_active(self):
+
+        if self.session_deadline is None:
             return False
 
         return (
             time.time()
-            < self.awaiting_command_until
+            < self.session_deadline
+        )
+
+    def _session_timed_out(self):
+
+        if self.session_deadline is None:
+            return False
+
+        return (
+            time.time()
+            >= self.session_deadline
+        )
+
+    # ---------------------------------
+    # Debug
+    # ---------------------------------
+
+    def _print_not_understood(
+        self,
+        cleaned_text
+    ):
+
+        # Always on, not gated behind --debug-voice — this is
+        # the outcome-level "did it understand me" signal, not
+        # the noisier raw partial/final transcript stream.
+        print(
+            f"[RESOLVED] not understood: \"{cleaned_text}\""
         )
 
     # ---------------------------------

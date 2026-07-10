@@ -90,8 +90,8 @@ def run():
 
     for phrase, expected in TEST_CASES:
 
-        # Wake word must precede every command now that the
-        # wake-word window gate is active.
+        # Wake word must precede every command — it opens the
+        # listening session that process_text() requires.
         model.process_text(
             model.wake_word
         )

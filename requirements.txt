@@ -75,6 +75,7 @@ scipy==1.15.3
 sentence-transformers==5.6.0
 sentencepiece==0.2.1
 shellingham==1.5.4
+silero-vad==6.2.1
 six==1.17.0
 sounddevice==0.5.5
 srt==3.5.3
@@ -83,6 +84,7 @@ threadpoolctl==3.6.0
 tiktoken==0.13.0
 tokenizers==0.22.2
 torch==2.13.0
+torchaudio==2.11.0
 tqdm==4.67.3
 # mlx-lm 0.31.3 declares transformers>=5.0.0 but its NewlineTokenizer
 # registration call breaks under the transformers 5.x AutoTokenizer.register()

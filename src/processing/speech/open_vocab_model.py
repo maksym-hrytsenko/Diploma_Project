@@ -7,7 +7,7 @@ class OpenVocabSpeechModel:
 
     def __init__(
         self,
-        model_repo="mlx-community/whisper-tiny"
+        model_repo="mlx-community/whisper-base.en-mlx"
     ):
 
         self.model_repo = model_repo

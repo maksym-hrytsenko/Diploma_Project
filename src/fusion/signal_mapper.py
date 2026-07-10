@@ -4,6 +4,53 @@ import os
 
 class SignalMapper:
 
+    # How each (source, mapped signal) pair is actually
+    # recognized, for the "[RESOLVED]" report in
+    # _report_resolution below. "vector" = computed directly
+    # from landmark geometry (distance/angle/velocity), never
+    # touching MediaPipe's own classifier output. "model" = the
+    # value IS a MediaPipe ML classifier category or blendshape
+    # regression score, only thresholded here. Voice isn't
+    # listed — its tier ("exact"/"semantic"/"llm") already
+    # travels with the signal itself, from IntentModel. Keyboard
+    # isn't listed either — a raw key combo has no recognition
+    # step at all.
+    SIGNAL_METHOD = {
+
+        ("gesture", "HAND_LEFT"): "vector",
+        ("gesture", "HAND_RIGHT"): "vector",
+        ("gesture", "HAND_UP"): "vector",
+        ("gesture", "HAND_DOWN"): "vector",
+        ("gesture", "HAND_SESSION_START"): "vector",
+        ("gesture", "HAND_SESSION_END"): "vector",
+        ("gesture", "PINCH"): "vector",
+        ("gesture", "DOUBLE_PINCH"): "vector",
+        ("gesture", "OK_SIGN"): "vector",
+
+        ("gesture", "THUMB_UP"): "model",
+        ("gesture", "THUMB_DOWN"): "model",
+        ("gesture", "VICTORY"): "model",
+
+        ("face", "HEAD_TILT_LEFT"): "vector",
+        ("face", "HEAD_TILT_RIGHT"): "vector",
+
+        ("face", "MOUTH_OPEN"): "model",
+        ("face", "DOUBLE_BLINK"): "model",
+        ("face", "EYEBROWS_UP"): "model",
+        ("face", "EYEBROWS_DOWN"): "model",
+        ("face", "DOUBLE_EYEBROWS_UP"): "model",
+        ("face", "CONFIRM"): "model"
+
+    }
+
+    VOICE_TIER_LABEL = {
+
+        "exact": "voice exact match",
+        "semantic": "voice semantic model",
+        "llm": "voice LLM model"
+
+    }
+
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
@@ -183,15 +230,29 @@ class SignalMapper:
             "keyboard"
         )
 
-        # Two independent ways to back out of whichever
-        # mode is active — saying "exit mode", or pressing
-        # Esc, work identically from any mode at any time.
+        gesture = signals.get(
+            "gesture"
+        )
+
+        # Three independent ways to back out of whichever
+        # mode is active. Voice "exit mode" and Esc work
+        # identically from any mode at any time. Closing the
+        # fist only backs out of Quick Circle specifically —
+        # every other mode is voice/keyboard-entered and
+        # persistent, so the hand shape closing has no
+        # bearing on whether it should stay active (e.g.
+        # closing the fist mid-swipe in Flip mode must not
+        # exit Flip mode).
         exit_requested = (
             voice is not None
             and voice.get("signal") == "EXIT_MODE"
         ) or (
             keyboard is not None
             and keyboard.get("signal") == "ESCAPE_KEY"
+        ) or (
+            gesture is not None
+            and gesture.get("signal") == "HAND_SESSION_END"
+            and self.current_mode == "quick_circle"
         )
 
         if exit_requested:
@@ -429,6 +490,12 @@ class SignalMapper:
                     f"[MAPPER] Match -> {rule['name']}"
                 )
 
+                self._report_resolution(
+                    rule["conditions"],
+                    signals,
+                    action=rule["action"]
+                )
+
                 self._publish_command(
                     rule["action"]
                 )
@@ -475,6 +542,12 @@ class SignalMapper:
 
                 if target_mode_name is not None:
 
+                    self._report_resolution(
+                        rule["conditions"],
+                        signals,
+                        enters_mode=target_mode_name
+                    )
+
                     target_mode = self._find_mode(
                         target_mode_name
                     )
@@ -488,6 +561,12 @@ class SignalMapper:
                         )
 
                     return True
+
+                self._report_resolution(
+                    rule["conditions"],
+                    signals,
+                    action=rule["action"]
+                )
 
                 self._publish_command(
                     rule["action"]
@@ -503,6 +582,78 @@ class SignalMapper:
                 return True
 
         return False
+
+    # ---------------------------------
+    # Resolution Report
+    # ---------------------------------
+
+    # Prints, right after a rule/mode_rule matches, exactly
+    # which signal(s) decided it and how each was recognized —
+    # voice tier, direct vector/geometry, or an ML model —
+    # so a confused/misfired command can be traced back to its
+    # source instead of guessed at.
+    def _report_resolution(
+        self,
+        conditions,
+        signals,
+        action=None,
+        enters_mode=None
+    ):
+
+        descriptions = [
+            self._describe_signal(
+                source,
+                signals.get(source, {})
+            )
+            for source in conditions
+        ]
+
+        outcome = (
+            f"enters mode: {enters_mode}"
+            if enters_mode is not None
+            else action
+        )
+
+        print(
+            f"[RESOLVED] {outcome} <- "
+            + " + ".join(descriptions)
+        )
+
+    def _describe_signal(self, source, signal_data):
+
+        signal_name = signal_data.get(
+            "signal"
+        )
+
+        if source == "voice":
+
+            tier = signal_data.get(
+                "tier"
+            ) or "exact"
+
+            label = self.VOICE_TIER_LABEL.get(
+                tier,
+                "voice"
+            )
+
+            return f'voice:"{signal_name}" ({label})'
+
+        if source == "keyboard":
+
+            return f'keyboard:"{signal_name}" (direct)'
+
+        method = self.SIGNAL_METHOD.get(
+            (source, signal_name),
+            "model"
+        )
+
+        label = (
+            "vector/geometry"
+            if method == "vector"
+            else "ML model"
+        )
+
+        return f'{source}:"{signal_name}" ({label})'
 
     # ---------------------------------
     # Clear Signals (respects settings)
