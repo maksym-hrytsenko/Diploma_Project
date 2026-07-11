@@ -6,38 +6,10 @@ from processing.gesture.gesture_model import (
     OffHandModel
 )
 
+from config.config_loader import load_system_config
+
 
 class GestureRecognizer:
-
-    # Off-hand pinch ("precision mode", Cursor mode only) scales
-    # cursor movement down to this fraction of the raw hand
-    # movement, like a DPI switch on a physical mouse.
-    PRECISION_SCALE = 0.5
-
-    # Fraction of the camera frame trimmed from each edge before
-    # mapping the fingertip position to the screen. MediaPipe's
-    # hand tracking gets unreliable right at the true edges of
-    # the frame, so without this the user could never
-    # comfortably reach the screen's edges either — trimming the
-    # margin and stretching what remains to the full 0..1 range
-    # means getting close to (not exactly at) the frame's edge
-    # already reaches the screen's edge.
-    ACTIVE_ZONE_MARGIN = 0.1
-
-    # Presentation mode's own pointer (see
-    # _update_presentation_pointer) measures its relative
-    # control box in units of the presenter's own hand size —
-    # this many hand-widths, centered on wherever pointing
-    # started, sweep the full screen. Deliberately an
-    # approximate, user-tuned comfort setting rather than
-    # something derived geometrically.
-    PRESENTATION_POINTER_BOX_HANDS = 4.0
-
-    # Below this normalized distance between two detected
-    # wrists, OffHandModel's result is treated as re-detecting
-    # the SAME physical hand GestureModel already found as
-    # primary, not a genuine second hand.
-    SAME_HAND_DISTANCE = 0.15
 
     # The only two modes that ever interpret HAND_LEFT/RIGHT/
     # UP/DOWN swipes: Flip mode uses them directly, Quick
@@ -48,18 +20,118 @@ class GestureRecognizer:
     # set.
     SWIPE_MODES = {"flip", "quick_circle"}
 
-    # The three Call-mode gestures that toggle persistent state
-    # (mic mute/unmute, camera on/off) rather than firing a
-    # momentary one-shot action like OK_SIGN (raise hand).
-    # Shared by the mode gate, the hold-to-confirm requirement,
-    # and the per-gesture lock, all in _publish_static_gesture —
-    # see call_toggle_hold_seconds and locked_toggle_gestures in
-    # __init__.
-    CALL_TOGGLE_GESTURES = ("Thumb_Up", "Thumb_Down", "Victory")
+    # The four Call-mode gestures that toggle persistent state
+    # (mic, camera, call audio, background blur) rather than
+    # firing a momentary one-shot action like OK_SIGN (raise
+    # hand). Shared by the mode gate, the hold-to-confirm
+    # requirement, and the per-gesture lock, all in
+    # _publish_static_gesture — see call_toggle_hold_seconds and
+    # locked_toggle_gestures in __init__. Each name is produced
+    # by _read_call_finger_gesture, not by MediaPipe's own
+    # classifier — see FINGER_COUNT_GESTURES below for why.
+    CALL_TOGGLE_GESTURES = (
+        "ONE_FINGER",
+        "TWO_FINGERS",
+        "THREE_FINGERS",
+        "FOUR_FINGERS"
+    )
+
+    # (tip landmark, PIP landmark) pairs for the four non-thumb
+    # fingers, used by _count_extended_fingers. The thumb is
+    # deliberately left out of the count entirely — raising N
+    # fingers naturally starts from the index finger and folds
+    # outward one at a time, and whether the thumb happens to
+    # also be tucked in or splayed out while doing it varies too
+    # much between people to be a reliable fourth bit.
+    FINGER_TIP_PIP_LANDMARKS = (
+        (8, 6),    # index
+        (12, 10),  # middle
+        (16, 14),  # ring
+        (20, 18)   # pinky
+    )
+
+    # MediaPipe's bundled classifier has no "two fingers"/
+    # "three fingers"/"four fingers" category — same labels.txt
+    # checked directly for OK_SIGN (only None/Closed_Fist/
+    # Open_Palm/Pointing_Up/Thumb_Down/Thumb_Up/Victory/
+    # ILoveYou exist) — so Call mode's four toggle functions are
+    # keyed off a raw extended-finger count computed straight
+    # from landmark geometry instead of a classifier category.
+    FINGER_COUNT_GESTURES = {
+        1: "ONE_FINGER",
+        2: "TWO_FINGERS",
+        3: "THREE_FINGERS",
+        4: "FOUR_FINGERS"
+    }
 
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
+
+        config = load_system_config().get(
+            "gesture",
+            {}
+        )
+
+        presentation_fist_config = config.get(
+            "presentation_fist",
+            {}
+        )
+
+        # Off-hand pinch ("precision mode", Cursor mode only) scales
+        # cursor movement down to this fraction of the raw hand
+        # movement, like a DPI switch on a physical mouse.
+        self.PRECISION_SCALE = config.get(
+            "precision_scale",
+            0.5
+        )
+
+        # Fraction of the camera frame trimmed from each edge before
+        # mapping the fingertip position to the screen. MediaPipe's
+        # hand tracking gets unreliable right at the true edges of
+        # the frame, so without this the user could never
+        # comfortably reach the screen's edges either — trimming the
+        # margin and stretching what remains to the full 0..1 range
+        # means getting close to (not exactly at) the frame's edge
+        # already reaches the screen's edge.
+        self.ACTIVE_ZONE_MARGIN = config.get(
+            "active_zone_margin",
+            0.1
+        )
+
+        # Presentation mode's own pointer (see
+        # _update_presentation_pointer) measures its relative
+        # control box in units of the presenter's own hand size —
+        # this many hand-widths, centered on wherever pointing
+        # started, sweep the full screen. Deliberately an
+        # approximate, user-tuned comfort setting rather than
+        # something derived geometrically.
+        self.PRESENTATION_POINTER_BOX_HANDS = config.get(
+            "presentation_pointer_box_hands",
+            4.0
+        )
+
+        # Below this normalized distance between two detected
+        # wrists, OffHandModel's result is treated as re-detecting
+        # the SAME physical hand GestureModel already found as
+        # primary, not a genuine second hand.
+        self.SAME_HAND_DISTANCE = config.get(
+            "same_hand_distance",
+            0.15
+        )
+
+        # A finger counts as extended once its tip sits this much
+        # farther from the wrist than its own PIP joint is —
+        # comparing distances-from-wrist rather than a raw
+        # y-coordinate keeps this working regardless of how the hand
+        # is rotated in frame, not just when held perfectly upright.
+        # The margin above 1.0 keeps a nearly-straight finger sitting
+        # right at the boundary from flickering extended/folded
+        # frame to frame.
+        self.FINGER_EXTENSION_MARGIN = config.get(
+            "finger_extension_margin",
+            1.05
+        )
 
         self.gesture_model = GestureModel()
 
@@ -84,7 +156,10 @@ class GestureRecognizer:
         # that start/stop motion tracking.
         self.last_gesture = None
 
-        self.confidence_threshold = 0.7
+        self.confidence_threshold = config.get(
+            "confidence_threshold",
+            0.7
+        )
 
         # ---------------------------------
         # Gesture Debounce
@@ -96,17 +171,21 @@ class GestureRecognizer:
         # would otherwise end and immediately restart a
         # session, re-anchoring the point to wherever the
         # finger happens to be at that moment.
-        self.confirm_frames = 4
+        self.confirm_frames = config.get(
+            "confirm_frames",
+            4
+        )
 
         self.candidate_gesture = None
         self.candidate_count = 0
 
         # When the current candidate_gesture started being
         # seen, even before it crossed confirm_frames. Used by
-        # the Call-mode toggle gestures (Thumb_Up/Thumb_Down/
-        # Victory) to require a real, continuous hold — see
-        # call_toggle_hold_seconds — on top of this debounce,
-        # which by itself only filters single-frame noise.
+        # the Call-mode toggle gestures (ONE_FINGER/TWO_FINGERS/
+        # THREE_FINGERS/FOUR_FINGERS) to require a real,
+        # continuous hold — see call_toggle_hold_seconds — on
+        # top of this debounce, which by itself only filters
+        # single-frame noise.
         self.candidate_start_time = None
 
         # ---------------------------------
@@ -119,7 +198,10 @@ class GestureRecognizer:
         # regularly makes MediaPipe miss the hand for a
         # frame or two even though it never left the
         # camera.
-        self.hand_lost_frames = 5
+        self.hand_lost_frames = config.get(
+            "hand_lost_frames",
+            5
+        )
 
         self.hand_lost_count = 0
 
@@ -143,7 +225,10 @@ class GestureRecognizer:
 
         self.freeze_until = 0
 
-        self.freeze_duration = 0.3
+        self.freeze_duration = config.get(
+            "freeze_duration",
+            0.3
+        )
 
         # Previous frame's fingertip position, used only to
         # compute instantaneous speed (velocity).
@@ -164,23 +249,35 @@ class GestureRecognizer:
         # deliberate swipe. This is the PRIMARY signal —
         # direction is decided by how fast the finger is
         # moving, not by distance from a fixed point.
-        self.velocity_threshold = 1.8
+        self.velocity_threshold = config.get(
+            "velocity_threshold",
+            1.8
+        )
 
         # Per-frame movement below this is treated as
         # landmark jitter, even if it briefly spikes the
         # velocity reading (a tiny distance over a tiny
         # time can look "fast").
-        self.min_frame_distance = 0.015
+        self.min_frame_distance = config.get(
+            "min_frame_distance",
+            0.015
+        )
 
         # The velocity vector counts as UP/DOWN only within
         # this many degrees of straight vertical. Everything
         # else, including diagonals, counts as LEFT/RIGHT.
-        self.vertical_cone_degrees = 25
+        self.vertical_cone_degrees = config.get(
+            "vertical_cone_degrees",
+            25
+        )
 
         # Cooldown
         self.last_motion_time = 0
 
-        self.motion_cooldown = 0.5
+        self.motion_cooldown = config.get(
+            "motion_cooldown",
+            0.5
+        )
 
         # ---------------------------------
         # Presentation Mode: Fist Swipe
@@ -212,13 +309,33 @@ class GestureRecognizer:
         # fingertip swipe at the same physical speed, and this
         # is meant to be comfortable a few meters from the
         # camera.
-        self.presentation_fist_velocity_threshold = 0.5
+        self.presentation_fist_velocity_threshold = (
+            presentation_fist_config.get(
+                "velocity_threshold",
+                0.5
+            )
+        )
 
-        self.presentation_fist_min_frame_distance = 0.0075
+        self.presentation_fist_min_frame_distance = (
+            presentation_fist_config.get(
+                "min_frame_distance",
+                0.0075
+            )
+        )
 
-        self.presentation_fist_vertical_cone_degrees = 25
+        self.presentation_fist_vertical_cone_degrees = (
+            presentation_fist_config.get(
+                "vertical_cone_degrees",
+                25
+            )
+        )
 
-        self.presentation_fist_motion_cooldown = 0.5
+        self.presentation_fist_motion_cooldown = (
+            presentation_fist_config.get(
+                "motion_cooldown",
+                0.5
+            )
+        )
 
         # ---------------------------------
         # Presentation Mode: Relative Laser Pointer
@@ -254,13 +371,22 @@ class GestureRecognizer:
         # Call mode's OK-sign check (same thumb/index-touch
         # geometry, different meaning depending on which mode
         # is active — the two never run in the same mode).
-        self.pinch_distance_threshold = 0.06
+        self.pinch_distance_threshold = config.get(
+            "pinch_distance_threshold",
+            0.06
+        )
 
         # A pinch held/moved past either of these
         # thresholds stops being a quick tap (click) and
         # becomes a hold-and-drag (scroll) instead.
-        self.drag_activation_seconds = 0.15
-        self.drag_activation_distance = 0.03
+        self.drag_activation_seconds = config.get(
+            "drag_activation_seconds",
+            0.15
+        )
+        self.drag_activation_distance = config.get(
+            "drag_activation_distance",
+            0.03
+        )
 
         self.is_pinching = False
         self.is_dragging = False
@@ -278,7 +404,10 @@ class GestureRecognizer:
         # instead of two separate PINCH (click) signals.
         self.pending_single_pinch = False
         self.pending_pinch_time = 0
-        self.double_pinch_window = 0.3
+        self.double_pinch_window = config.get(
+            "double_pinch_window",
+            0.3
+        )
 
         # ---------------------------------
         # OK-Sign (Call Mode: raise hand)
@@ -307,49 +436,63 @@ class GestureRecognizer:
         # in an unbroken burst instead of once per deliberate
         # touch-and-release.
         self.ok_sign_release_distance = (
-            self.pinch_distance_threshold * 1.6
+            self.pinch_distance_threshold
+            * config.get(
+                "ok_sign_release_multiplier",
+                1.6
+            )
         )
 
         # Hard floor between two OK_SIGN firings, regardless of
         # finger state — a safety net under the hysteresis above
         # for jitter that plays out slower than a single-frame
         # flicker.
-        self.ok_sign_cooldown = 0.6
+        self.ok_sign_cooldown = config.get(
+            "ok_sign_cooldown",
+            0.6
+        )
 
         self.last_ok_sign_time = 0
 
         # ---------------------------------
         # Call Mode Toggle Gestures
-        # (Thumb_Up / Thumb_Down / Victory)
+        # (1 / 2 / 3 / 4 fingers)
         # ---------------------------------
 
-        # Thumb_Up (unmute) and Thumb_Down (mute) send the
-        # identical OS-level toggle keystroke (see
-        # OSController.mute_mic/unmute_mic) rather than a
-        # distinct "set muted"/"set unmuted" call, so firing
-        # either one an extra time flips the mic the wrong way,
-        # not just redundantly. Once a toggle gesture fires, that
-        # SAME gesture name is ignored until the hand actually
-        # leaves the frame (see _handle_hand_lost) and is
-        # reacquired. Unlike last_gesture, this is NOT cleared by
-        # seeing some other gesture in between — a gesture stays
-        # in this set specifically so the classifier flickering
-        # off it to something else and back, without the hand
-        # ever leaving the frame, can't fire it a second time on
-        # what is physically still the same held-up gesture.
-        # Tracked per gesture name (not one shared flag) so, e.g.,
-        # a locked Thumb_Down does not also block Thumb_Up.
+        # Each of the four finger-count gestures sends a single
+        # OS-level toggle keystroke (see OSController.toggle_mic/
+        # toggle_camera/toggle_call_audio/toggle_background_blur)
+        # rather than a distinct "turn on"/"turn off" call, so
+        # firing the same one twice in a row flips the state the
+        # wrong way, not just redundantly. Once a toggle gesture
+        # fires, that SAME gesture name is ignored until the hand
+        # actually leaves the frame (see _handle_hand_lost) and is
+        # reacquired — this is exactly the "show once to turn on,
+        # hand must leave frame, show again to turn off" behavior
+        # the four functions are meant to have. Unlike
+        # last_gesture, this is NOT cleared by seeing some other
+        # gesture in between — a gesture stays in this set
+        # specifically so the finger count flickering off it to
+        # something else and back, without the hand ever leaving
+        # the frame, can't fire it a second time on what is
+        # physically still the same held-up gesture. Tracked per
+        # gesture name (not one shared flag) so, e.g., a locked
+        # ONE_FINGER does not also block TWO_FINGERS.
         self.locked_toggle_gestures = set()
 
-        # How long (seconds) one of these three gestures must be
+        # How long (seconds) one of these four gestures must be
         # held continuously — since it was first seen, not just
         # since it crossed confirm_frames — before it is trusted
-        # enough to fire. These toggle mic/camera state, so a
-        # fast or incidental gesture should not be enough to flip
-        # them the way it's fine for, say, a swipe. OK_SIGN
-        # (raise hand) is a momentary, repeatable notification,
-        # not a toggle, so it is not held to this standard.
-        self.call_toggle_hold_seconds = 1.5
+        # enough to fire. These toggle mic/camera/call-audio/
+        # background-blur state, so a fast or incidental gesture
+        # should not be enough to flip them the way it's fine for,
+        # say, a swipe. OK_SIGN (raise hand) is a momentary,
+        # repeatable notification, not a toggle, so it is not held
+        # to this standard.
+        self.call_toggle_hold_seconds = config.get(
+            "call_toggle_hold_seconds",
+            1.5
+        )
 
         # ---------------------------------
         # Two-Hand Cursor Mode (off-hand)
@@ -388,7 +531,7 @@ class GestureRecognizer:
         # Mirrored from SignalMapper's "mode_changed" event.
         # A deliberate, narrow exception to this class
         # otherwise staying mode-agnostic: a handful of checks
-        # below (PINCH, OK-sign, Thumb_Up/Thumb_Down/Victory,
+        # below (PINCH, OK-sign, the finger-count toggles,
         # off-hand precision/zoom) only mean something in one
         # specific mode each, and are gated at the source so a
         # pose that happens to pass through during an unrelated
@@ -563,12 +706,34 @@ class GestureRecognizer:
 
         self.hand_lost_count = 0
 
+        # Call mode's four toggle functions (mic / camera /
+        # call audio / background blur) are keyed off how many
+        # fingers are raised, not off whatever MediaPipe's own
+        # classifier happens to report — substituted in here,
+        # ahead of the shared confirm_frames debounce below, so
+        # the rest of the debounce/hold/lock pipeline in
+        # _publish_static_gesture works identically to how it
+        # already does for any other gesture name. gesture_name/
+        # confidence themselves are left untouched — pointer
+        # tracking and the debug overlay below still read the
+        # classifier's own raw output.
+        confirm_input = gesture_name
+        confirm_confidence = confidence
+
+        if self.active_mode == "call":
+
+            confirm_input, confirm_confidence = (
+                self._read_call_finger_gesture(
+                    result
+                )
+            )
+
         # Only a gesture held for confirm_frames straight
         # frames is trusted for session start/end — the
         # raw, possibly noisy gesture_name is still used
         # below for pointer tracking and the debug overlay
         confirmed_gesture = self._confirm_gesture(
-            gesture_name
+            confirm_input
         )
 
         # Swipe/motion tracking only ever means anything from
@@ -706,7 +871,7 @@ class GestureRecognizer:
 
         self._publish_static_gesture(
             confirmed_gesture,
-            confidence
+            confirm_confidence
         )
 
         index_tip = result.hand_landmarks[0][8]
@@ -1579,6 +1744,76 @@ class GestureRecognizer:
         )
 
     # ---------------------------------
+    # Call Mode: Finger-Count Toggles
+    # (1 / 2 / 3 / 4 fingers)
+    # ---------------------------------
+
+    # Counts how many of the four non-thumb fingers are
+    # currently extended, using FINGER_TIP_PIP_LANDMARKS — a
+    # finger is extended once its tip sits farther from the
+    # wrist than its own PIP joint does, past
+    # FINGER_EXTENSION_MARGIN. Distance-from-wrist rather than a
+    # raw y-coordinate comparison, so this keeps working
+    # regardless of how the hand happens to be rotated in frame.
+    def _count_extended_fingers(self, hand_landmarks):
+
+        wrist = hand_landmarks[0]
+
+        extended_count = 0
+
+        for tip_index, pip_index in self.FINGER_TIP_PIP_LANDMARKS:
+
+            tip = hand_landmarks[tip_index]
+            pip = hand_landmarks[pip_index]
+
+            tip_distance = math.hypot(
+                tip.x - wrist.x,
+                tip.y - wrist.y
+            )
+
+            pip_distance = math.hypot(
+                pip.x - wrist.x,
+                pip.y - wrist.y
+            )
+
+            if (
+                tip_distance
+                > pip_distance * self.FINGER_EXTENSION_MARGIN
+            ):
+
+                extended_count += 1
+
+        return extended_count
+
+    # Mirrors _read_gesture's (name, confidence) shape, but
+    # sourced from landmark geometry above rather than
+    # MediaPipe's classifier — the same relationship OK_SIGN
+    # already has to PINCH's classifier-free thumb/index
+    # distance check. Confidence is fixed at 1.0 rather than
+    # left as None: this is a direct geometric read, not a
+    # thresholded absence of one, and _publish_static_gesture's
+    # hold-to-confirm/lock pipeline only cares whether the name
+    # is None, never about the confidence value itself.
+    def _read_call_finger_gesture(self, result):
+
+        hand_landmarks = (
+            result.hand_landmarks[0]
+        )
+
+        extended_count = self._count_extended_fingers(
+            hand_landmarks
+        )
+
+        gesture_name = self.FINGER_COUNT_GESTURES.get(
+            extended_count
+        )
+
+        if gesture_name is None:
+            return None, None
+
+        return gesture_name, 1.0
+
+    # ---------------------------------
     # Off-Hand (Cursor Mode: zoom engage + precision)
     # ---------------------------------
 
@@ -1864,11 +2099,14 @@ class GestureRecognizer:
         ):
             return
 
-        # Thumb_Up/Thumb_Down/Victory only mean anything in
-        # Call mode (mic mute/unmute, camera toggle) — gated
-        # at the source so, e.g., an actual thumbs-up given to
-        # someone during a Flip-mode swipe session never gets
-        # detected or published as noise.
+        # ONE_FINGER/TWO_FINGERS/THREE_FINGERS/FOUR_FINGERS only
+        # ever get produced by _read_call_finger_gesture while
+        # active_mode == "call" (see _handle_frame), so this
+        # check is a defensive backstop, not the primary gate —
+        # kept for the same reason the old classifier-category
+        # version of this check existed, so nothing downstream
+        # can publish one of these names outside Call mode even
+        # if the override above were ever bypassed.
         if (
             gesture_name in self.CALL_TOGGLE_GESTURES
             and self.active_mode != "call"
@@ -1879,8 +2117,8 @@ class GestureRecognizer:
 
             # Require a real, continuous hold — since the raw
             # gesture was first seen, not just since it crossed
-            # confirm_frames — before a mic/camera toggle is
-            # trusted enough to fire.
+            # confirm_frames — before a mic/camera/call-audio/
+            # background-blur toggle is trusted enough to fire.
             held_seconds = (
                 time.time() - self.candidate_start_time
                 if self.candidate_start_time is not None

@@ -3,12 +3,19 @@ import pyautogui
 from execution.os_controller import OSController
 from ui.pointer_overlay import PointerOverlay
 
+from config.config_loader import load_system_config
+
 
 class ActionExecutor:
 
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
+
+        execution_config = load_system_config().get(
+            "execution",
+            {}
+        )
 
         self.os_controller = OSController()
 
@@ -33,7 +40,18 @@ class ActionExecutor:
         # distance has been covered.
         self.zoom_accumulator = 0.0
 
-        self.zoom_step_threshold = 0.05
+        self.zoom_step_threshold = execution_config.get(
+            "zoom_step_threshold",
+            0.05
+        )
+
+        # Mirrors PointerOverlay's own MIRROR_X convention, so
+        # the real cursor sits on the same side as the user's
+        # hand from their own point of view.
+        self.mirror_cursor_x = execution_config.get(
+            "mirror_cursor_x",
+            True
+        )
 
     # ---------------------------------
     # Command Table
@@ -85,9 +103,10 @@ class ActionExecutor:
             "OPEN_TV": controller.open_tv,
             "OPEN_NEWS": controller.open_news,
 
-            "UNMUTE_MIC": controller.unmute_mic,
-            "MUTE_MIC": controller.mute_mic,
+            "TOGGLE_MIC": controller.toggle_mic,
             "TOGGLE_CAMERA": controller.toggle_camera,
+            "TOGGLE_CALL_AUDIO": controller.toggle_call_audio,
+            "TOGGLE_BACKGROUND_BLUR": controller.toggle_background_blur,
             "RAISE_HAND": controller.raise_hand,
 
             "NEXT_TRACK": controller.next_track,
@@ -282,7 +301,11 @@ class ActionExecutor:
         # Mirrors PointerOverlay's convention, so the
         # cursor sits on the same side the user's hand is
         # on from their own point of view.
-        display_x = 1.0 - normalized_x
+        display_x = (
+            (1.0 - normalized_x)
+            if self.mirror_cursor_x
+            else normalized_x
+        )
 
         pixel_x = int(display_x * screen_width)
         pixel_y = int(normalized_y * screen_height)

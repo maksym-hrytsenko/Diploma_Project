@@ -4,19 +4,10 @@ import webbrowser
 
 import pyautogui
 
+from config.config_loader import load_system_config
+
 
 class OSController:
-
-    # Total on-screen distance (real pixels) a single Flip
-    # Mode swipe scrolls, spread across many small ticks
-    # with a short pause between each so it reads as a
-    # smooth glide rather than one abrupt jump. Raised from
-    # an original 90px, then again (200px -> 500px, a 2.5x
-    # jump) after further user feedback that up/down swipes
-    # still needed to travel noticeably farther.
-    FLIP_SCROLL_PIXELS = 500
-    FLIP_SCROLL_TICKS = 18
-    FLIP_SCROLL_TICK_DELAY = 0.014
 
     # macOS system media key codes (NSSystemDefined event
     # data1 high byte), the same codes a physical keyboard's
@@ -46,6 +37,63 @@ class OSController:
     MR_COMMAND_PREVIOUS_TRACK = 5
 
     def __init__(self):
+
+        config = load_system_config().get(
+            "os_controller",
+            {}
+        )
+
+        flip_scroll_config = config.get(
+            "flip_scroll",
+            {}
+        )
+
+        # Total on-screen distance (real pixels) a single Flip
+        # Mode swipe scrolls, spread across many small ticks
+        # with a short pause between each so it reads as a
+        # smooth glide rather than one abrupt jump. Raised from
+        # an original 90px, then again (200px -> 500px, a 2.5x
+        # jump) after further user feedback that up/down swipes
+        # still needed to travel noticeably farther.
+        self.FLIP_SCROLL_PIXELS = flip_scroll_config.get(
+            "pixels",
+            500
+        )
+
+        self.FLIP_SCROLL_TICKS = flip_scroll_config.get(
+            "ticks",
+            18
+        )
+
+        self.FLIP_SCROLL_TICK_DELAY = flip_scroll_config.get(
+            "tick_delay",
+            0.014
+        )
+
+        # Hotkey combos, target app names/URLs and Shortcuts
+        # names are all user-tunable (e.g. a different call app
+        # than Teams, a different browser) — see the
+        # "os_controller" section of config/system.json for the
+        # defaults each falls back to below.
+        self.hotkeys = config.get(
+            "hotkeys",
+            {}
+        )
+
+        self.urls = config.get(
+            "urls",
+            {}
+        )
+
+        self.apps = config.get(
+            "apps",
+            {}
+        )
+
+        self.shortcuts = config.get(
+            "shortcuts",
+            {}
+        )
 
         # This app moves the cursor continuously and on
         # purpose (Cursor mode follows the fingertip every
@@ -117,6 +165,30 @@ class OSController:
             )
 
     # ---------------------------------
+    # Config-Driven Hotkeys / Apps
+    # ---------------------------------
+
+    # Every hotkey is stored as a list of key names (even a
+    # single-key combo like "f5") so pyautogui.hotkey(*keys)
+    # handles them all uniformly — for a single key this is the
+    # same keyDown+keyUp sequence pyautogui.press() performs.
+    def _send_hotkey(self, name, default):
+
+        keys = self.hotkeys.get(
+            name,
+            default
+        )
+
+        pyautogui.hotkey(*keys)
+
+    def _app_name(self, name, default):
+
+        return self.apps.get(
+            name,
+            default
+        )
+
+    # ---------------------------------
     # Mouse (Cursor Mode)
     # ---------------------------------
 
@@ -166,11 +238,17 @@ class OSController:
     # keyboard shortcut a user would press themselves.
     def zoom_in(self):
 
-        pyautogui.hotkey("command", "=")
+        self._send_hotkey(
+            "zoom_in",
+            ["command", "="]
+        )
 
     def zoom_out(self):
 
-        pyautogui.hotkey("command", "-")
+        self._send_hotkey(
+            "zoom_out",
+            ["command", "-"]
+        )
 
     # ---------------------------------
     # Scroll (Flip Mode)
@@ -257,11 +335,17 @@ class OSController:
     # different action depending on what's in front.
     def flip_next(self):
 
-        pyautogui.hotkey("ctrl", "right")
+        self._send_hotkey(
+            "flip_next",
+            ["ctrl", "right"]
+        )
 
     def flip_previous(self):
 
-        pyautogui.hotkey("ctrl", "left")
+        self._send_hotkey(
+            "flip_previous",
+            ["ctrl", "left"]
+        )
 
     # ---------------------------------
     # Applications
@@ -297,71 +381,105 @@ class OSController:
 
     def open_terminal(self):
 
-        self._open_mac_app("Terminal")
+        self._open_mac_app(
+            self._app_name("terminal", "Terminal")
+        )
 
     def open_safari(self):
 
-        self._open_mac_app("Safari")
+        self._open_mac_app(
+            self._app_name("safari", "Safari")
+        )
 
     def open_chrome(self):
 
-        self._open_mac_app("Google Chrome")
+        self._open_mac_app(
+            self._app_name("chrome", "Google Chrome")
+        )
 
     def open_spotify(self):
 
-        self._open_mac_app("Spotify")
+        self._open_mac_app(
+            self._app_name("spotify", "Spotify")
+        )
 
     def open_slack(self):
 
-        self._open_mac_app("Slack")
+        self._open_mac_app(
+            self._app_name("slack", "Slack")
+        )
 
     def open_discord(self):
 
-        self._open_mac_app("Discord")
+        self._open_mac_app(
+            self._app_name("discord", "Discord")
+        )
 
     def open_mail(self):
 
-        self._open_mac_app("Mail")
+        self._open_mac_app(
+            self._app_name("mail", "Mail")
+        )
 
     def open_calendar(self):
 
-        self._open_mac_app("Calendar")
+        self._open_mac_app(
+            self._app_name("calendar", "Calendar")
+        )
 
     def open_notes(self):
 
-        self._open_mac_app("Notes")
+        self._open_mac_app(
+            self._app_name("notes", "Notes")
+        )
 
     def open_telegram(self):
 
-        self._open_mac_app("Telegram")
+        self._open_mac_app(
+            self._app_name("telegram", "Telegram")
+        )
 
     def open_finder(self):
 
-        self._open_mac_app("Finder")
+        self._open_mac_app(
+            self._app_name("finder", "Finder")
+        )
 
     def open_notion(self):
 
-        self._open_mac_app("Notion")
+        self._open_mac_app(
+            self._app_name("notion", "Notion")
+        )
 
     def open_photos(self):
 
-        self._open_mac_app("Photos")
+        self._open_mac_app(
+            self._app_name("photos", "Photos")
+        )
 
     def open_preview(self):
 
-        self._open_mac_app("Preview")
+        self._open_mac_app(
+            self._app_name("preview", "Preview")
+        )
 
     def open_settings(self):
 
-        self._open_mac_app("System Settings")
+        self._open_mac_app(
+            self._app_name("settings", "System Settings")
+        )
 
     def open_tv(self):
 
-        self._open_mac_app("TV")
+        self._open_mac_app(
+            self._app_name("tv", "TV")
+        )
 
     def open_news(self):
 
-        self._open_mac_app("News")
+        self._open_mac_app(
+            self._app_name("news", "News")
+        )
 
     # ---------------------------------
     # Websites
@@ -374,19 +492,28 @@ class OSController:
     def open_browser(self):
 
         webbrowser.open(
-            "https://google.com"
+            self.urls.get(
+                "browser",
+                "https://google.com"
+            )
         )
 
     def open_chatgpt(self):
 
         webbrowser.open(
-            "https://chatgpt.com"
+            self.urls.get(
+                "chatgpt",
+                "https://chatgpt.com"
+            )
         )
 
     def open_github(self):
 
         webbrowser.open(
-            "https://github.com"
+            self.urls.get(
+                "github",
+                "https://github.com"
+            )
         )
 
     # ---------------------------------
@@ -397,11 +524,16 @@ class OSController:
 
         try:
 
+            app_name = self._app_name(
+                "spotify",
+                "Spotify"
+            )
+
             subprocess.Popen(
                 [
                     "osascript",
                     "-e",
-                    'tell application "Spotify" to play'
+                    f'tell application "{app_name}" to play'
                 ]
             )
 
@@ -415,11 +547,16 @@ class OSController:
 
         try:
 
+            app_name = self._app_name(
+                "spotify",
+                "Spotify"
+            )
+
             subprocess.Popen(
                 [
                     "osascript",
                     "-e",
-                    'tell application "Spotify" to pause'
+                    f'tell application "{app_name}" to pause'
                 ]
             )
 
@@ -609,8 +746,13 @@ class OSController:
 
         try:
 
+            shortcut_name = self.shortcuts.get(
+                "enable_dnd",
+                "Enable Do Not Disturb"
+            )
+
             subprocess.Popen(
-                ["shortcuts", "run", "Enable Do Not Disturb"]
+                ["shortcuts", "run", shortcut_name]
             )
 
         except Exception as e:
@@ -623,8 +765,13 @@ class OSController:
 
         try:
 
+            shortcut_name = self.shortcuts.get(
+                "disable_dnd",
+                "Disable Do Not Disturb"
+            )
+
             subprocess.Popen(
-                ["shortcuts", "run", "Disable Do Not Disturb"]
+                ["shortcuts", "run", shortcut_name]
             )
 
         except Exception as e:
@@ -681,15 +828,24 @@ class OSController:
     # next_slide/previous_slide below.
     def start_slideshow(self):
 
-        pyautogui.press("f5")
+        self._send_hotkey(
+            "start_slideshow",
+            ["f5"]
+        )
 
     def next_slide(self):
 
-        pyautogui.press("right")
+        self._send_hotkey(
+            "next_slide",
+            ["right"]
+        )
 
     def previous_slide(self):
 
-        pyautogui.press("left")
+        self._send_hotkey(
+            "previous_slide",
+            ["left"]
+        )
 
     # ---------------------------------
     # Call Mode (Microsoft Teams)
@@ -704,26 +860,76 @@ class OSController:
     # before, so re-verify against Teams' own Settings ->
     # Keyboard shortcuts page if they stop firing.
     #
-    # Mute/unmute is a single toggle shortcut, the same
-    # limitation already documented for media_play_pause: both
-    # UNMUTE_MIC and MUTE_MIC send the identical keystroke, so
-    # firing the "wrong" one (already unmuted -> Thumb_Up again)
-    # toggles it the other way rather than no-op'ing.
-    def unmute_mic(self):
+    # Each of these is a single toggle shortcut, the same
+    # limitation already documented for media_play_pause: there
+    # is no distinct "turn on"/"turn off" keystroke, so firing it
+    # while already in the target state (e.g. already unmuted)
+    # flips it the other way rather than no-op'ing. This is the
+    # honest consequence of the one-finger/two-finger/etc. gesture
+    # itself only being a single toggle trigger (see
+    # GestureRecognizer.locked_toggle_gestures for how a gesture
+    # is prevented from firing twice in a row without the hand
+    # actually leaving the frame in between).
+    def toggle_mic(self):
 
-        pyautogui.hotkey("command", "shift", "m")
-
-    def mute_mic(self):
-
-        pyautogui.hotkey("command", "shift", "m")
+        self._send_hotkey(
+            "toggle_mic",
+            ["command", "shift", "m"]
+        )
 
     def toggle_camera(self):
 
-        pyautogui.hotkey("command", "shift", "o")
+        self._send_hotkey(
+            "toggle_camera",
+            ["command", "shift", "o"]
+        )
+
+    # Teams has no documented keyboard shortcut for muting the
+    # call's own incoming audio specifically (only mic, camera,
+    # and raise-hand are exposed as shortcuts) — this instead
+    # toggles the Mac's system-wide audio output mute, which
+    # silences the call's sound along with everything else on
+    # the machine. An honest limitation, not a bug: it is the
+    # only way to reliably silence a call's audio from outside
+    # the Teams window without UI-scripting a click on Teams' own
+    # volume control.
+    def toggle_call_audio(self):
+
+        try:
+
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    "set volume output muted "
+                    "(not (output muted of (get volume settings)))"
+                ],
+                check=True
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CALL AUDIO ERROR] {e}"
+            )
+
+    # Cmd+Shift+P is Teams for Mac's background-effects toggle
+    # as of this writing — like the other Teams shortcuts above,
+    # re-verify against Teams' own Settings -> Keyboard shortcuts
+    # page if it stops firing.
+    def toggle_background_blur(self):
+
+        self._send_hotkey(
+            "toggle_background_blur",
+            ["command", "shift", "p"]
+        )
 
     def raise_hand(self):
 
-        pyautogui.hotkey("command", "shift", "k")
+        self._send_hotkey(
+            "raise_hand",
+            ["command", "shift", "k"]
+        )
 
     # ---------------------------------
     # Screenshot (Shift+Alt face layer)
@@ -734,4 +940,7 @@ class OSController:
     # (Cmd+Shift+4), so it needs no follow-up mouse drag.
     def take_screenshot(self):
 
-        pyautogui.hotkey("command", "shift", "3")
+        self._send_hotkey(
+            "take_screenshot",
+            ["command", "shift", "3"]
+        )

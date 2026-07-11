@@ -318,15 +318,17 @@ earlier fist-vs-open-shape design that chose one or the other.
 ### 2.4 Call — `"call mode"` or `ctrl+shift+w`
 
 Static, one-hand gestures, each firing a real Microsoft Teams keyboard
-shortcut — mic mute/unmute, camera toggle, raise hand. Replaces the
-earlier Window Management mode entirely (see §11); the `ctrl+shift+w`
-combo and voice-trigger slot were reused as-is rather than reassigned.
+shortcut — mic toggle, camera toggle, call-audio toggle, background-blur
+toggle, raise hand. Replaces the earlier Window Management mode
+entirely (see §11); the `ctrl+shift+w` combo and voice-trigger slot were
+reused as-is rather than reassigned.
 
 | Gesture | Action | Teams shortcut (Mac) |
 |---|---|---|
-| `Thumb_Up` (thumbs up) | `UNMUTE_MIC` | Cmd+Shift+M |
-| `Thumb_Down` (thumbs down) | `MUTE_MIC` | Cmd+Shift+M |
-| `Victory` (peace sign) | `TOGGLE_CAMERA` | Cmd+Shift+O |
+| 1 finger raised | `TOGGLE_MIC` | Cmd+Shift+M |
+| 2 fingers raised | `TOGGLE_CAMERA` | Cmd+Shift+O |
+| 3 fingers raised | `TOGGLE_CALL_AUDIO` | macOS system output mute (no Teams shortcut exists) |
+| 4 fingers raised | `TOGGLE_BACKGROUND_BLUR` | Cmd+Shift+P |
 | `OK_SIGN` (thumb+index touching) | `RAISE_HAND` | Cmd+Shift+K |
 
 **There is no app-agnostic "mute the current call" system API** — this
@@ -341,33 +343,54 @@ this writing, sent as real keystrokes via `pyautogui.hotkey` — Microsoft
 has changed its own shortcuts before, so re-verify against Teams'
 Settings → Keyboard shortcuts page if they stop firing.
 
-**Mute/unmute is a single toggle shortcut** — the same honest limitation
-already documented for `MEDIA_PLAY_PAUSE` (§5). `UNMUTE_MIC` and
-`MUTE_MIC` send the *identical* keystroke, so firing the "wrong" one
-(already unmuted, thumbs-up again) toggles it the other way rather than
-being a no-op. `Victory`/`TOGGLE_CAMERA` is explicitly a toggle by
-design already, so it has no such asymmetry.
+**The finger count is computed from hand landmarks, not a MediaPipe
+category.** The bundled gesture classifier's canned label set was
+checked directly against the model file (`models/gesture_recognizer
+.task` → `hand_gesture_recognizer.task` →
+`canned_gesture_classifier.tflite`'s embedded `labels.txt`): only
+`None`, `Closed_Fist`, `Open_Palm`, `Pointing_Up`, `Thumb_Down`,
+`Thumb_Up`, `Victory`, `ILoveYou` exist — there is no bundled "one
+finger"/"two fingers"/"three fingers"/"four fingers" category to rely
+on. `GestureRecognizer._count_extended_fingers` instead counts how many
+of the four non-thumb fingers currently sit farther from the wrist than
+their own PIP joint (`FINGER_TIP_PIP_LANDMARKS`), independent of hand
+rotation. The thumb is left out of the count entirely — whether it
+happens to be tucked in or splayed out while counting 1–4 with the
+other fingers varies too much between people to be a reliable signal.
 
-**`OK_SIGN` is hand-coded, not a MediaPipe category.** The bundled
-gesture classifier's canned label set was checked directly against the
-model file (`models/gesture_recognizer.task` → `hand_gesture_recognizer
-.task` → `canned_gesture_classifier.tflite`'s embedded `labels.txt`):
-only `None`, `Closed_Fist`, `Open_Palm`, `Pointing_Up`, `Thumb_Down`,
-`Thumb_Up`, `Victory`, `ILoveYou` exist — there is no bundled `"OK"`
-category, and there is no `custom_gesture_classifier.tflite` in the
-bundle to add one without retraining. `OK_SIGN` is instead computed
-directly from thumb/index landmark distance
-(`GestureRecognizer._check_ok_sign`) — the exact same touch-distance
-geometry Cursor mode's `PINCH` already uses, just scoped to Call mode
-and edge-triggered (fires once when the fingers first touch, not again
-until they separate) rather than distinguishing click from drag.
+**Each toggle fires once per raised hand, not once per frame.** Showing
+a finger count turns its function ON; the hand must then leave the
+frame entirely before showing that same count again turns it back OFF —
+this is `GestureRecognizer.locked_toggle_gestures`, the same mechanism
+already used to stop a single held gesture from re-firing every frame.
+Each of the four gestures is also a single OS-level toggle shortcut
+(same honest limitation already documented for `MEDIA_PLAY_PAUSE`, §5):
+firing it while already in the target state flips it the other way
+rather than being a no-op.
 
-**Detection is gated to Call mode at the source.** `Thumb_Up`/
-`Thumb_Down`/`Victory` are real MediaPipe categories that could in
-principle be classified in any mode — `GestureRecognizer.
-_publish_static_gesture` only publishes them while `active_mode ==
-"call"`, so an actual thumbs-up given to someone mid-swipe in Flip mode
-is never detected as a system command.
+**`TOGGLE_CALL_AUDIO` has no dedicated Teams shortcut.** Only mic,
+camera, and raise-hand are exposed as Teams keyboard shortcuts — muting
+the call's own incoming audio specifically is not. `OSController.
+toggle_call_audio` instead toggles the Mac's system-wide audio output
+mute via `osascript`, which silences the call's sound along with
+everything else on the machine. This is the only way to reliably
+silence a call's audio from outside the Teams window without
+UI-scripting a click on Teams' own volume control.
+
+**`OK_SIGN` is hand-coded, not a MediaPipe category either**, for the
+same reason as the finger count above — no bundled `"OK"` category
+exists. `OK_SIGN` is computed directly from thumb/index landmark
+distance (`GestureRecognizer._check_ok_sign`) — the exact same
+touch-distance geometry Cursor mode's `PINCH` already uses, just scoped
+to Call mode and edge-triggered (fires once when the fingers first
+touch, not again until they separate) rather than distinguishing click
+from drag.
+
+**Detection is gated to Call mode at the source.**
+`GestureRecognizer._handle_frame` only computes a finger-count gesture
+at all while `active_mode == "call"` — so someone naturally counting on
+their fingers mid-swipe in Flip mode is never detected as a system
+command.
 
 ### 2.5 Quick Command Circle — gesture only: Closed_Fist → Open_Palm
 
@@ -589,7 +612,7 @@ this if it matters in practice.
 | `HAND_SESSION_END` | Fired once on the Open_Palm → Closed_Fist transition that ends a swipe session | Closes the Quick Command Circle without picking a mode (§2.5), quick_circle only |
 | `PINCH` | Computed from thumb-tip/index-tip landmark distance | Cursor mode's click (quick tap) — hold+drag instead scrolls, §2.3 |
 | `DOUBLE_PINCH` | Two `PINCH` taps inside `double_pinch_window` (0.3s) | Cursor mode's right-click, §2.3 |
-| `Thumb_Up` / `Thumb_Down` / `Victory` | MediaPipe canned gesture categories, gated to Call mode only | Call mode's unmute/mute/camera-toggle, §2.4 |
+| `ONE_FINGER` / `TWO_FINGERS` / `THREE_FINGERS` / `FOUR_FINGERS` | Count of non-thumb fingers extended (distance-from-wrist vs. each finger's own PIP joint), gated to Call mode only | Call mode's mic/camera/call-audio/background-blur toggles, §2.4 |
 | `OK_SIGN` | Hand-coded thumb/index-tip touch distance (same geometry as `PINCH`), gated to Call mode only | Call mode's raise-hand, §2.4 |
 
 `Open_Palm`/`Closed_Fist`/`Pointing_Up` are still recognized internally by

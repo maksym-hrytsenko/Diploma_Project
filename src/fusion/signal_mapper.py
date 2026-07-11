@@ -27,9 +27,10 @@ class SignalMapper:
         ("gesture", "DOUBLE_PINCH"): "vector",
         ("gesture", "OK_SIGN"): "vector",
 
-        ("gesture", "THUMB_UP"): "model",
-        ("gesture", "THUMB_DOWN"): "model",
-        ("gesture", "VICTORY"): "model",
+        ("gesture", "ONE_FINGER"): "vector",
+        ("gesture", "TWO_FINGERS"): "vector",
+        ("gesture", "THREE_FINGERS"): "vector",
+        ("gesture", "FOUR_FINGERS"): "vector",
 
         ("face", "HEAD_TILT_LEFT"): "vector",
         ("face", "HEAD_TILT_RIGHT"): "vector",

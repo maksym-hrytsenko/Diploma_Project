@@ -29,6 +29,8 @@ from execution.action_executor import ActionExecutor
 from ui.quick_command_overlay import QuickCommandOverlay
 from ui.native_window import configure_accessory_app
 
+from config.config_loader import load_system_config
+
 
 def main():
 
@@ -54,6 +56,14 @@ def main():
     # its widgets to be created after a QApplication and
     # on the thread that owns the application.
     qt_app = QApplication(sys.argv)
+
+    loop_sleep_seconds = load_system_config().get(
+        "app",
+        {}
+    ).get(
+        "loop_sleep_seconds",
+        0.01
+    )
 
     # Must run before any overlay widget (PointerOverlay,
     # QuickCommandOverlay) is constructed — see
@@ -235,7 +245,7 @@ def main():
 
             if gesture_debug_view is None and face_debug_view is None:
 
-                time.sleep(0.01)
+                time.sleep(loop_sleep_seconds)
 
     except KeyboardInterrupt:
 

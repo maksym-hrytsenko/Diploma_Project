@@ -3,22 +3,42 @@ import threading
 
 import sounddevice as sd
 
+from config.config_loader import load_system_config
+
 
 class MicrophoneInput:
 
     def __init__(
         self,
         event_bus,
-        samplerate=16000,
-        channels=1,
+        samplerate=None,
+        channels=None,
         device=None
     ):
 
         self.event_bus = event_bus
 
-        self.samplerate = samplerate
+        audio_config = load_system_config().get(
+            "audio",
+            {}
+        )
 
-        self.channels = channels
+        self.samplerate = (
+            samplerate
+            if samplerate is not None
+            else audio_config.get("sample_rate", 16000)
+        )
+
+        self.channels = (
+            channels
+            if channels is not None
+            else audio_config.get("channels", 1)
+        )
+
+        self.blocksize = audio_config.get(
+            "blocksize",
+            8000
+        )
 
         self.audio_queue = queue.Queue()
 
@@ -71,7 +91,7 @@ class MicrophoneInput:
 
             samplerate=self.samplerate,
 
-            blocksize=8000,
+            blocksize=self.blocksize,
 
             dtype="int16",
 

@@ -78,9 +78,10 @@
         "PINCH": "PINCH",
         "DOUBLE_PINCH": "DOUBLE_PINCH",
 
-        "Thumb_Up": "THUMB_UP",
-        "Thumb_Down": "THUMB_DOWN",
-        "Victory": "VICTORY",
+        "ONE_FINGER": "ONE_FINGER",
+        "TWO_FINGERS": "TWO_FINGERS",
+        "THREE_FINGERS": "THREE_FINGERS",
+        "FOUR_FINGERS": "FOUR_FINGERS",
         "OK_SIGN": "OK_SIGN"
     },
 
@@ -180,9 +181,10 @@
             "PINCH",
             "DOUBLE_PINCH",
 
-            "Thumb_Up",
-            "Thumb_Down",
-            "Victory",
+            "ONE_FINGER",
+            "TWO_FINGERS",
+            "THREE_FINGERS",
+            "FOUR_FINGERS",
             "OK_SIGN"
         ],
 

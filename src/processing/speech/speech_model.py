@@ -1,5 +1,4 @@
 import json
-import os
 
 from concurrent.futures import ProcessPoolExecutor
 
@@ -20,16 +19,38 @@ from processing.speech.open_vocab_worker import (
     transcribe_task
 )
 
+from config.config_loader import (
+    load_mapping_config,
+    load_system_config
+)
+
 
 class VoskSpeechModel:
 
     def __init__(
         self,
-        model_path=(
-            "models/"
-            "vosk-model-small-en-us-0.15"
-        )
+        model_path=None
     ):
+
+        system_config = load_system_config()
+
+        self.sample_rate = system_config.get(
+            "audio",
+            {}
+        ).get(
+            "sample_rate",
+            16000
+        )
+
+        if model_path is None:
+
+            model_path = system_config.get(
+                "speech",
+                {}
+            ).get(
+                "vosk_model_path",
+                "models/vosk-model-small-en-us-0.15"
+            )
 
         self.model = Model(
             model_path
@@ -41,7 +62,7 @@ class VoskSpeechModel:
 
         self.recognizer = KaldiRecognizer(
             self.model,
-            16000,
+            self.sample_rate,
             grammar
         )
 
@@ -85,19 +106,7 @@ class VoskSpeechModel:
 
     def _load_grammar(self):
 
-        mapping_path = os.path.join(
-            self._base_dir(),
-            "config",
-            "mapping.json"
-        )
-
-        with open(
-            mapping_path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            mapping = json.load(f)
+        mapping = load_mapping_config()
 
         grammar = list(
             mapping.get(
@@ -124,19 +133,7 @@ class VoskSpeechModel:
 
     def _load_wake_word(self):
 
-        system_path = os.path.join(
-            self._base_dir(),
-            "config",
-            "system.json"
-        )
-
-        with open(
-            system_path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            system = json.load(f)
+        system = load_system_config()
 
         return system.get(
             "wake_word",
@@ -149,19 +146,7 @@ class VoskSpeechModel:
 
     def _load_nlu_fallback_config(self):
 
-        system_path = os.path.join(
-            self._base_dir(),
-            "config",
-            "system.json"
-        )
-
-        with open(
-            system_path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            system = json.load(f)
+        system = load_system_config()
 
         self.vad_enabled = system.get(
             "vad_enabled",
@@ -188,23 +173,11 @@ class VoskSpeechModel:
             0.6
         )
 
-        # 16kHz, 16-bit mono -> 32000 bytes/sec
+        # 16-bit mono -> 2 bytes/sample
+        bytes_per_second = self.sample_rate * 2
+
         self.min_fallback_audio_bytes = int(
-            32000 * min_fallback_audio_seconds
-        )
-
-    # ---------------------------------
-    # Base Directory
-    # ---------------------------------
-
-    def _base_dir(self):
-
-        return os.path.dirname(
-            os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
-            )
+            bytes_per_second * min_fallback_audio_seconds
         )
 
     # ---------------------------------
@@ -358,7 +331,7 @@ class VoskSpeechModel:
         speech_timestamps = get_speech_timestamps(
             audio_tensor,
             self.vad_model,
-            sampling_rate=16000
+            sampling_rate=self.sample_rate
         )
 
         return len(speech_timestamps) > 0

@@ -12,6 +12,8 @@ from PyQt6.QtGui import (
 
 from PyQt6.QtWidgets import QWidget
 
+from config.config_loader import load_system_config
+
 
 class PointerOverlay(QWidget):
 
@@ -25,24 +27,48 @@ class PointerOverlay(QWidget):
     # cross-thread-safe way to reach a QWidget from here.
     position_updated = pyqtSignal(float, float)
 
-    HIDE_AFTER_MS = 200
-
-    DOT_RADIUS = 10
-
-    DOT_COLOR = QColor(255, 0, 0, 220)
-
-    # Camera frames are never flipped anywhere upstream, so
-    # raw MediaPipe x=0 is the user's right side as seen
-    # from behind the camera. Mirroring here makes the dot
-    # move the same direction as the user's hand from the
-    # user's own point of view. Verify this empirically
-    # against a real camera and flip if the dot moves
-    # backwards.
-    MIRROR_X = True
-
     def __init__(self):
 
         super().__init__()
+
+        config = load_system_config().get(
+            "ui",
+            {}
+        ).get(
+            "pointer_overlay",
+            {}
+        )
+
+        self.HIDE_AFTER_MS = config.get(
+            "hide_after_ms",
+            200
+        )
+
+        self.DOT_RADIUS = config.get(
+            "dot_radius",
+            10
+        )
+
+        dot_color = config.get(
+            "dot_color",
+            [255, 0, 0, 220]
+        )
+
+        self.DOT_COLOR = QColor(
+            *dot_color
+        )
+
+        # Camera frames are never flipped anywhere upstream, so
+        # raw MediaPipe x=0 is the user's right side as seen
+        # from behind the camera. Mirroring here makes the dot
+        # move the same direction as the user's hand from the
+        # user's own point of view. Verify this empirically
+        # against a real camera and flip if the dot moves
+        # backwards.
+        self.MIRROR_X = config.get(
+            "mirror_x",
+            True
+        )
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint

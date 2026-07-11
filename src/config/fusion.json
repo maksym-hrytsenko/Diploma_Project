@@ -400,24 +400,31 @@
         },
 
         {
-            "name": "call_unmute",
+            "name": "call_toggle_mic",
             "mode": "call",
-            "conditions": { "gesture": "THUMB_UP" },
-            "action": "UNMUTE_MIC"
-        },
-
-        {
-            "name": "call_mute",
-            "mode": "call",
-            "conditions": { "gesture": "THUMB_DOWN" },
-            "action": "MUTE_MIC"
+            "conditions": { "gesture": "ONE_FINGER" },
+            "action": "TOGGLE_MIC"
         },
 
         {
             "name": "call_toggle_camera",
             "mode": "call",
-            "conditions": { "gesture": "VICTORY" },
+            "conditions": { "gesture": "TWO_FINGERS" },
             "action": "TOGGLE_CAMERA"
+        },
+
+        {
+            "name": "call_toggle_call_audio",
+            "mode": "call",
+            "conditions": { "gesture": "THREE_FINGERS" },
+            "action": "TOGGLE_CALL_AUDIO"
+        },
+
+        {
+            "name": "call_toggle_background_blur",
+            "mode": "call",
+            "conditions": { "gesture": "FOUR_FINGERS" },
+            "action": "TOGGLE_BACKGROUND_BLUR"
         },
 
         {

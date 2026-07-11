@@ -6,13 +6,27 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from config.config_loader import load_system_config
+
 
 class GestureModel:
 
     def __init__(
         self,
-        model_path="models/gesture_recognizer.task"
+        model_path=None
     ):
+
+        gesture_model_config = load_system_config().get(
+            "gesture_model",
+            {}
+        )
+
+        if model_path is None:
+
+            model_path = gesture_model_config.get(
+                "model_path",
+                "models/gesture_recognizer.task"
+            )
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
@@ -38,9 +52,18 @@ class GestureModel:
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO,
             num_hands=1,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_hand_detection_confidence=gesture_model_config.get(
+                "min_hand_detection_confidence",
+                0.5
+            ),
+            min_hand_presence_confidence=gesture_model_config.get(
+                "min_hand_presence_confidence",
+                0.5
+            ),
+            min_tracking_confidence=gesture_model_config.get(
+                "min_tracking_confidence",
+                0.5
+            )
         )
 
         self.recognizer = (
@@ -108,8 +131,20 @@ class OffHandModel:
 
     def __init__(
         self,
-        model_path="models/hand_landmarker.task"
+        model_path=None
     ):
+
+        gesture_model_config = load_system_config().get(
+            "gesture_model",
+            {}
+        )
+
+        if model_path is None:
+
+            model_path = gesture_model_config.get(
+                "off_hand_model_path",
+                "models/hand_landmarker.task"
+            )
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
@@ -119,9 +154,18 @@ class OffHandModel:
             base_options=base_options,
             running_mode=vision.RunningMode.IMAGE,
             num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_hand_detection_confidence=gesture_model_config.get(
+                "min_hand_detection_confidence",
+                0.5
+            ),
+            min_hand_presence_confidence=gesture_model_config.get(
+                "min_hand_presence_confidence",
+                0.5
+            ),
+            min_tracking_confidence=gesture_model_config.get(
+                "min_tracking_confidence",
+                0.5
+            )
         )
 
         self.landmarker = (

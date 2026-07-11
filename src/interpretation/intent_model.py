@@ -1,4 +1,3 @@
-import json
 import time
 
 from concurrent.futures import ProcessPoolExecutor
@@ -8,6 +7,11 @@ from interpretation.nlu_fallback_worker import (
     llm_interpret_task
 )
 
+from config.config_loader import (
+    load_mapping_config,
+    load_system_config
+)
+
 
 class IntentModel:
 
@@ -15,8 +19,6 @@ class IntentModel:
         self,
         event_bus,
         state_manager,
-        mapping_path="config/mapping.json",
-        system_path="config/system.json",
         debug=False
     ):
 
@@ -26,39 +28,9 @@ class IntentModel:
 
         self.debug = debug
 
-        import os
+        self.mapping = load_mapping_config()
 
-        base_dir = os.path.dirname(
-            os.path.dirname(
-                os.path.abspath(__file__)
-            )
-        )
-
-        mapping_full_path = os.path.join(
-            base_dir,
-            mapping_path
-        )
-
-        system_full_path = os.path.join(
-            base_dir,
-            system_path
-        )
-
-        with open(
-            mapping_full_path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            self.mapping = json.load(f)
-
-        with open(
-            system_full_path,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            self.system = json.load(f)
+        self.system = load_system_config()
 
         self.voice_commands = (
             self.mapping.get(

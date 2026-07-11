@@ -2,18 +2,39 @@ import cv2
 import threading
 import time
 
+from config.config_loader import load_system_config
+
 
 class CameraInput:
 
     def __init__(
         self,
         event_bus,
-        camera_index=0
+        camera_index=None
     ):
 
         self.event_bus = event_bus
 
-        self.camera_index = camera_index
+        camera_config = load_system_config().get(
+            "camera",
+            {}
+        )
+
+        self.camera_index = (
+            camera_index
+            if camera_index is not None
+            else camera_config.get("index", 0)
+        )
+
+        self.frame_width = camera_config.get(
+            "width",
+            1280
+        )
+
+        self.frame_height = camera_config.get(
+            "height",
+            720
+        )
 
         self.cap = None
 
@@ -44,12 +65,12 @@ class CameraInput:
         # read back and logged.
         self.cap.set(
             cv2.CAP_PROP_FRAME_WIDTH,
-            1280
+            self.frame_width
         )
 
         self.cap.set(
             cv2.CAP_PROP_FRAME_HEIGHT,
-            720
+            self.frame_height
         )
 
         actual_width = self.cap.get(

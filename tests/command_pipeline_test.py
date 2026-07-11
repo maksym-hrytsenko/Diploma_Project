@@ -396,14 +396,23 @@ def run():
             "voice CALL_MODE did not enter call mode"
         )
 
-        gesture("Thumb_Up")
-        check("call: gesture thumbs up (unmute)", "unmute_mic")
+        gesture("ONE_FINGER")
+        check("call: gesture one finger (toggle mic)", "toggle_mic")
 
-        gesture("Thumb_Down")
-        check("call: gesture thumbs down (mute)", "mute_mic")
+        gesture("TWO_FINGERS")
+        check("call: gesture two fingers (toggle camera)", "toggle_camera")
 
-        gesture("Victory")
-        check("call: gesture victory (toggle camera)", "toggle_camera")
+        gesture("THREE_FINGERS")
+        check(
+            "call: gesture three fingers (toggle call audio)",
+            "toggle_call_audio"
+        )
+
+        gesture("FOUR_FINGERS")
+        check(
+            "call: gesture four fingers (toggle background blur)",
+            "toggle_background_blur"
+        )
 
         gesture("OK_SIGN")
         check("call: gesture OK sign (raise hand)", "raise_hand")

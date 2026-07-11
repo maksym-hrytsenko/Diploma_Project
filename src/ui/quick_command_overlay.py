@@ -1,3 +1,5 @@
+import os
+
 from PyQt6.QtCore import (
     Qt,
     pyqtSignal
@@ -6,29 +8,33 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QGuiApplication,
     QPainter,
-    QColor,
-    QFont
+    QPixmap
 )
 
 from PyQt6.QtWidgets import QWidget
 
 from ui.native_window import configure_overlay_window
 
+from config.config_loader import load_system_config
+
 
 class QuickCommandOverlay(QWidget):
 
-    # Mirrors the four quick_circle mode_rules in
-    # fusion.json (src/config/fusion.json) — kept here only
-    # as display labels, the actual gesture -> mode wiring
-    # lives entirely in fusion.json / SignalMapper.
-    LABELS = {
-        "up": "Flip",
-        "down": "Cursor",
-        "left": "Presentation",
-        "right": "Call Mode"
-    }
-
-    RADIUS = 140
+    # Designed asset covering the whole quick-circle graphic
+    # (ring + per-mode badges + center hub icon). Mode-to-
+    # position mapping mirrors the four quick_circle mode_rules
+    # in fusion.json (src/config/fusion.json) — baked into the
+    # image itself, the actual gesture -> mode wiring lives
+    # entirely in fusion.json / SignalMapper.
+    #
+    # Resolved relative to this file (not the process cwd) so
+    # it loads correctly regardless of where main.py is launched
+    # from.
+    IMAGE_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "images",
+        "quick_circle.png"
+    )
 
     mode_changed_signal = pyqtSignal(object)
 
@@ -37,6 +43,34 @@ class QuickCommandOverlay(QWidget):
         super().__init__()
 
         self.event_bus = event_bus
+
+        # Matches the diameter the previous drawEllipse-based
+        # circle used (RADIUS 140 * 2). The source image is
+        # scaled down to fit within this box, aspect ratio
+        # preserved, so nothing is cropped — only shrunk.
+        self.DISPLAY_SIZE = load_system_config().get(
+            "ui",
+            {}
+        ).get(
+            "quick_circle",
+            {}
+        ).get(
+            "display_size",
+            280
+        )
+
+        self.circle_pixmap = QPixmap(
+            self.IMAGE_PATH
+        )
+
+        if not self.circle_pixmap.isNull():
+
+            self.circle_pixmap = self.circle_pixmap.scaled(
+                self.DISPLAY_SIZE,
+                self.DISPLAY_SIZE,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -144,6 +178,9 @@ class QuickCommandOverlay(QWidget):
         if not self.circle_visible:
             return
 
+        if self.circle_pixmap.isNull():
+            return
+
         painter = QPainter(self)
 
         painter.setRenderHint(
@@ -153,43 +190,16 @@ class QuickCommandOverlay(QWidget):
         center_x = self.width() // 2
         center_y = self.height() // 2
 
-        painter.setPen(
-            QColor(255, 255, 255, 200)
-        )
+        pixmap_width = self.circle_pixmap.width()
 
-        painter.setBrush(
-            QColor(20, 20, 20, 160)
-        )
+        pixmap_height = self.circle_pixmap.height()
 
-        painter.drawEllipse(
-            center_x - self.RADIUS,
-            center_y - self.RADIUS,
-            self.RADIUS * 2,
-            self.RADIUS * 2
-        )
+        draw_x = center_x - pixmap_width // 2
 
-        font = QFont()
+        draw_y = center_y - pixmap_height // 2
 
-        font.setPointSize(13)
-
-        painter.setFont(font)
-
-        painter.setPen(
-            QColor(255, 255, 255, 230)
-        )
-
-        self._draw_label(painter, "up", center_x, center_y - self.RADIUS + 34)
-        self._draw_label(painter, "down", center_x, center_y + self.RADIUS - 24)
-        self._draw_label(painter, "left", center_x - self.RADIUS + 70, center_y)
-        self._draw_label(painter, "right", center_x + self.RADIUS - 70, center_y)
-
-    def _draw_label(self, painter, direction, x, y):
-
-        painter.drawText(
-            x - 70,
-            y - 12,
-            140,
-            24,
-            Qt.AlignmentFlag.AlignCenter,
-            self.LABELS[direction]
+        painter.drawPixmap(
+            draw_x,
+            draw_y,
+            self.circle_pixmap
         )
