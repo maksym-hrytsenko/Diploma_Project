@@ -1,18 +1,16 @@
+"""Manual diagnostic script for OSController's media-key and screenshot
+actions. Unlike the other *_standalone_test.py scripts in this folder, this
+one deliberately imports from src/ — the point is to exercise the exact
+OSController code path ActionExecutor calls in production, not a
+reimplementation that could silently diverge from it. Requires manual
+observation (watching a media player / checking for a screenshot file) since
+there's no automated way to verify OS-level side effects.
+"""
+
 import os
 import subprocess
 import sys
 import time
-
-# ---------------------------------
-# Unlike the other *_standalone_test.py
-# scripts in this folder, this one
-# deliberately DOES import from src/ —
-# the whole point is to exercise the
-# exact OSController code path
-# ActionExecutor calls in production,
-# not a reimplementation that could
-# silently diverge from it.
-# ---------------------------------
 
 SRC_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),

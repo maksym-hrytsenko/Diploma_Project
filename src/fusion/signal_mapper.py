@@ -1,20 +1,27 @@
+"""Decision-making stage of the fusion layer.
+
+Reads fusion_signal (from MultimodalFusion) and config/fusion.json's rules,
+mode_rules, modes and environments to decide whether a command should fire,
+a mode should be entered/exited, or an environment should change — the only
+module in the pipeline allowed to make that decision. Publishes command_event
+and mode_changed.
+"""
+
 import json
 import os
+
+from core.event_bus import EventBus
 
 
 class SignalMapper:
 
-    # How each (source, mapped signal) pair is actually
-    # recognized, for the "[RESOLVED]" report in
-    # _report_resolution below. "vector" = computed directly
-    # from landmark geometry (distance/angle/velocity), never
-    # touching MediaPipe's own classifier output. "model" = the
-    # value IS a MediaPipe ML classifier category or blendshape
-    # regression score, only thresholded here. Voice isn't
-    # listed — its tier ("exact"/"semantic"/"llm") already
-    # travels with the signal itself, from IntentModel. Keyboard
-    # isn't listed either — a raw key combo has no recognition
-    # step at all.
+    # How each (source, mapped signal) pair is actually recognized, for the
+    # "[RESOLVED]" report in _report_resolution. "vector" = computed
+    # directly from landmark geometry, never touching MediaPipe's own
+    # classifier output. "model" = the value IS a MediaPipe ML classifier
+    # category or blendshape regression score. Voice/keyboard aren't
+    # listed: voice's tier already travels with the signal from IntentModel,
+    # and a raw key combo has no recognition step at all.
     SIGNAL_METHOD = {
 
         ("gesture", "HAND_LEFT"): "vector",
@@ -52,7 +59,7 @@ class SignalMapper:
 
     }
 
-    def __init__(self, event_bus):
+    def __init__(self, event_bus: EventBus):
 
         self.event_bus = event_bus
 
@@ -72,10 +79,6 @@ class SignalMapper:
 
         self._load_fusion()
 
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
-
     def start(self):
 
         self.event_bus.subscribe(
@@ -89,10 +92,6 @@ class SignalMapper:
             "fusion_signal",
             self._handle_signal
         )
-
-    # ---------------------------------
-    # Load fusion.json
-    # ---------------------------------
 
     def _load_fusion(self):
 
@@ -155,10 +154,6 @@ class SignalMapper:
 
             self.environments = []
 
-    # ---------------------------------
-    # Fusion Signal
-    # ---------------------------------
-
     def _handle_signal(self, event):
 
         data = event.get(
@@ -178,13 +173,10 @@ class SignalMapper:
         if not signals:
             return
 
-        # `signals` is the SAME dict TemporalSync stores
-        # internally (not a copy) — clearing it mid-way
-        # would delete entries out from under the checks
-        # still to come in this same pass. So every check
-        # below only decides whether IT matched; nothing
-        # gets cleared until every check has already seen
-        # the complete, untouched signal set.
+        # `signals` is the SAME dict TemporalSync stores internally, not a
+        # copy — clearing it mid-way would delete entries out from under
+        # the checks still to come in this pass, so nothing is cleared
+        # until every check below has seen the complete signal set.
         mode_matched = self._update_mode(
             signals
         )
@@ -209,18 +201,11 @@ class SignalMapper:
 
             self._maybe_clear_signals()
 
-    # ---------------------------------
-    # Update Mode (Presentation / Flip /
-    # Cursor / Quick Circle)
-    # ---------------------------------
-
-    # Modes are ephemeral gesture-scoping contexts —
-    # they decide what a gesture MEANS right now, to keep
-    # the same physical gestures from colliding across
-    # different uses (e.g. a swipe means "flip a page" in
-    # Flip mode but "pick a quick command" in Quick Circle
-    # mode). They carry no OS side effects of their own.
-
+    # Modes are ephemeral gesture-scoping contexts — they decide what a
+    # gesture MEANS right now, keeping the same physical gestures from
+    # colliding across different uses (e.g. a swipe means "flip a page" in
+    # Flip mode but "pick a quick command" in Quick Circle mode). They
+    # carry no OS side effects of their own.
     def _update_mode(self, signals):
 
         voice = signals.get(
@@ -235,15 +220,13 @@ class SignalMapper:
             "gesture"
         )
 
-        # Three independent ways to back out of whichever
-        # mode is active. Voice "exit mode" and Esc work
-        # identically from any mode at any time. Closing the
-        # fist only backs out of Quick Circle specifically —
-        # every other mode is voice/keyboard-entered and
-        # persistent, so the hand shape closing has no
-        # bearing on whether it should stay active (e.g.
-        # closing the fist mid-swipe in Flip mode must not
-        # exit Flip mode).
+        # Three independent ways to back out of whichever mode is active.
+        # Voice "exit mode" and Esc work identically from any mode at any
+        # time. Closing the fist only backs out of Quick Circle
+        # specifically — every other mode is voice/keyboard-entered and
+        # persistent, so the hand shape closing has no bearing on whether
+        # it should stay active (e.g. closing the fist mid-swipe in Flip
+        # mode must not exit Flip mode).
         exit_requested = (
             voice is not None
             and voice.get("signal") == "EXIT_MODE"
@@ -296,12 +279,10 @@ class SignalMapper:
 
             source = trigger["source"]
 
-            # A gesture-sourced trigger (only Quick
-            # Circle's Closed_Fist -> Open_Palm uses one)
-            # only opens its mode from idle. That same
-            # transition already means "start a new
-            # swipe/scroll session" while Flip mode is
-            # active, so it must not be reinterpreted as
+            # A gesture-sourced trigger (only Quick Circle's Closed_Fist ->
+            # Open_Palm uses one) only opens its mode from idle. That same
+            # transition already means "start a new swipe/scroll session"
+            # while Flip mode is active, so it must not be reinterpreted as
             # "enter Quick Circle" mid-session.
             if (
                 source == "gesture"
@@ -320,10 +301,6 @@ class SignalMapper:
                 return True
 
         return False
-
-    # ---------------------------------
-    # Enter / Exit Mode
-    # ---------------------------------
 
     def _enter_mode(self, mode):
 
@@ -354,18 +331,10 @@ class SignalMapper:
             {"mode": None}
         )
 
-    # ---------------------------------
-    # Update Environment (Work / Study /
-    # Movie / News)
-    # ---------------------------------
-
-    # Environments are the longer-lived task backdrop —
-    # entering one runs a real sequence of OS actions
-    # (opening apps, toggling Do Not Disturb, music) and
-    # leaving it (by entering a different environment)
-    # undoes them. Independent of which gesture mode is
-    # active at the same time.
-
+    # Environments are the longer-lived task backdrop — entering one runs a
+    # real sequence of OS actions (opening apps, toggling Do Not Disturb,
+    # music) and leaving it (by entering a different environment) undoes
+    # them. Independent of which gesture mode is active at the same time.
     def _update_environment(self, signals):
 
         voice = signals.get(
@@ -458,20 +427,13 @@ class SignalMapper:
 
         return None
 
-    # ---------------------------------
-    # Standard Rules
-    # ---------------------------------
-
-    # A rule only gets a chance to fire on the pass whose
-    # triggering source is one of its own condition keys —
-    # i.e. it fires on the edge of ITS OWN condition
-    # becoming satisfied, not on every unrelated signal that
-    # happens to arrive while a held keyboard combo (now
-    # persistent, see MultimodalFusion) keeps its own share
-    # of the condition sitting in the buffer. Without this,
-    # a rule keyed on a single held combo would refire on
-    # every unrelated event for as long as the key stays
-    # down.
+    # A rule only gets a chance to fire on the pass whose triggering source
+    # is one of its own condition keys — i.e. it fires on the edge of ITS
+    # OWN condition becoming satisfied, not on every unrelated signal that
+    # arrives while a held keyboard combo (persistent, see MultimodalFusion)
+    # keeps its share of the condition sitting in the buffer. Without this,
+    # a rule keyed on a single held combo would refire on every unrelated
+    # event for as long as the key stays down.
     def _check_rules(self, signals, triggering_source):
 
         for rule in self.rules:
@@ -505,10 +467,6 @@ class SignalMapper:
 
         return False
 
-    # ---------------------------------
-    # Mode Rules
-    # ---------------------------------
-
     def _check_mode_rules(self, signals, triggering_source):
 
         if self.current_mode is None:
@@ -534,11 +492,9 @@ class SignalMapper:
                     f"[MAPPER] Match -> {rule['name']}"
                 )
 
-                # Quick Circle's four sides each select a
-                # different mode directly — this is a mode
-                # transition, not a command, so it swaps in
-                # the target mode instead of publishing an
-                # action.
+                # Quick Circle's four sides each select a different mode
+                # directly — this is a mode transition, not a command, so
+                # it swaps in the target mode instead of publishing one.
                 target_mode_name = rule.get("enters_mode")
 
                 if target_mode_name is not None:
@@ -573,9 +529,8 @@ class SignalMapper:
                     rule["action"]
                 )
 
-                # Quick Circle is a one-shot menu: picking
-                # one of its four functions should close it
-                # again, not leave it hanging open.
+                # Quick Circle is a one-shot menu: picking one of its four
+                # functions should close it again, not leave it hanging open.
                 if rule.get("exits_mode", False):
 
                     self._exit_current_mode()
@@ -584,15 +539,10 @@ class SignalMapper:
 
         return False
 
-    # ---------------------------------
-    # Resolution Report
-    # ---------------------------------
-
-    # Prints, right after a rule/mode_rule matches, exactly
-    # which signal(s) decided it and how each was recognized —
-    # voice tier, direct vector/geometry, or an ML model —
-    # so a confused/misfired command can be traced back to its
-    # source instead of guessed at.
+    # Prints, right after a rule/mode_rule matches, exactly which signal(s)
+    # decided it and how each was recognized — voice tier, direct
+    # vector/geometry, or an ML model — so a misfired command can be traced
+    # back to its source instead of guessed at.
     def _report_resolution(
         self,
         conditions,
@@ -656,10 +606,6 @@ class SignalMapper:
 
         return f'{source}:"{signal_name}" ({label})'
 
-    # ---------------------------------
-    # Clear Signals (respects settings)
-    # ---------------------------------
-
     def _maybe_clear_signals(self):
 
         if self.settings.get(
@@ -671,9 +617,7 @@ class SignalMapper:
                 "clear_fusion_signals",
                 {}
             )
-    # ---------------------------------
-    # Match Conditions
-    # ---------------------------------
+
     def _match_conditions(
         self,
         conditions,
@@ -697,10 +641,6 @@ class SignalMapper:
                 return False
 
         return True
-
-    # ---------------------------------
-    # Publish Command
-    # ---------------------------------
 
     def _publish_command(
         self,
@@ -732,10 +672,6 @@ class SignalMapper:
 
         )
 
-    # ---------------------------------
-    # Clear Mode / Environment
-    # ---------------------------------
-
     def clear_mode(self):
 
         self._exit_current_mode()
@@ -743,10 +679,6 @@ class SignalMapper:
     def clear_environment(self):
 
         self._exit_current_environment()
-
-    # ---------------------------------
-    # Reload Configuration
-    # ---------------------------------
 
     def reload(self):
 

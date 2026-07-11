@@ -1,3 +1,10 @@
+"""Open-vocabulary speech transcription fallback.
+
+Wraps a local MLX-hosted Whisper model, used when Vosk's fixed grammar
+doesn't cover what was said (e.g. free-text phrases IntentModel's NLU
+fallback needs to interpret) rather than for primary recognition.
+"""
+
 import numpy as np
 
 import mlx_whisper
@@ -44,10 +51,6 @@ class OpenVocabSpeechModel:
             False
         )
 
-    # ---------------------------------
-    # Transcribe
-    # ---------------------------------
-
     def transcribe(
         self,
         audio_bytes
@@ -76,10 +79,6 @@ class OpenVocabSpeechModel:
             return None
 
         return text
-
-    # ---------------------------------
-    # Convert PCM16 Bytes -> float32
-    # ---------------------------------
 
     def _to_float32(
         self,

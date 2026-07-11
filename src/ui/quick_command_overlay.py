@@ -19,17 +19,17 @@ from config.config_loader import load_system_config
 
 
 class QuickCommandOverlay(QWidget):
+    """Click-through "quick circle" menu overlay.
 
-    # Designed asset covering the whole quick-circle graphic
-    # (ring + per-mode badges + center hub icon). Mode-to-
-    # position mapping mirrors the four quick_circle mode_rules
-    # in fusion.json (src/config/fusion.json) — baked into the
-    # image itself, the actual gesture -> mode wiring lives
-    # entirely in fusion.json / SignalMapper.
-    #
-    # Resolved relative to this file (not the process cwd) so
-    # it loads correctly regardless of where main.py is launched
-    # from.
+    Shown while SignalMapper's active mode is quick_circle: displays a
+    designed ring graphic (mode-to-position mapping baked into the image
+    itself, mirroring the quick_circle mode_rules in config/fusion.json)
+    but contains no gesture -> mode wiring of its own — that lives entirely
+    in fusion.json / SignalMapper.
+    """
+
+    # Resolved relative to this file, not the process cwd, so it loads
+    # correctly regardless of where main.py is launched from.
     IMAGE_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "images",
@@ -44,10 +44,8 @@ class QuickCommandOverlay(QWidget):
 
         self.event_bus = event_bus
 
-        # Matches the diameter the previous drawEllipse-based
-        # circle used (RADIUS 140 * 2). The source image is
-        # scaled down to fit within this box, aspect ratio
-        # preserved, so nothing is cropped — only shrunk.
+        # The source image is scaled down to fit within this box, aspect
+        # ratio preserved, so nothing is cropped — only shrunk.
         self.DISPLAY_SIZE = load_system_config().get(
             "ui",
             {}
@@ -93,10 +91,10 @@ class QuickCommandOverlay(QWidget):
             screen.geometry()
         )
 
-        # Must run after every setWindowFlags/setAttribute
-        # call above — Qt may rebuild the native NSWindow
-        # when those change, silently discarding whatever
-        # collectionBehavior/level was set on the old one.
+        # Must run after every setWindowFlags/setAttribute call above —
+        # Qt may rebuild the native NSWindow when those change, silently
+        # discarding whatever collectionBehavior/level was set on the old
+        # one.
         configure_overlay_window(
             self
         )
@@ -106,10 +104,6 @@ class QuickCommandOverlay(QWidget):
         self.mode_changed_signal.connect(
             self._on_mode_changed
         )
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -127,11 +121,7 @@ class QuickCommandOverlay(QWidget):
 
         self.hide()
 
-    # ---------------------------------
-    # Mode Changed (arrives on whichever
-    # thread SignalMapper published from)
-    # ---------------------------------
-
+    # Arrives on whichever thread SignalMapper published from.
     def _handle_mode_changed(self, event):
 
         mode = event.get(
@@ -157,10 +147,10 @@ class QuickCommandOverlay(QWidget):
 
             self.show()
 
-            # WindowStaysOnTopHint alone does not always put
-            # a freshly-shown frameless window in front of
-            # everything else on macOS — raise_() forces it
-            # to the front of the window stack.
+            # WindowStaysOnTopHint alone does not always put a
+            # freshly-shown frameless window in front of everything else
+            # on macOS — raise_() forces it to the front of the window
+            # stack.
             self.raise_()
 
         else:
@@ -168,10 +158,6 @@ class QuickCommandOverlay(QWidget):
             self.hide()
 
         self.update()
-
-    # ---------------------------------
-    # Paint
-    # ---------------------------------
 
     def paintEvent(self, event):
 

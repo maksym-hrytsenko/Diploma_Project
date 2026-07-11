@@ -1,3 +1,10 @@
+"""Speech recognition stage of the Processing layer.
+
+Receives audio_chunk, feeds it to VoskSpeechModel, and publishes text_ready
+— but only for FINAL recognition results; partial hypotheses are used for
+debug logging only, never forwarded downstream.
+"""
+
 from processing.speech.speech_model import (
     VoskSpeechModel
 )
@@ -24,20 +31,12 @@ class SpeechRecognizer:
             VoskSpeechModel()
         )
 
-    # ---------------------------------
-    # Start
-    # ---------------------------------
-
     def start(self):
 
         self.event_bus.subscribe(
             "audio_chunk",
             self.on_audio
         )
-
-    # ---------------------------------
-    # Stop
-    # ---------------------------------
 
     def stop(self):
 
@@ -47,10 +46,6 @@ class SpeechRecognizer:
         )
 
         self.vosk_model.close()
-
-    # ---------------------------------
-    # Audio Handler
-    # ---------------------------------
 
     def on_audio(self, event):
 
@@ -68,17 +63,11 @@ class SpeechRecognizer:
         if result is None:
             return
 
-        # Ignore partial recognition, but still show it in
-        # debug mode — this is the rawest possible view of
-        # what the model is hearing while you are still
-        # speaking, useful for spotting whether the phrase
-        # is getting cut short before it ever reaches command
-        # handling. Vosk repeats the same partial hypothesis
-        # (often "[unk]") many times in a row while it waits
-        # for more audio, so only print when it actually
-        # changes — otherwise this floods the terminal and
-        # adds print overhead on every single audio chunk
-        # instead of only on real changes.
+        # Partial recognition is ignored, but still shown in debug mode —
+        # useful for spotting whether a phrase is getting cut short before
+        # it reaches command handling. Vosk repeats the same partial
+        # hypothesis many times while waiting for more audio, so only
+        # print on actual changes to avoid flooding the terminal.
         if not result.get(
             "is_final",
             False

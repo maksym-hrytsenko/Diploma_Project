@@ -1,8 +1,9 @@
-# core/state_manager.py
+"""Tracks whether the system is running in offline or online mode."""
+
 
 class StateManager:
     def __init__(self):
-        self.mode = "offline"  # або "online"
+        self.mode = "offline"
 
     def set_mode(self, mode):
         self.mode = mode

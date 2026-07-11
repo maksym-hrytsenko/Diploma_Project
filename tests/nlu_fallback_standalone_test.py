@@ -1,16 +1,13 @@
+"""Standalone test of the IntentModel three-tier fallback chain.
+
+Unlike the other *_standalone_test.py scripts in this folder, this one
+DOES import from src/ — it exercises the real fallback chain (exact
+match -> semantic -> LLM) added for AI-ENHANCED voice mode, not a
+pre-integration library spike.
+"""
 import sys
 import os
 import time
-
-# ---------------------------------
-# Unlike the other *_standalone_test.py
-# scripts in this folder, this one DOES
-# import from src/ — it exercises the
-# real three-tier IntentModel fallback
-# chain (exact match -> semantic ->
-# LLM) added for AI-ENHANCED voice mode,
-# not a pre-integration library spike.
-# ---------------------------------
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -32,12 +29,7 @@ from interpretation.intent_model import (
     IntentModel
 )
 
-# =====================================
-# TEST PHRASES
-#
-# (phrase, expected_command_or_None)
-# =====================================
-
+# Each entry is (phrase, expected_command_or_None).
 TEST_CASES = [
 
     # Exact matches -> fast path, no fallback models touched.
@@ -56,17 +48,6 @@ TEST_CASES = [
     ("tell me a joke", None),
 
 ]
-
-# =====================================
-# RUN
-#
-# Semantic/LLM matching now runs in a
-# separate worker process (see
-# ProcessPoolExecutor in intent_model.py),
-# which on macOS requires the process-
-# spawning code to sit behind a
-# `if __name__ == "__main__":` guard.
-# =====================================
 
 def run():
 
@@ -159,6 +140,9 @@ def run():
         )
 
 
+# Semantic/LLM matching runs in a separate worker process (see
+# ProcessPoolExecutor in intent_model.py), which on macOS requires the
+# process-spawning code to sit behind this guard.
 if __name__ == "__main__":
 
     run()

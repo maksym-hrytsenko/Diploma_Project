@@ -71,19 +71,30 @@
         },
 
         {
+            "environment": "job_search",
+            "trigger": "JOB_SEARCH_MODE",
+
+            "enter_actions": [
+                "ENABLE_DO_NOT_DISTURB",
+                "OPEN_JOB_SEARCH_WINDOWS"
+            ],
+
+            "exit_actions": [
+                "DISABLE_DO_NOT_DISTURB"
+            ]
+        },
+
+        {
             "environment": "study",
             "trigger": "STUDY_MODE",
 
             "enter_actions": [
                 "ENABLE_DO_NOT_DISTURB",
-                "OPEN_SAFARI",
-                "OPEN_PREVIEW",
-                "PLAY_FOCUS_MUSIC"
+                "OPEN_STUDY_WINDOWS"
             ],
 
             "exit_actions": [
-                "DISABLE_DO_NOT_DISTURB",
-                "PAUSE_FOCUS_MUSIC"
+                "DISABLE_DO_NOT_DISTURB"
             ]
         },
 
@@ -94,7 +105,9 @@
             "enter_actions": [
                 "ENABLE_DO_NOT_DISTURB",
                 "PREVENT_DISPLAY_SLEEP",
-                "OPEN_TV"
+                "OPEN_TV",
+                "OPEN_NETFLIX",
+                "RUN_CINEMA_MODE"
             ],
 
             "exit_actions": [
@@ -108,7 +121,7 @@
             "trigger": "NEWS_MODE",
 
             "enter_actions": [
-                "OPEN_NEWS"
+                "OPEN_NEWS_TABS"
             ],
 
             "exit_actions": []
@@ -425,13 +438,6 @@
             "mode": "call",
             "conditions": { "gesture": "FOUR_FINGERS" },
             "action": "TOGGLE_BACKGROUND_BLUR"
-        },
-
-        {
-            "name": "call_raise_hand",
-            "mode": "call",
-            "conditions": { "gesture": "OK_SIGN" },
-            "action": "RAISE_HAND"
         },
 
         {

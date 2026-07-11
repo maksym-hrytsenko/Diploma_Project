@@ -1,3 +1,10 @@
+"""Standalone exploratory script for testing the pynput keyboard listener API.
+
+Prints timestamped key press/release events until ESC is pressed. Used to
+verify pynput's behavior in isolation before relying on it elsewhere in the
+project.
+"""
+
 from pynput import keyboard
 import time
 
@@ -19,7 +26,7 @@ def on_release(key):
         print(f"{timestamp:.6f} | key: {key} | type: up")
 
     if key == keyboard.Key.esc:
-        return False  # коректне завершення
+        return False  # returning False from the callback stops the pynput listener
 
 with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
     listener.join()

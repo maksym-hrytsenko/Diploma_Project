@@ -1,3 +1,15 @@
+"""Standalone calibration tool for the face-controlled media gestures
+(head-tilt, eyebrows, mouth, blink). It has no imports from src/, so it is
+safe to copy, run, and tweak on its own; once the trackbar values below look
+right for a given camera/face/lighting, copy the numbers into the matching
+constants in src/processing/face/face_recognizer.py (face_debug_view.py has
+no thresholds of its own — it only displays what FaceRecognizer publishes).
+
+Nod (CONFIRM) is deliberately left out of this test — it is a reserved,
+unbound feature unrelated to the media-control gestures calibrated here.
+Shake (CANCEL) has been removed from the system entirely.
+"""
+
 import math
 import os
 import threading
@@ -10,29 +22,6 @@ import pyautogui
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from pynput import keyboard
-
-
-# ---------------------------------
-# Standalone script. No imports from
-# src/ — safe to copy, run and tweak
-# on its own for calibration. Once the
-# trackbar values below look right on
-# your own camera/face/lighting, copy
-# the numbers into the matching
-# constants in
-# src/processing/face/face_recognizer.py
-# (and src/processing/face/face_debug_view.py
-# has no thresholds of its own to update —
-# it only ever displays whatever
-# FaceRecognizer publishes).
-#
-# Nod (CONFIRM) is deliberately left out of
-# this test — it is a reserved, unbound feature
-# unrelated to the head-tilt/eyebrows/mouth
-# media-control use case this script is for
-# calibrating. Shake (CANCEL) has been removed
-# from the system entirely.
-# ---------------------------------
 
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
@@ -47,23 +36,16 @@ MODEL_PATH = os.path.join(
 
 WINDOW_NAME = "Face Calibration Standalone Test"
 
-# ---------------------------------
-# Default Thresholds (starting point —
-# trackbars below let you drag these
-# live, no code edits/restarts needed
-# while tuning)
-# ---------------------------------
-
+# Starting points only — the trackbars below let these be dragged live,
+# with no code edits/restarts needed while tuning.
 DEFAULT_TILT_ENTER_DEGREES = 15
 DEFAULT_TILT_EXIT_DEGREES = 8
 
-# Blendshape scores are 0.0-1.0; trackbars are integer-only,
-# so every *_X100 value here is the real threshold times 100
-# (e.g. 50 -> 0.50). Lowered 20% from the original 50/30
-# defaults — confirmed by hands-on calibration to need less
-# exaggerated brow-raise/mouth-open/eye-close than that to
-# cross reliably; already carried over into
-# src/processing/face/face_recognizer.py.
+# Blendshape scores are 0.0-1.0; trackbars are integer-only, so every
+# *_X100 value here is the real threshold times 100 (e.g. 50 -> 0.50).
+# Lowered 20% from the original 50/30 defaults — hands-on calibration
+# found that lower values were enough to cross reliably; already carried
+# over into src/processing/face/face_recognizer.py.
 DEFAULT_EYEBROWS_RAISE_X100 = 40
 DEFAULT_EYEBROWS_LOWER_X100 = 24
 DEFAULT_DOUBLE_EYEBROWS_WINDOW_MS = 600
@@ -78,10 +60,6 @@ DEFAULT_DOUBLE_BLINK_WINDOW_MS = 500
 BAR_WIDTH = 220
 BAR_HEIGHT = 14
 
-
-# ---------------------------------
-# MediaPipe Face Landmarker
-# ---------------------------------
 
 base_options = python.BaseOptions(
     model_asset_path=MODEL_PATH
@@ -129,31 +107,26 @@ def detect(frame):
     )
 
 
-# Landmark index of each eye's OUTER corner in MediaPipe's
-# 468/478-point face mesh, used only by compute_roll below.
+# Landmark index of each eye's outer corner in MediaPipe's 468/478-point
+# face mesh, used only by compute_roll below.
 RIGHT_EYE_OUTER_CORNER = 33
 LEFT_EYE_OUTER_CORNER = 263
 
 
 def compute_roll(face_landmarks):
 
-    # Pure 2D geometry: the angle of the line between the two
-    # outer eye corners in image space. Horizontal (~0 deg) on
-    # an upright face; rotates by exactly the angle the head
-    # physically tilts, with no 3D matrix convention involved —
-    # see the matching comment in
-    # src/processing/face/face_recognizer.py's _compute_roll
-    # for why the matrix-decomposition roll was replaced with
-    # this.
+    # 2D angle between the outer eye corners in image space: ~0 deg on an
+    # upright face, rotating with head tilt — avoids the 3D matrix
+    # convention issues of the alternative. See the matching comment in
+    # FaceRecognizer._compute_roll.
     right_eye = face_landmarks[RIGHT_EYE_OUTER_CORNER]
     left_eye = face_landmarks[LEFT_EYE_OUTER_CORNER]
 
     delta_x = left_eye.x - right_eye.x
     delta_y = left_eye.y - right_eye.y
 
-    # Negated — see the matching comment in FaceRecognizer._compute_roll
-    # for why (confirmed by testing to have the opposite sign from the
-    # physical tilt direction).
+    # Negated — testing found this has the opposite sign from the physical
+    # tilt direction; see FaceRecognizer._compute_roll.
     return -math.degrees(
         math.atan2(
             delta_y,
@@ -209,13 +182,8 @@ def blendshape_scores(result):
     }
 
 
-# ---------------------------------
-# Alt Hold Tracking (pynput, same
-# mechanism as
-# src/input/keyboard_input.py +
-# src/processing/keyboard/keyboard_processor.py)
-# ---------------------------------
-
+# Alt-hold tracking via pynput, same mechanism as src/input/keyboard_input.py
+# + src/processing/keyboard/keyboard_processor.py.
 held_keys = set()
 held_lock = threading.Lock()
 
@@ -279,13 +247,8 @@ keyboard_listener = keyboard.Listener(
 keyboard_listener.start()
 
 
-# ---------------------------------
-# OS Actions (same mechanism as
-# src/execution/os_controller.py,
-# copied inline so this script has
-# no dependency on src/)
-# ---------------------------------
-
+# OS actions below use the same mechanism as src/execution/os_controller.py,
+# copied inline so this script has no dependency on src/.
 NX_KEYTYPE_PLAY = 16
 NX_KEYTYPE_NEXT = 17
 NX_KEYTYPE_PREVIOUS = 18
@@ -357,10 +320,6 @@ def take_screenshot():
     pyautogui.hotkey("command", "shift", "3")
 
 
-# ---------------------------------
-# Face Signal State
-# ---------------------------------
-
 state = {
 
     "tilt_zone": None,
@@ -386,10 +345,8 @@ def fire_face_signal(signal):
 
     state["last_signal"] = signal
 
-    # Mirrors the Alt face-layer rules in config/fusion.json
-    # exactly — held Alt plus a face signal fires the same real
-    # OS action the full app would, so this test doubles as an
-    # end-to-end check of the actions themselves, not just the
+    # Mirrors the Alt face-layer rules in config/fusion.json exactly, so
+    # this test doubles as an end-to-end check of the actions, not just
     # detection.
     if not alt_held():
 
@@ -432,14 +389,9 @@ def fire_face_signal(signal):
         )
 
 
-# ---------------------------------
-# Checks (mirrors
-# src/processing/face/face_recognizer.py's
-# _check_tilt / _check_eyebrows / _check_mouth /
-# _check_blink, reading thresholds from the
-# trackbars instead of fixed class constants)
-# ---------------------------------
-
+# Mirrors src/processing/face/face_recognizer.py's _check_tilt /
+# _check_eyebrows / _check_mouth / _check_blink, reading thresholds from
+# the trackbars instead of fixed class constants.
 def check_tilt(roll, tilt_enter, tilt_exit):
 
     if roll is None:
@@ -565,10 +517,6 @@ def check_blink(
 
             state["last_blink_time"] = current_time
 
-
-# ---------------------------------
-# Drawing
-# ---------------------------------
 
 def draw_bar(
     frame,
@@ -801,10 +749,6 @@ def draw_overlay(
     )
 
 
-# ---------------------------------
-# Trackbars
-# ---------------------------------
-
 cv2.namedWindow(WINDOW_NAME)
 
 cv2.createTrackbar(
@@ -887,10 +831,6 @@ cv2.createTrackbar(
     lambda value: None
 )
 
-
-# ---------------------------------
-# Camera Loop
-# ---------------------------------
 
 cap = cv2.VideoCapture(0)
 

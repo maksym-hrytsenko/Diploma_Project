@@ -1,12 +1,16 @@
+"""Standalone exploratory script for MediaPipe's HandLandmarker task.
+
+Detects a single hand from a live webcam feed and highlights the index
+fingertip landmark, to verify the API before wiring it into the main
+application.
+"""
 import cv2
 import mediapipe as mp
 import time
 
-# Import new MediaPipe Tasks API
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# Load hand landmarker model
 base_options = python.BaseOptions(model_asset_path='models/hand_landmarker.task')
 
 options = vision.HandLandmarkerOptions(
@@ -29,13 +33,8 @@ while True:
 
     frame = cv2.flip(frame, 1)
 
-    # Convert frame to RGB
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # Convert to MediaPipe Image
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-    # Detect hands
     result = landmarker.detect(mp_image)
 
     if result.hand_landmarks:
@@ -45,18 +44,15 @@ while True:
             for idx, lm in enumerate(hand_landmarks):
                 cx, cy = int(lm.x * w), int(lm.y * h)
 
-                # Draw all landmarks
                 cv2.circle(frame, (cx, cy), 5, (0, 255, 0), cv2.FILLED)
 
-                # Highlight index finger tip (id=8)
-                if idx == 8:
+                if idx == 8:  # landmark 8 is the index fingertip
                     cv2.circle(frame, (cx, cy), 10, (0, 0, 255), cv2.FILLED)
                     cv2.putText(frame, f'Index: {cx}, {cy}',
                                 (cx + 10, cy - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.7, (0, 0, 255), 2)
 
-    # FPS calculation
     current_time = time.time()
     fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
     prev_time = current_time

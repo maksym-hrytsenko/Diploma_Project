@@ -1,3 +1,13 @@
+"""Hand-gesture recognition from camera frames using MediaPipe.
+
+Consumes camera_frame events, runs MediaPipe hand/gesture models on each
+frame, and publishes gesture_signal, pointer_position, pinch_drag and
+pinch_zoom events over the EventBus for downstream fusion/mapping. Stays
+mode-agnostic overall, but reads the active mode from SignalMapper's
+mode_changed event for a handful of mode-gated checks (PINCH, OK-sign,
+the finger-count toggles, off-hand precision/zoom).
+"""
+
 import math
 import time
 
@@ -11,24 +21,20 @@ from config.config_loader import load_system_config
 
 class GestureRecognizer:
 
-    # The only two modes that ever interpret HAND_LEFT/RIGHT/
-    # UP/DOWN swipes: Flip mode uses them directly, Quick
-    # Circle uses them to pick a mode. Every other mode (or no
-    # mode at all) has no rule that reacts to a swipe signal —
-    # see _handle_mode_changed for why the tracking session is
-    # force-ended on transitioning into any mode outside this
-    # set.
+    # The only two modes that ever interpret HAND_LEFT/RIGHT/UP/DOWN
+    # swipes: Flip mode uses them directly, Quick Circle uses them to
+    # pick a mode. See _handle_mode_changed for why the tracking session
+    # is force-ended on transitioning into any mode outside this set.
     SWIPE_MODES = {"flip", "quick_circle"}
 
-    # The four Call-mode gestures that toggle persistent state
-    # (mic, camera, call audio, background blur) rather than
-    # firing a momentary one-shot action like OK_SIGN (raise
-    # hand). Shared by the mode gate, the hold-to-confirm
-    # requirement, and the per-gesture lock, all in
+    # The four Call-mode gestures that toggle persistent state (mic,
+    # camera, call audio, background blur) rather than firing a
+    # momentary one-shot action like OK_SIGN. Shared by the mode gate,
+    # the hold-to-confirm requirement, and the per-gesture lock in
     # _publish_static_gesture — see call_toggle_hold_seconds and
-    # locked_toggle_gestures in __init__. Each name is produced
-    # by _read_call_finger_gesture, not by MediaPipe's own
-    # classifier — see FINGER_COUNT_GESTURES below for why.
+    # locked_toggle_gestures in __init__. Produced by
+    # _read_call_finger_gesture, not MediaPipe's own classifier — see
+    # FINGER_COUNT_GESTURES below for why.
     CALL_TOGGLE_GESTURES = (
         "ONE_FINGER",
         "TWO_FINGERS",
@@ -36,13 +42,11 @@ class GestureRecognizer:
         "FOUR_FINGERS"
     )
 
-    # (tip landmark, PIP landmark) pairs for the four non-thumb
-    # fingers, used by _count_extended_fingers. The thumb is
-    # deliberately left out of the count entirely — raising N
-    # fingers naturally starts from the index finger and folds
-    # outward one at a time, and whether the thumb happens to
-    # also be tucked in or splayed out while doing it varies too
-    # much between people to be a reliable fourth bit.
+    # (tip landmark, PIP landmark) pairs for the four non-thumb fingers,
+    # used by _count_extended_fingers. The thumb is deliberately left
+    # out of the count — whether it's tucked in or splayed out while
+    # raising N fingers varies too much between people to be a reliable
+    # fourth bit.
     FINGER_TIP_PIP_LANDMARKS = (
         (8, 6),    # index
         (12, 10),  # middle
@@ -50,13 +54,11 @@ class GestureRecognizer:
         (20, 18)   # pinky
     )
 
-    # MediaPipe's bundled classifier has no "two fingers"/
-    # "three fingers"/"four fingers" category — same labels.txt
-    # checked directly for OK_SIGN (only None/Closed_Fist/
-    # Open_Palm/Pointing_Up/Thumb_Down/Thumb_Up/Victory/
-    # ILoveYou exist) — so Call mode's four toggle functions are
-    # keyed off a raw extended-finger count computed straight
-    # from landmark geometry instead of a classifier category.
+    # MediaPipe's bundled classifier has no "two/three/four fingers"
+    # category (confirmed against labels.txt — only None/Closed_Fist/
+    # Open_Palm/Pointing_Up/Thumb_Down/Thumb_Up/Victory/ILoveYou exist),
+    # so Call mode's toggle gestures are keyed off a raw extended-finger
+    # count computed from landmark geometry instead.
     FINGER_COUNT_GESTURES = {
         1: "ONE_FINGER",
         2: "TWO_FINGERS",
@@ -65,6 +67,7 @@ class GestureRecognizer:
     }
 
     def __init__(self, event_bus):
+        """Load gesture-tuning config and reset all detector state."""
 
         self.event_bus = event_bus
 
@@ -161,16 +164,9 @@ class GestureRecognizer:
             0.7
         )
 
-        # ---------------------------------
-        # Gesture Debounce
-        # ---------------------------------
-
-        # A gesture must hold for this many consecutive
-        # frames before it is trusted. A single
-        # misclassified frame (motion blur, odd angle)
-        # would otherwise end and immediately restart a
-        # session, re-anchoring the point to wherever the
-        # finger happens to be at that moment.
+        # A gesture must hold for this many consecutive frames before
+        # it is trusted, so a single misclassified frame (motion blur,
+        # odd angle) can't end and immediately restart a session.
         self.confirm_frames = config.get(
             "confirm_frames",
             4
@@ -179,25 +175,17 @@ class GestureRecognizer:
         self.candidate_gesture = None
         self.candidate_count = 0
 
-        # When the current candidate_gesture started being
-        # seen, even before it crossed confirm_frames. Used by
-        # the Call-mode toggle gestures (ONE_FINGER/TWO_FINGERS/
-        # THREE_FINGERS/FOUR_FINGERS) to require a real,
-        # continuous hold — see call_toggle_hold_seconds — on
-        # top of this debounce, which by itself only filters
-        # single-frame noise.
+        # When the current candidate_gesture started being seen, even
+        # before it crossed confirm_frames. Used by the Call-mode
+        # toggle gestures to require a real, continuous hold — see
+        # call_toggle_hold_seconds — on top of this debounce, which by
+        # itself only filters single-frame noise.
         self.candidate_start_time = None
 
-        # ---------------------------------
-        # Hand-Lost Grace Period
-        # ---------------------------------
-
-        # How many consecutive frames the hand may be
-        # undetected before the session actually ends. Fast
-        # finger movement causes motion blur, which
-        # regularly makes MediaPipe miss the hand for a
-        # frame or two even though it never left the
-        # camera.
+        # How many consecutive frames the hand may be undetected before
+        # the session actually ends. Fast finger movement causes motion
+        # blur, which regularly makes MediaPipe miss the hand for a
+        # frame or two even though it never left the camera.
         self.hand_lost_frames = config.get(
             "hand_lost_frames",
             5
@@ -205,16 +193,11 @@ class GestureRecognizer:
 
         self.hand_lost_count = 0
 
-        # ---------------------------------
-        # Motion Tracking Session
-        # ---------------------------------
-
-        # True between a Closed_Fist -> Open_Palm
-        # transition and the matching Open_Palm ->
-        # Closed_Fist transition (or the hand leaving the
-        # frame for hand_lost_frames straight frames). The
-        # hand does NOT need to stay open the whole time
-        # once a session starts.
+        # True between a Closed_Fist -> Open_Palm transition and the
+        # matching Open_Palm -> Closed_Fist transition (or the hand
+        # leaving the frame for hand_lost_frames straight frames). The
+        # hand does NOT need to stay open the whole time once a session
+        # starts.
         self.tracking_active = False
 
         # Marker position. Follows the finger live and
@@ -254,24 +237,22 @@ class GestureRecognizer:
             1.8
         )
 
-        # Per-frame movement below this is treated as
-        # landmark jitter, even if it briefly spikes the
-        # velocity reading (a tiny distance over a tiny
-        # time can look "fast").
+        # Per-frame movement below this is treated as landmark jitter,
+        # even if it briefly spikes the velocity reading (a tiny
+        # distance over a tiny time can look "fast").
         self.min_frame_distance = config.get(
             "min_frame_distance",
             0.015
         )
 
-        # The velocity vector counts as UP/DOWN only within
-        # this many degrees of straight vertical. Everything
-        # else, including diagonals, counts as LEFT/RIGHT.
+        # The velocity vector counts as UP/DOWN only within this many
+        # degrees of straight vertical. Everything else, including
+        # diagonals, counts as LEFT/RIGHT.
         self.vertical_cone_degrees = config.get(
             "vertical_cone_degrees",
             25
         )
 
-        # Cooldown
         self.last_motion_time = 0
 
         self.motion_cooldown = config.get(
@@ -279,21 +260,14 @@ class GestureRecognizer:
             0.5
         )
 
-        # ---------------------------------
-        # Presentation Mode: Fist Swipe
-        # ---------------------------------
-
-        # Unlike the swipe above (armed by a Closed_Fist ->
-        # Open_Palm transition, tracks the index fingertip),
-        # Presentation mode's slide-switch gesture needs no
-        # separate "arm" step: holding a closed fist IS the
-        # active state, and the WRIST (landmark 0, larger and
-        # more central than a fingertip) is tracked instead,
-        # since it stays reliably trackable even clenched and
-        # farther from the camera than desk-distance gestures
-        # were tuned for. Kept as its own detector — reusing
-        # _resolve_signal's direction math, but with its own
-        # thresholds below — so calibrating it for presenting
+        # Unlike the swipe above (armed by a Closed_Fist -> Open_Palm
+        # transition, tracks the index fingertip), Presentation mode's
+        # slide-switch gesture needs no separate "arm" step: holding a
+        # closed fist IS the active state, and the WRIST (landmark 0)
+        # is tracked instead since it stays reliably trackable even
+        # clenched and farther from the camera. Kept as its own
+        # detector — reusing _resolve_signal's direction math with its
+        # own thresholds below — so calibrating it for presenting
         # distance never touches the Flip-mode swipe above.
         self.presentation_fist_previous_x = None
         self.presentation_fist_previous_y = None
@@ -301,14 +275,11 @@ class GestureRecognizer:
 
         self.presentation_fist_last_motion_time = 0
 
-        # Tuned down from the Flip-mode swipe's defaults
-        # (1.8 / 0.015) after live testing at actual
-        # presenting distance with
-        # tests/presentation_fist_swipe_standalone_test.py —
-        # a wrist swipe reads as slower/smaller motion than a
-        # fingertip swipe at the same physical speed, and this
-        # is meant to be comfortable a few meters from the
-        # camera.
+        # Tuned down from the Flip-mode swipe's defaults (1.8 / 0.015)
+        # after live testing at actual presenting distance with
+        # tests/presentation_fist_swipe_standalone_test.py — a wrist
+        # swipe reads as slower/smaller motion than a fingertip swipe
+        # at the same physical speed.
         self.presentation_fist_velocity_threshold = (
             presentation_fist_config.get(
                 "velocity_threshold",
@@ -337,48 +308,35 @@ class GestureRecognizer:
             )
         )
 
-        # ---------------------------------
-        # Presentation Mode: Relative Laser Pointer
-        # ---------------------------------
-
-        # Distance-invariant alternative to the absolute
-        # fingertip mapping _update_pointer otherwise uses
-        # (Cursor mode's real cursor, and every other mode's
-        # overlay dot): the moment Pointing_Up starts, the
-        # pointer snaps to the screen center, and hand
-        # movement from there is measured in units of the
-        # presenter's own hand size — see
-        # _update_presentation_pointer. An absolute mapping
-        # would otherwise force a physically larger sweep the
-        # farther the presenter stands, since the camera's
+        # Distance-invariant alternative to the absolute fingertip
+        # mapping _update_pointer otherwise uses: the moment
+        # Pointing_Up starts, the pointer snaps to the screen center,
+        # and hand movement from there is measured in units of the
+        # presenter's own hand size — see _update_presentation_pointer.
+        # An absolute mapping would otherwise force a physically larger
+        # sweep the farther the presenter stands, since the camera's
         # field of view covers more real-world space at range.
         self.presentation_pointer_anchor_x = None
         self.presentation_pointer_anchor_y = None
 
-        # Frozen the moment pointing starts, not re-measured
-        # every frame, so the control box doesn't subtly
-        # resize (and the pointer drift) if the hand-size
-        # estimate jitters slightly while pointing continues.
+        # Frozen the moment pointing starts, not re-measured every
+        # frame, so the control box doesn't subtly resize (and the
+        # pointer drift) if the hand-size estimate jitters slightly.
         self.presentation_pointer_hand_size = None
 
-        # ---------------------------------
-        # Pinch / Hold-and-Drag Geometry
-        # ---------------------------------
-
-        # Distance (normalized coordinates) between thumb
-        # tip and index tip below which the two fingers
-        # count as "touching" — a pinch. Also reused as-is by
-        # Call mode's OK-sign check (same thumb/index-touch
-        # geometry, different meaning depending on which mode
-        # is active — the two never run in the same mode).
+        # Distance (normalized coordinates) between thumb tip and
+        # index tip below which the two fingers count as "touching" —
+        # a pinch. Also reused as-is by Call mode's OK-sign check
+        # (same geometry, different meaning — the two never run in
+        # the same mode).
         self.pinch_distance_threshold = config.get(
             "pinch_distance_threshold",
             0.06
         )
 
-        # A pinch held/moved past either of these
-        # thresholds stops being a quick tap (click) and
-        # becomes a hold-and-drag (scroll) instead.
+        # A pinch held/moved past either of these thresholds stops
+        # being a quick tap (click) and becomes a hold-and-drag
+        # (scroll) instead.
         self.drag_activation_seconds = config.get(
             "drag_activation_seconds",
             0.15
@@ -397,11 +355,11 @@ class GestureRecognizer:
         self.pinch_previous_x = None
         self.pinch_previous_y = None
 
-        # A completed quick tap is not published as PINCH
-        # right away — it waits up to double_pinch_window to
-        # see whether a second tap follows, in which case the
-        # pair is published as one DOUBLE_PINCH (right-click)
-        # instead of two separate PINCH (click) signals.
+        # A completed quick tap is not published as PINCH right away —
+        # it waits up to double_pinch_window to see whether a second
+        # tap follows, in which case the pair is published as one
+        # DOUBLE_PINCH (right-click) instead of two separate PINCH
+        # (click) signals.
         self.pending_single_pinch = False
         self.pending_pinch_time = 0
         self.double_pinch_window = config.get(
@@ -409,32 +367,23 @@ class GestureRecognizer:
             0.3
         )
 
-        # ---------------------------------
-        # OK-Sign (Call Mode: raise hand)
-        # ---------------------------------
-
-        # MediaPipe's bundled gesture classifier has no "OK"
-        # category (confirmed against the model's own
-        # labels.txt — only None/Closed_Fist/Open_Palm/
-        # Pointing_Up/Thumb_Down/Thumb_Up/Victory/ILoveYou
-        # exist), so this is computed the same way PINCH is —
-        # directly from thumb/index landmark distance — rather
-        # than relying on a classifier category that will never
-        # actually fire. Edge-triggered: fires once when the
-        # fingers first touch, not again until they separate.
+        # MediaPipe's bundled gesture classifier has no "OK" category
+        # (confirmed against labels.txt — only None/Closed_Fist/
+        # Open_Palm/Pointing_Up/Thumb_Down/Thumb_Up/Victory/ILoveYou
+        # exist), so this is computed the same way PINCH is — directly
+        # from thumb/index landmark distance. Edge-triggered: fires
+        # once when the fingers first touch, not again until they
+        # separate.
         self.ok_touching = False
 
-        # Once touching, the fingers must separate past this
-        # WIDER distance — not just back past
-        # pinch_distance_threshold — before being considered
-        # released. Unlike the classifier gestures, OK-sign has
-        # no confirm_frames debounce (it can't — there is no
-        # classifier category to debounce, see above), so without
-        # this hysteresis gap, landmark jitter sitting right at a
-        # single threshold flickers touching/not-touching frame
-        # to frame, each flicker re-arming and re-firing OK_SIGN
-        # in an unbroken burst instead of once per deliberate
-        # touch-and-release.
+        # Once touching, the fingers must separate past this WIDER
+        # distance — not just back past pinch_distance_threshold —
+        # before being considered released. OK-sign has no
+        # confirm_frames debounce (there's no classifier category to
+        # debounce), so without this hysteresis gap, landmark jitter
+        # at a single threshold would flicker touching/not-touching
+        # frame to frame and re-fire OK_SIGN in an unbroken burst
+        # instead of once per deliberate touch-and-release.
         self.ok_sign_release_distance = (
             self.pinch_distance_threshold
             * config.get(
@@ -443,10 +392,9 @@ class GestureRecognizer:
             )
         )
 
-        # Hard floor between two OK_SIGN firings, regardless of
-        # finger state — a safety net under the hysteresis above
-        # for jitter that plays out slower than a single-frame
-        # flicker.
+        # Hard floor between two OK_SIGN firings, regardless of finger
+        # state — a safety net under the hysteresis above for jitter
+        # that plays out slower than a single-frame flicker.
         self.ok_sign_cooldown = config.get(
             "ok_sign_cooldown",
             0.6
@@ -454,104 +402,74 @@ class GestureRecognizer:
 
         self.last_ok_sign_time = 0
 
-        # ---------------------------------
-        # Call Mode Toggle Gestures
-        # (1 / 2 / 3 / 4 fingers)
-        # ---------------------------------
-
         # Each of the four finger-count gestures sends a single
         # OS-level toggle keystroke (see OSController.toggle_mic/
         # toggle_camera/toggle_call_audio/toggle_background_blur)
-        # rather than a distinct "turn on"/"turn off" call, so
-        # firing the same one twice in a row flips the state the
-        # wrong way, not just redundantly. Once a toggle gesture
-        # fires, that SAME gesture name is ignored until the hand
-        # actually leaves the frame (see _handle_hand_lost) and is
-        # reacquired — this is exactly the "show once to turn on,
-        # hand must leave frame, show again to turn off" behavior
-        # the four functions are meant to have. Unlike
-        # last_gesture, this is NOT cleared by seeing some other
-        # gesture in between — a gesture stays in this set
-        # specifically so the finger count flickering off it to
-        # something else and back, without the hand ever leaving
-        # the frame, can't fire it a second time on what is
-        # physically still the same held-up gesture. Tracked per
-        # gesture name (not one shared flag) so, e.g., a locked
-        # ONE_FINGER does not also block TWO_FINGERS.
+        # rather than a distinct "turn on"/"turn off" call, so firing
+        # the same one twice in a row flips the state the wrong way.
+        # Once a toggle gesture fires, that SAME gesture name is
+        # ignored until the hand actually leaves the frame (see
+        # _handle_hand_lost) and is reacquired — "show once to turn
+        # on, hand must leave frame, show again to turn off". Unlike
+        # last_gesture, NOT cleared by seeing some other gesture in
+        # between — a gesture stays locked so finger count flickering
+        # off it and back, without the hand leaving frame, can't
+        # refire it. Tracked per gesture name so a locked ONE_FINGER
+        # does not also block TWO_FINGERS.
         self.locked_toggle_gestures = set()
 
-        # How long (seconds) one of these four gestures must be
-        # held continuously — since it was first seen, not just
-        # since it crossed confirm_frames — before it is trusted
-        # enough to fire. These toggle mic/camera/call-audio/
-        # background-blur state, so a fast or incidental gesture
-        # should not be enough to flip them the way it's fine for,
-        # say, a swipe. OK_SIGN (raise hand) is a momentary,
-        # repeatable notification, not a toggle, so it is not held
-        # to this standard.
+        # How long (seconds) one of these four gestures must be held
+        # continuously — since it was first seen, not just since it
+        # crossed confirm_frames — before it is trusted enough to fire.
+        # These toggle mic/camera/call-audio/background-blur state, so
+        # a fast or incidental gesture shouldn't be enough to flip
+        # them. OK_SIGN is a momentary, repeatable notification, not a
+        # toggle, so it is not held to this standard.
         self.call_toggle_hold_seconds = config.get(
             "call_toggle_hold_seconds",
             1.5
         )
 
-        # ---------------------------------
-        # Two-Hand Cursor Mode (off-hand)
-        # ---------------------------------
-
-        # True while an off-hand pinch is held during Cursor
-        # mode — see _update_pointer.
+        # True while an off-hand pinch is held during Cursor mode —
+        # see _update_pointer.
         self.precision_active = False
 
         self.precision_anchor_x = None
         self.precision_anchor_y = None
 
-        # ---------------------------------
-        # Zoom (off-hand pinch)
-        # ---------------------------------
-
         # Zoom used to also be engageable by holding Alt on the
-        # keyboard, as a one-handed substitute for the off-hand
-        # pinch. Removed once Alt became the global face-layer
-        # modifier (§9.1 in docs/SYSTEM_FUNCTIONS.md) — holding
-        # Alt for zoom would simultaneously arm HEAD_TILT/
-        # MOUTH_OPEN/EYEBROWS_UP actions (track switching, pause,
-        # volume, screenshot), firing alongside whatever zoom
-        # gesture was in progress. Zoom is off-hand-pinch-only
-        # now, confirmed by testing to be the only unambiguous
-        # option: it uses two hands, not one, so it shares no
-        # gesture or modifier with anything Alt now means.
+        # keyboard, as a one-handed substitute for the off-hand pinch.
+        # Removed once Alt became the global face-layer modifier
+        # (§9.1 in docs/SYSTEM_FUNCTIONS.md) — holding Alt for zoom
+        # would simultaneously arm HEAD_TILT/MOUTH_OPEN/EYEBROWS_UP
+        # actions, firing alongside whatever zoom gesture was in
+        # progress. Zoom is off-hand-pinch-only now: it uses two
+        # hands, not one, so it shares no gesture or modifier with
+        # anything Alt now means.
 
-        # Baseline thumb/index distance for zoom (see
-        # _check_zoom) — reset whenever zoom disengages, so
-        # re-engaging always starts from a fresh baseline
-        # instead of a potentially large stale delta.
+        # Baseline thumb/index distance for zoom (see _check_zoom) —
+        # reset whenever zoom disengages, so re-engaging always starts
+        # from a fresh baseline instead of a potentially large stale
+        # delta.
         self.zoom_previous_distance = None
 
-        # ---------------------------------
-        # Mirrored from SignalMapper's "mode_changed" event.
-        # A deliberate, narrow exception to this class
-        # otherwise staying mode-agnostic: a handful of checks
-        # below (PINCH, OK-sign, the finger-count toggles,
-        # off-hand precision/zoom) only mean something in one
-        # specific mode each, and are gated at the source so a
-        # pose that happens to pass through during an unrelated
-        # mode never gets detected or published as noise.
+        # Mirrored from SignalMapper's "mode_changed" event. A
+        # deliberate, narrow exception to this class otherwise staying
+        # mode-agnostic: a handful of checks below (PINCH, OK-sign,
+        # the finger-count toggles, off-hand precision/zoom) only mean
+        # something in one specific mode each, and are gated at the
+        # source so a pose passing through during an unrelated mode
+        # never gets detected or published as noise.
         self.active_mode = None
 
-        # Tracks only whether the debug "[GESTURE] Hand
-        # detected"/"Hand lost" transition print already fired
-        # for the current state, so it prints once per
-        # transition instead of spamming every frame — visible
-        # confirmation that the camera/MediaPipe pipeline is
-        # actually seeing a hand at all, independent of
-        # whether any particular gesture gets recognized.
+        # Tracks only whether the debug "Hand detected"/"Hand lost"
+        # transition print already fired for the current state, so it
+        # prints once per transition instead of spamming every frame.
         self.hand_was_present = False
 
-        # Tracks the last reported off-hand search outcome
-        # ("none" / "same_hand" / "found"), purely so
-        # _report_off_hand_state prints only on a transition
-        # instead of spamming every qualifying frame — same
-        # idea as hand_was_present above.
+        # Tracks the last reported off-hand search outcome ("none" /
+        # "same_hand" / "found"), purely so _report_off_hand_state
+        # prints only on a transition — same idea as hand_was_present.
         self.off_hand_debug_state = None
 
     def start(self):
@@ -579,18 +497,22 @@ class GestureRecognizer:
         )
 
     def _handle_mode_changed(self, event):
+        """Update the active mode and reset any mode-scoped state.
+
+        Prevents state from one mode's session (a deferred pinch tap,
+        a stale swipe baseline, a locked toggle) leaking into a later
+        session in the same or a different mode.
+        """
 
         self.active_mode = event.get(
             "data",
             {}
         ).get("mode")
 
-        # Leaving Cursor mode mid-window would otherwise let
-        # a deferred single tap fire once the mode is
-        # re-entered later, long after the user actually
-        # pinched. Same idea for precision mode and the zoom
-        # baseline — neither should carry over into a new
-        # Cursor mode session.
+        # Leaving Cursor mode mid-window would otherwise let a
+        # deferred single tap fire once the mode is re-entered later,
+        # long after the user actually pinched. Same idea for
+        # precision mode and the zoom baseline.
         if self.active_mode != "cursor":
 
             self.pending_single_pinch = False
@@ -605,11 +527,10 @@ class GestureRecognizer:
 
             self.locked_toggle_gestures = set()
 
-        # Leaving Presentation mode mid-fist-move would otherwise
-        # let a stale previous wrist position survive into a
-        # later Presentation session and produce one large,
-        # spurious delta on the first frame back — same idea as
-        # the Cursor/Call resets above.
+        # Leaving Presentation mode mid-fist-move would otherwise let
+        # a stale previous wrist position survive into a later
+        # Presentation session and produce one large, spurious delta
+        # on the first frame back.
         if self.active_mode != "presentation":
 
             self.presentation_fist_previous_x = None
@@ -620,39 +541,33 @@ class GestureRecognizer:
             self.presentation_pointer_anchor_y = None
             self.presentation_pointer_hand_size = None
 
-        # A swipe session started to pick a mode via Quick
-        # Circle (or one already in progress in Flip mode) has
-        # no further reason to keep running once the resulting
-        # mode isn't one that interprets swipes at all —
-        # without this, residual hand motion right after
-        # landing in, say, Call mode kept computing velocity
-        # and could still fire HAND_LEFT/RIGHT/UP/DOWN signals
-        # that reach SignalMapper only to match no rule there,
-        # pure noise. Ending the session here means a fresh
-        # Closed_Fist -> Open_Palm is required before any
-        # further swipe is interpreted, exactly as if the hand
-        # had been lost and reacquired.
+        # A swipe session has no reason to keep running once the
+        # resulting mode isn't one that interprets swipes at all —
+        # without this, residual hand motion right after landing in,
+        # say, Call mode would keep computing velocity and could fire
+        # HAND_LEFT/RIGHT/UP/DOWN signals that match no rule there,
+        # pure noise. Ending it here means a fresh Closed_Fist ->
+        # Open_Palm is required before any further swipe is
+        # interpreted, as if the hand had been lost and reacquired.
         if self.active_mode not in self.SWIPE_MODES:
 
             self._end_session()
 
     def _handle_frame(self, event):
+        """Run gesture/pointer detection for one camera frame and
+        publish the resulting signals.
+        """
 
         frame = event.get("data")
 
         if frame is None:
             return
 
-        # ---------------------------------
-        # Process Frame
-        # ---------------------------------
-
-        # GestureModel wraps a real MediaPipe task — a
-        # transient internal failure here must not be able to
-        # take down frame processing beyond the one frame it
-        # happened on (see the num_hands>1 crash history in
-        # docs/SYSTEM_FUNCTIONS.md §2.3.1 for why this
-        # precaution exists).
+        # GestureModel wraps a real MediaPipe task — a transient
+        # internal failure here must not be able to take down frame
+        # processing beyond the one frame it happened on (see the
+        # num_hands>1 crash history in docs/SYSTEM_FUNCTIONS.md §2.3.1
+        # for why this precaution exists).
         try:
 
             result = self.gesture_model.process_frame(
@@ -673,10 +588,6 @@ class GestureRecognizer:
         gesture_name, confidence = self._read_gesture(
             result
         )
-
-        # ---------------------------------
-        # Hand Lost
-        # ---------------------------------
 
         if not result.hand_landmarks:
 
@@ -706,17 +617,15 @@ class GestureRecognizer:
 
         self.hand_lost_count = 0
 
-        # Call mode's four toggle functions (mic / camera /
-        # call audio / background blur) are keyed off how many
+        # Call mode's four toggle functions are keyed off how many
         # fingers are raised, not off whatever MediaPipe's own
-        # classifier happens to report — substituted in here,
-        # ahead of the shared confirm_frames debounce below, so
-        # the rest of the debounce/hold/lock pipeline in
-        # _publish_static_gesture works identically to how it
-        # already does for any other gesture name. gesture_name/
-        # confidence themselves are left untouched — pointer
-        # tracking and the debug overlay below still read the
-        # classifier's own raw output.
+        # classifier reports — substituted in here, ahead of the
+        # shared confirm_frames debounce, so the rest of the
+        # debounce/hold/lock pipeline in _publish_static_gesture works
+        # identically to any other gesture name. gesture_name/
+        # confidence themselves are left untouched — pointer tracking
+        # and the debug overlay below still read the classifier's own
+        # raw output.
         confirm_input = gesture_name
         confirm_confidence = confidence
 
@@ -728,26 +637,21 @@ class GestureRecognizer:
                 )
             )
 
-        # Only a gesture held for confirm_frames straight
-        # frames is trusted for session start/end — the
-        # raw, possibly noisy gesture_name is still used
-        # below for pointer tracking and the debug overlay
+        # Only a gesture held for confirm_frames straight frames is
+        # trusted for session start/end — the raw, possibly noisy
+        # gesture_name is still used below for pointer tracking and
+        # the debug overlay.
         confirmed_gesture = self._confirm_gesture(
             confirm_input
         )
 
-        # Swipe/motion tracking only ever means anything from
-        # idle (no mode — Quick Circle's own HAND_SESSION_START
-        # trigger only ever matches from there, see
-        # SignalMapper._mode_trigger_matches) or while already
-        # inside Flip mode or Quick Circle (see SWIPE_MODES) —
-        # gated at the source so a Closed_Fist -> Open_Palm
-        # toggle in, say, Cursor mode never starts a session
-        # that has no mode to end it (SignalMapper already
-        # refuses to let a gesture-sourced trigger re-enter a
-        # mode from inside another one, so such a session would
-        # otherwise run unbounded until the mode actually
-        # changes).
+        # Swipe/motion tracking only ever means anything from idle (no
+        # mode — Quick Circle's own HAND_SESSION_START trigger only
+        # matches from there, see SignalMapper._mode_trigger_matches)
+        # or while already inside Flip mode or Quick Circle (see
+        # SWIPE_MODES) — gated here so a Closed_Fist -> Open_Palm
+        # toggle in, say, Cursor mode never starts a session with no
+        # mode to end it.
         if (
             self.active_mode is None
             or self.active_mode in self.SWIPE_MODES
@@ -761,26 +665,20 @@ class GestureRecognizer:
                 result
             )
 
-        # A second hand only ever means anything in Cursor
-        # mode — resolved to None everywhere else, and always
-        # run through a separate model from the primary hand
-        # (see OffHandModel / __init__ for why). Searched
-        # regardless of what the primary hand is currently
-        # doing (pointing, pinching to click, or pinching to
-        # drive zoom) since an off-hand pinch must keep being
-        # detected for as long as it's held, including the
-        # whole time it's engaging zoom — by then the primary
-        # hand is deliberately NOT doing Pointing_Up, so gating
-        # this on the primary hand's own gesture would drop the
-        # off-hand mid-zoom. The whole block is wrapped
-        # defensively: OffHandModel is a
-        # second, independent MediaPipe task running alongside
-        # GestureModel every frame, and any failure in it must
-        # never be able to block the primary hand's own
-        # gesture/pointer publishing below — that already
-        # happened once (see docs/SYSTEM_FUNCTIONS.md §2.3.1's
-        # crash/fix history) and this is the second, defensive
-        # layer against a repeat.
+        # A second hand only ever means anything in Cursor mode —
+        # resolved to None everywhere else, and always run through a
+        # separate model from the primary hand (see OffHandModel /
+        # __init__ for why). Searched regardless of what the primary
+        # hand is currently doing, since an off-hand pinch must keep
+        # being detected for as long as it's held, including the whole
+        # time it's engaging zoom — by then the primary hand is
+        # deliberately NOT doing Pointing_Up, so gating this on the
+        # primary hand's own gesture would drop the off-hand mid-zoom.
+        # Wrapped defensively: OffHandModel is a second, independent
+        # MediaPipe task running alongside GestureModel every frame,
+        # and any failure in it must never block the primary hand's
+        # own gesture/pointer publishing below (see docs/
+        # SYSTEM_FUNCTIONS.md §2.3.1's crash/fix history).
         off_hand_landmarks = None
 
         if self.active_mode == "cursor":
@@ -814,12 +712,11 @@ class GestureRecognizer:
 
             off_hand_pinching = False
 
-        # Zoom (off-hand pinch) and PINCH (click / drag-to-
-        # scroll) only ever mean anything in Cursor mode, and
-        # are mutually exclusive on the same physical gesture —
-        # while zoom is engaged, the primary hand's own
-        # thumb/index distance drives zoom instead of a click or
-        # drag.
+        # Zoom (off-hand pinch) and PINCH (click / drag-to-scroll) only
+        # mean anything in Cursor mode, and are mutually exclusive on
+        # the same physical gesture — while zoom is engaged, the
+        # primary hand's own thumb/index distance drives zoom instead
+        # of a click or drag.
         if self.active_mode == "cursor":
 
             zoom_engaged = off_hand_pinching
@@ -883,18 +780,18 @@ class GestureRecognizer:
             confidence
         )
 
-    # ---------------------------------
-    # Off-Hand Resolution
-    # ---------------------------------
-
-    # Runs a completely separate model (OffHandModel) over the
-    # same frame and finds whichever of its detected hands is
-    # FARTHEST from the primary hand's wrist — rejecting it if
-    # even the farthest candidate is still within
-    # SAME_HAND_DISTANCE, which means OffHandModel only ever
-    # re-detected the primary hand itself, not a genuine second
-    # one. Returns that candidate's landmarks, or None.
     def _find_off_hand(self, frame, primary_landmarks):
+        """Locate the off-hand (Cursor mode's second hand), if any.
+
+        Runs OffHandModel over the same frame and picks whichever
+        detected hand is FARTHEST from the primary hand's wrist,
+        rejecting it if even the farthest candidate is still within
+        SAME_HAND_DISTANCE — meaning OffHandModel only re-detected the
+        primary hand itself, not a genuine second one.
+
+        Returns:
+            The candidate's landmarks, or None.
+        """
 
         off_result = self.off_hand_model.process_frame(
             frame
@@ -958,19 +855,19 @@ class GestureRecognizer:
 
         return best_candidate
 
-    # Diagnostic only, no effect on behavior — prints once per
-    # outcome transition (not every frame) so the console shows
-    # exactly why a second hand is or isn't being used right
-    # now: OffHandModel detected nothing at all this frame,
-    # detected something but it was rejected as just the
-    # primary hand re-detected (see SAME_HAND_DISTANCE), or
-    # located a genuine off-hand.
     def _report_off_hand_state(
         self,
         state,
         candidate_count,
         distance
     ):
+        """Print once per off-hand outcome transition.
+
+        Diagnostic only, no effect on behavior — shows whether
+        OffHandModel found nothing, rejected a candidate as just the
+        primary hand re-detected (see SAME_HAND_DISTANCE), or located
+        a genuine off-hand.
+        """
 
         if state == self.off_hand_debug_state:
             return
@@ -983,35 +880,33 @@ class GestureRecognizer:
             f"distance={distance:.3f})"
         )
 
-    # ---------------------------------
-    # Hand Lost
-    # ---------------------------------
-
     def _handle_hand_lost(
         self,
         frame,
         gesture_name,
         confidence
     ):
+        """Track consecutive no-hand frames and end the session once
+        the hand has been gone for hand_lost_frames straight frames.
+        """
 
         self.hand_lost_count += 1
 
-        # Brief dropouts (motion blur during a fast swipe)
-        # are ignored — the session and its anchor stay
-        # exactly as they were. Only a sustained absence
-        # counts as "hand removed".
+        # Brief dropouts (motion blur during a fast swipe) are
+        # ignored — the session and its anchor stay exactly as they
+        # were. Only a sustained absence counts as "hand removed".
         if self.hand_lost_count >= self.hand_lost_frames:
 
             self._end_session()
 
-            # Require a fresh Closed_Fist -> Open_Palm
-            # sequence after the hand comes back
+            # Require a fresh Closed_Fist -> Open_Palm sequence after
+            # the hand comes back
             self.last_gesture = None
 
             # The hand has genuinely left the frame (not just a
-            # motion-blur blip) — every toggle gesture is
-            # unlocked so the next time any of them is shown, in
-            # Call mode, it counts again.
+            # motion-blur blip) — every toggle gesture is unlocked so
+            # the next time any of them is shown, in Call mode, it
+            # counts again.
             self.locked_toggle_gestures = set()
 
             # Fresh debounce window once the hand returns
@@ -1024,11 +919,14 @@ class GestureRecognizer:
             confidence
         )
 
-    # ---------------------------------
-    # Read Static Gesture
-    # ---------------------------------
-
     def _read_gesture(self, result):
+        """Extract the top gesture category from a MediaPipe result.
+
+        Returns:
+            (gesture_name, confidence), or (None, None) if there is
+            no gesture, it's the "None" category, or confidence is
+            below confidence_threshold.
+        """
 
         if not result.gestures:
             return None, None
@@ -1053,17 +951,17 @@ class GestureRecognizer:
 
         return gesture_name, confidence
 
-    # ---------------------------------
-    # Gesture Debounce
-    # ---------------------------------
-
     def _confirm_gesture(self, gesture_name):
+        """Debounce a raw gesture reading against confirm_frames.
 
-        # Requires the same gesture on confirm_frames
-        # consecutive frames before it is trusted. Filters
-        # out one-frame misclassifications so a stray
-        # Closed_Fist reading can't end a session by
-        # accident.
+        Requires the same gesture on confirm_frames consecutive
+        frames before it is trusted, filtering out one-frame
+        misclassifications so a stray Closed_Fist reading can't end a
+        session by accident.
+
+        Returns:
+            The gesture name once confirmed, else None.
+        """
 
         if gesture_name is None:
 
@@ -1088,11 +986,10 @@ class GestureRecognizer:
 
         return None
 
-    # ---------------------------------
-    # Start / Stop Tracking Session
-    # ---------------------------------
-
     def _update_session(self, gesture_name):
+        """Start or end a motion-tracking session on a confirmed
+        Closed_Fist <-> Open_Palm transition.
+        """
 
         if gesture_name is None:
             return
@@ -1119,20 +1016,18 @@ class GestureRecognizer:
             self.velocity_x = None
             self.velocity_y = None
 
-            # Set directly here, not left to the caller:
-            # once tracking_active is True,
-            # _publish_static_gesture ignores every gesture
-            # except Closed_Fist, so it would never get the
-            # chance to move last_gesture off "Closed_Fist"
-            # — leaving the start condition true on every
-            # following frame and re-anchoring each time.
+            # Set directly here, not left to the caller: once
+            # tracking_active is True, _publish_static_gesture ignores
+            # every gesture except Closed_Fist, so it would never get
+            # the chance to move last_gesture off "Closed_Fist" —
+            # leaving the start condition true and re-anchoring every
+            # frame.
             self.last_gesture = "Open_Palm"
 
-            # A discrete, mode-agnostic marker for exactly
-            # this transition. SignalMapper decides what it
-            # means right now (e.g. opening the Quick
-            # Command Circle from idle) — this class stays
-            # unaware of modes.
+            # A discrete, mode-agnostic marker for exactly this
+            # transition. SignalMapper decides what it means right now
+            # (e.g. opening the Quick Command Circle from idle) — this
+            # class stays unaware of modes.
             print(
                 "[GESTURE] HAND_SESSION_START"
             )
@@ -1156,10 +1051,9 @@ class GestureRecognizer:
 
             # Mirrors HAND_SESSION_START above — a discrete,
             # mode-agnostic marker for the reverse transition.
-            # SignalMapper decides what it means right now
-            # (e.g. closing the Quick Command Circle without
-            # picking anything) — this class stays unaware of
-            # modes.
+            # SignalMapper decides what it means right now (e.g.
+            # closing the Quick Command Circle without picking
+            # anything).
             print(
                 "[GESTURE] HAND_SESSION_END"
             )
@@ -1188,10 +1082,6 @@ class GestureRecognizer:
         self.velocity_x = None
         self.velocity_y = None
 
-    # ---------------------------------
-    # Direction From Speed
-    # ---------------------------------
-
     def _resolve_signal(
         self,
         velocity_x,
@@ -1202,21 +1092,22 @@ class GestureRecognizer:
         min_frame_distance,
         vertical_cone_degrees
     ):
+        """Classify a frame-to-frame velocity as a swipe direction.
 
-        # Speed decides the direction. Distance only
-        # filters out landmark jitter — it is not a "must
-        # travel this far" zone.
+        Speed decides the direction; distance only filters out
+        landmark jitter, it is not a "must travel this far" zone.
+        Thresholds are passed in rather than read from self.* so this
+        same math is shared by the index-tip swipe (Flip/Quick Circle)
+        and the wrist-based fist swipe (Presentation mode, see
+        _check_fist_motion), each with its own tunable thresholds.
 
-        # Thresholds are passed in rather than read from
-        # self.*, so this same direction math can be shared
-        # by more than one detector — the index-tip swipe
-        # below (Flip/Quick Circle) and the wrist-based fist
-        # swipe used by Presentation mode (see
-        # _check_fist_motion) — while each keeps its own
-        # independently tunable thresholds.
+        Returns:
+            One of "HAND_LEFT"/"HAND_RIGHT"/"HAND_UP"/"HAND_DOWN", or
+            None if the motion doesn't qualify as a swipe.
+        """
 
-        # 0 degrees = straight up/down, 90 degrees =
-        # straight left/right
+        # 0 degrees = straight up/down, 90 degrees = straight
+        # left/right
         angle_from_vertical = math.degrees(
             math.atan2(
                 abs(velocity_x),
@@ -1260,6 +1151,9 @@ class GestureRecognizer:
         current_x,
         current_y
     ):
+        """Publish a swipe gesture_signal and freeze the anchor at the
+        trigger point for visual feedback.
+        """
 
         print(
             f"[GESTURE] {signal}"
@@ -1277,9 +1171,6 @@ class GestureRecognizer:
 
         self.last_signal = signal
 
-        # Freeze the marker at the trigger point briefly,
-        # for visual feedback, then let it resume following
-        # the finger live
         self.anchor_x = current_x
         self.anchor_y = current_y
 
@@ -1288,11 +1179,10 @@ class GestureRecognizer:
             self.freeze_duration
         )
 
-    # ---------------------------------
-    # Motion Tracking
-    # ---------------------------------
-
     def _check_motion(self, result):
+        """Compute index-fingertip velocity for the active tracking
+        session and fire a swipe signal when it crosses threshold.
+        """
 
         if not self.tracking_active:
             return
@@ -1301,7 +1191,6 @@ class GestureRecognizer:
             result.hand_landmarks[0]
         )
 
-        # Index fingertip
         index_tip = hand_landmarks[8]
 
         current_x = index_tip.x
@@ -1309,9 +1198,8 @@ class GestureRecognizer:
 
         current_time = time.time()
 
-        # First frame of the session: nothing to compare
-        # against yet, just seed the anchor and previous
-        # values
+        # First frame of the session: nothing to compare against yet,
+        # just seed the anchor and previous values
         if (
             self.previous_x is None
             or self.previous_y is None
@@ -1376,12 +1264,10 @@ class GestureRecognizer:
                     current_y
                 )
 
-        # Follow the finger live, except during the brief
-        # freeze right after a trigger — _fire_motion
-        # already placed the marker at the trigger point
-        # this frame, so this check keeps it there instead
-        # of immediately snapping back to "current position"
-        # in the same frame
+        # Follow the finger live, except during the brief freeze right
+        # after a trigger — _fire_motion already placed the marker at
+        # the trigger point this frame, so this keeps it there instead
+        # of immediately snapping back to the current position.
         if current_time >= self.freeze_until:
 
             self.anchor_x = current_x
@@ -1392,23 +1278,22 @@ class GestureRecognizer:
 
         self.previous_time = current_time
 
-    # ---------------------------------
-    # Presentation Mode: Fist Swipe
-    # ---------------------------------
-
-    # No arm/disarm gesture pair here — the closed fist itself
-    # is the active state. As long as the confirmed gesture is
-    # Closed_Fist, the wrist's frame-to-frame velocity is fed
-    # through the same direction math as the index-tip swipe
-    # (_resolve_signal), just with its own thresholds so tuning
-    # for presenting distance never affects Flip mode's swipe.
     def _check_fist_motion(self, confirmed_gesture, result):
+        """Wrist-based fist-swipe detector for Presentation mode.
+
+        No arm/disarm gesture pair — the closed fist itself is the
+        active state. As long as the confirmed gesture is Closed_Fist,
+        the wrist's frame-to-frame velocity is fed through the same
+        direction math as the index-tip swipe (_resolve_signal), with
+        its own thresholds so tuning for presenting distance never
+        affects Flip mode's swipe.
+        """
 
         if confirmed_gesture != "Closed_Fist":
 
-            # Hand relaxed (or lost) — the next fist starts a
-            # fresh baseline instead of computing one big,
-            # spurious delta across the gap.
+            # Hand relaxed (or lost) — the next fist starts a fresh
+            # baseline instead of computing one big, spurious delta
+            # across the gap.
             self.presentation_fist_previous_x = None
             self.presentation_fist_previous_y = None
             self.presentation_fist_previous_time = None
@@ -1500,14 +1385,13 @@ class GestureRecognizer:
 
         self.presentation_fist_previous_time = current_time
 
-    # ---------------------------------
-    # Pinch / Hold-and-Drag Geometry
-    # ---------------------------------
-
-    # Thumb tip (4) to index tip (8) distance — the one piece
-    # of geometry PINCH, OK-sign, off-hand-pinch and zoom all
-    # share, each just comparing or tracking it differently.
     def _pinch_distance(self, hand_landmarks):
+        """Thumb-tip-to-index-tip distance.
+
+        The one piece of geometry PINCH, OK-sign, off-hand-pinch and
+        zoom all share, each just comparing or tracking it
+        differently.
+        """
 
         thumb_tip = hand_landmarks[4]
         index_tip = hand_landmarks[8]
@@ -1517,25 +1401,25 @@ class GestureRecognizer:
             thumb_tip.y - index_tip.y
         )
 
-    # Computed directly from hand landmarks rather than the
-    # MediaPipe classifier, which does not produce a pinch
-    # category. A quick touch-and-release fires a single
-    # PINCH gesture_signal (used for click). A touch that is
-    # held or moved past a small threshold instead becomes a
-    # hold-and-drag, publishing continuous "pinch_drag"
-    # deltas (used for scroll) and firing no click on
-    # release — this class only computes the geometry, it
-    # does not know that Cursor mode is the only place any
-    # of this currently matters.
-
     def _check_pinch(self, result):
+        """Detect thumb/index touch and route it to click or drag.
+
+        Computed directly from hand landmarks rather than the
+        MediaPipe classifier, which has no pinch category. A quick
+        touch-and-release fires a single PINCH gesture_signal (click).
+        A touch held or moved past a small threshold instead becomes a
+        hold-and-drag, publishing continuous "pinch_drag" deltas
+        (scroll) and firing no click on release. This class only
+        computes the geometry — it doesn't know Cursor mode is the
+        only place any of this currently matters.
+        """
 
         current_time = time.time()
 
-        # A deferred single tap (see _release_pinch) is
-        # committed here, on whichever later frame first
-        # notices the double-pinch window has expired without
-        # a second tap arriving.
+        # A deferred single tap (see _release_pinch) is committed
+        # here, on whichever later frame first notices the
+        # double-pinch window has expired without a second tap
+        # arriving.
         if (
             self.pending_single_pinch
             and not self.is_pinching
@@ -1639,11 +1523,13 @@ class GestureRecognizer:
         self.pinch_previous_y = current_y
 
     def _release_pinch(self):
+        """Handle thumb/index release: fire a click, a double-click,
+        or nothing if the pinch was a completed drag.
+        """
 
-        # A quick tap (never became a drag) is a click — or
-        # half of a double-click. A completed drag ends
-        # silently either way — it already did its job as a
-        # scroll, it should not also click.
+        # A quick tap (never became a drag) is a click — or half of a
+        # double-click. A completed drag ends silently either way — it
+        # already did its job as a scroll, it should not also click.
         if not self.is_dragging:
 
             current_time = time.time()
@@ -1662,11 +1548,10 @@ class GestureRecognizer:
 
             else:
 
-                # First tap: don't fire PINCH yet, it might
-                # be the start of a double-pinch. _check_pinch
-                # commits it as a plain click once
-                # double_pinch_window passes with no second
-                # tap.
+                # First tap: don't fire PINCH yet, it might be the
+                # start of a double-pinch. _check_pinch commits it as
+                # a plain click once double_pinch_window passes with
+                # no second tap.
                 self.pending_single_pinch = True
 
                 self.pending_pinch_time = current_time
@@ -1693,11 +1578,10 @@ class GestureRecognizer:
             }
         )
 
-    # ---------------------------------
-    # OK-Sign (Call Mode: raise hand)
-    # ---------------------------------
-
     def _check_ok_sign(self, result):
+        """Edge-triggered OK-sign detector for Call mode's raise-hand
+        notification (see ok_touching / ok_sign_release_distance).
+        """
 
         hand_landmarks = (
             result.hand_landmarks[0]
@@ -1707,9 +1591,9 @@ class GestureRecognizer:
             hand_landmarks
         )
 
-        # Already touching: only the WIDER release distance can
-        # re-arm, not a return past the (narrower) touch
-        # threshold — see ok_sign_release_distance for why.
+        # Already touching: only the WIDER release distance can re-arm,
+        # not a return past the (narrower) touch threshold — see
+        # ok_sign_release_distance for why.
         if self.ok_touching:
 
             if distance > self.ok_sign_release_distance:
@@ -1743,19 +1627,15 @@ class GestureRecognizer:
             }
         )
 
-    # ---------------------------------
-    # Call Mode: Finger-Count Toggles
-    # (1 / 2 / 3 / 4 fingers)
-    # ---------------------------------
-
-    # Counts how many of the four non-thumb fingers are
-    # currently extended, using FINGER_TIP_PIP_LANDMARKS — a
-    # finger is extended once its tip sits farther from the
-    # wrist than its own PIP joint does, past
-    # FINGER_EXTENSION_MARGIN. Distance-from-wrist rather than a
-    # raw y-coordinate comparison, so this keeps working
-    # regardless of how the hand happens to be rotated in frame.
     def _count_extended_fingers(self, hand_landmarks):
+        """Count extended non-thumb fingers via landmark geometry.
+
+        Uses FINGER_TIP_PIP_LANDMARKS — a finger is extended once its
+        tip sits farther from the wrist than its own PIP joint does,
+        past FINGER_EXTENSION_MARGIN. Distance-from-wrist rather than a
+        raw y-coordinate comparison, so this keeps working regardless
+        of how the hand is rotated in frame.
+        """
 
         wrist = hand_landmarks[0]
 
@@ -1785,16 +1665,17 @@ class GestureRecognizer:
 
         return extended_count
 
-    # Mirrors _read_gesture's (name, confidence) shape, but
-    # sourced from landmark geometry above rather than
-    # MediaPipe's classifier — the same relationship OK_SIGN
-    # already has to PINCH's classifier-free thumb/index
-    # distance check. Confidence is fixed at 1.0 rather than
-    # left as None: this is a direct geometric read, not a
-    # thresholded absence of one, and _publish_static_gesture's
-    # hold-to-confirm/lock pipeline only cares whether the name
-    # is None, never about the confidence value itself.
     def _read_call_finger_gesture(self, result):
+        """Read the Call-mode toggle gesture from finger count.
+
+        Mirrors _read_gesture's (name, confidence) shape, but sourced
+        from landmark geometry rather than MediaPipe's classifier —
+        the same relationship OK_SIGN has to PINCH's classifier-free
+        thumb/index check. Confidence is fixed at 1.0 rather than left
+        as None: this is a direct geometric read, and
+        _publish_static_gesture's hold-to-confirm/lock pipeline only
+        cares whether the name is None.
+        """
 
         hand_landmarks = (
             result.hand_landmarks[0]
@@ -1813,18 +1694,14 @@ class GestureRecognizer:
 
         return gesture_name, 1.0
 
-    # ---------------------------------
-    # Off-Hand (Cursor Mode: zoom engage + precision)
-    # ---------------------------------
-
-    # Returns True while the off-hand is held pinched — engages
-    # zoom (see _check_zoom) using the exact same thumb/index
-    # geometry as the primary hand's own PINCH. This used to be
-    # an alternative to holding Alt on the keyboard; that option
-    # was removed once Alt became the global face-layer modifier
-    # (§9.1) — see the comment on zoom_previous_distance in
-    # __init__ for why. Zoom is off-hand-pinch-only now.
     def _check_off_hand(self, off_hand_landmarks):
+        """Return True while the off-hand is held pinched.
+
+        Engages zoom (see _check_zoom) using the same thumb/index
+        geometry as the primary hand's own PINCH. Zoom is
+        off-hand-pinch-only — see zoom_previous_distance in __init__
+        for why the old Alt-key alternative was removed.
+        """
 
         if off_hand_landmarks is None:
             return False
@@ -1834,14 +1711,16 @@ class GestureRecognizer:
             < self.pinch_distance_threshold
         )
 
-    # Two-hand zoom: while the off-hand is held pinched, the
-    # primary hand's own thumb/index distance drives zoom
-    # continuously — spreading thumb and index apart zooms in,
-    # closing them zooms out. Same event/consumer as before
-    # (ActionExecutor._handle_pinch_zoom) — only the source of
-    # the distance changed, from two-hand fingertip separation
-    # to one hand's own pinch geometry.
     def _check_zoom(self, result, zoom_engaged):
+        """Publish continuous zoom deltas while the off-hand pinch is
+        engaged.
+
+        The primary hand's own thumb/index distance drives zoom —
+        spreading apart zooms in, closing zooms out. Same event/
+        consumer as before (ActionExecutor._handle_pinch_zoom); only
+        the distance source changed, from two-hand fingertip
+        separation to one hand's own pinch geometry.
+        """
 
         if not zoom_engaged:
 
@@ -1877,18 +1756,16 @@ class GestureRecognizer:
             }
         )
 
-    # ---------------------------------
-    # Pointer Tracking
-    # ---------------------------------
-
-    # Trims ACTIVE_ZONE_MARGIN off each edge of the normalized
-    # frame coordinate and stretches what remains back to the
-    # full 0..1 range, so the usable input area is the central
-    # portion of the camera frame rather than the whole frame
-    # (where hand tracking is least reliable right at the true
-    # edges). Downstream clamping handles anything beyond the
-    # trimmed margin by saturating at 0 or 1.
     def _expand_active_zone(self, value):
+        """Remap a margin-trimmed frame coordinate back to 0..1.
+
+        Trims ACTIVE_ZONE_MARGIN off each edge of the normalized
+        frame coordinate and stretches what remains to the full 0..1
+        range, so the usable input area is the central portion of the
+        camera frame (where hand tracking is most reliable).
+        Downstream clamping saturates anything beyond the trimmed
+        margin at 0 or 1.
+        """
 
         return (
             (value - self.ACTIVE_ZONE_MARGIN)
@@ -1901,20 +1778,25 @@ class GestureRecognizer:
         result,
         off_hand_pinching
     ):
+        """Publish the pointer_position for a Pointing_Up frame.
+
+        Routes to the Presentation-mode relative box or the default
+        absolute mapping (optionally precision-scaled), depending on
+        active_mode and off_hand_pinching.
+        """
 
         if gesture_name != "Pointing_Up":
 
             # Not pointing — nothing to publish, and any
-            # precision-mode engagement should not carry over
-            # to the next time pointing resumes.
+            # precision-mode engagement should not carry over to the
+            # next time pointing resumes.
             self.precision_active = False
 
-            # Presentation's own pointer re-anchors to the
-            # screen center fresh every time pointing starts
-            # (see _update_presentation_pointer) — clearing
-            # this here, not just in _handle_mode_changed,
-            # covers re-arming within the same Presentation
-            # session too, not just leaving the mode entirely.
+            # Presentation's own pointer re-anchors to the screen
+            # center fresh every time pointing starts (see
+            # _update_presentation_pointer) — clearing this here, not
+            # just in _handle_mode_changed, also covers re-arming
+            # within the same Presentation session.
             self.presentation_pointer_anchor_x = None
             self.presentation_pointer_anchor_y = None
             self.presentation_pointer_hand_size = None
@@ -1945,17 +1827,15 @@ class GestureRecognizer:
 
                 # Precision mode: a temporary relative "clutch"
                 # layered on top of the otherwise-always-absolute
-                # mapping below. Engaging it anchors the current
-                # raw position; while held, the published position
-                # only moves PRECISION_SCALE of however far the
-                # hand actually moves from that anchor — exactly
-                # like lowering a mouse's DPI. Releasing the
-                # off-hand pinch snaps straight back to plain
-                # absolute 1:1 tracking, which means the cursor
-                # jumps to match the finger's current raw position
-                # — an intentional, honest consequence of mixing a
-                # relative clutch into an otherwise-absolute
-                # mapping, not a bug.
+                # mapping below. Engaging it anchors the current raw
+                # position; while held, the published position only
+                # moves PRECISION_SCALE of however far the hand
+                # actually moves from that anchor — like lowering a
+                # mouse's DPI. Releasing the off-hand pinch snaps back
+                # to plain absolute 1:1 tracking, so the cursor jumps
+                # to the finger's current raw position — an
+                # intentional consequence of mixing a relative clutch
+                # into an absolute mapping, not a bug.
                 if not self.precision_active:
 
                     self.precision_active = True
@@ -1977,9 +1857,8 @@ class GestureRecognizer:
 
             else:
 
-                # Default: absolute mapping, unchanged from before
-                # off-hand precision mode existed — take a camera
-                # frame, find the finger, that IS the position.
+                # Default: absolute mapping — take a camera frame,
+                # find the finger, that IS the position.
                 self.precision_active = False
 
                 effective_x = raw_x
@@ -1988,10 +1867,10 @@ class GestureRecognizer:
             effective_x = min(1.0, max(0.0, effective_x))
             effective_y = min(1.0, max(0.0, effective_y))
 
-        # Raw absolute, precision-scaled, or Presentation
-        # relative-box (see _update_presentation_pointer)
-        # fingertip position for this frame — the consumer
-        # (ActionExecutor) maps it straight onto the screen.
+        # Raw absolute, precision-scaled, or Presentation relative-box
+        # (see _update_presentation_pointer) fingertip position for
+        # this frame — the consumer (ActionExecutor) maps it straight
+        # onto the screen.
         self.event_bus.publish(
             "pointer_position",
             {
@@ -2001,15 +1880,12 @@ class GestureRecognizer:
             }
         )
 
-    # ---------------------------------
-    # Presentation Mode: Relative Laser Pointer
-    # ---------------------------------
-
-    # Wrist (0) to middle-finger MCP (9) distance — a rough
-    # proxy for how big the hand currently looks in frame, i.e.
-    # how close the presenter is standing. Used as the unit
-    # _update_presentation_pointer measures its control box in.
     def _hand_scale(self, hand_landmarks):
+        """Wrist-to-middle-MCP distance, a rough proxy for how big the
+        hand looks in frame (i.e. how close the presenter is
+        standing). Used as the unit _update_presentation_pointer
+        measures its control box in.
+        """
 
         wrist = hand_landmarks[0]
         middle_mcp = hand_landmarks[9]
@@ -2019,20 +1895,22 @@ class GestureRecognizer:
             middle_mcp.y - wrist.y
         )
 
-    # Distance-invariant alternative to the absolute fingertip
-    # mapping used everywhere else _update_pointer applies: the
-    # moment Pointing_Up starts, the pointer snaps to the screen
-    # CENTER, and the presenter's hand size at that instant is
-    # frozen as the unit a PRESENTATION_POINTER_BOX_HANDS-wide
-    # virtual box (centered on that starting hand position) is
-    # measured in. Moving the hand across that box sweeps the
-    # pointer across the whole screen, so the same comfortable
-    # hand motion works whether presenting from 1m or 4m away —
-    # an absolute mapping would otherwise force a physically
-    # larger sweep the farther the presenter stands, since the
-    # camera's field of view covers more real-world space at
-    # range.
     def _update_presentation_pointer(self, hand_landmarks, index_tip):
+        """Relative, distance-invariant pointer for Presentation mode.
+
+        The moment Pointing_Up starts, the pointer snaps to the screen
+        CENTER, and the presenter's hand size at that instant is
+        frozen as the unit a PRESENTATION_POINTER_BOX_HANDS-wide
+        virtual box (centered on the starting hand position) is
+        measured in. Moving the hand across that box sweeps the
+        pointer across the whole screen, so the same comfortable hand
+        motion works whether presenting from 1m or 4m away — an
+        absolute mapping would otherwise force a physically larger
+        sweep the farther the presenter stands.
+
+        Returns:
+            (effective_x, effective_y) in 0..1 screen coordinates.
+        """
 
         if self.presentation_pointer_anchor_x is None:
 
@@ -2072,41 +1950,40 @@ class GestureRecognizer:
 
         return effective_x, effective_y
 
-    # ---------------------------------
-    # Publish Static Gesture
-    # ---------------------------------
-
     def _publish_static_gesture(
         self,
         gesture_name,
         confidence
     ):
+        """Publish a confirmed static gesture as a gesture_signal.
+
+        Applies the tracking-session gate, the Call-mode toggle
+        gate/hold/lock, and the last_gesture repeat filter before
+        publishing.
+        """
 
         if gesture_name is None:
             return
 
-        # While a motion-tracking session is running, the
-        # only gesture that matters is the Closed_Fist that
-        # ends it. Everything else (Open_Palm, or the
-        # classifier briefly flickering to something else
-        # while the hand moves) is ignored completely, so
-        # last_gesture stays frozen at "Open_Palm" and the
-        # Open_Palm -> Closed_Fist end transition in
-        # _update_session keeps working reliably.
+        # While a motion-tracking session is running, the only gesture
+        # that matters is the Closed_Fist that ends it. Everything
+        # else (Open_Palm, or the classifier briefly flickering to
+        # something else while the hand moves) is ignored, so
+        # last_gesture stays frozen at "Open_Palm" and the Open_Palm
+        # -> Closed_Fist end transition in _update_session keeps
+        # working reliably.
         if (
             self.tracking_active
             and gesture_name != "Closed_Fist"
         ):
             return
 
-        # ONE_FINGER/TWO_FINGERS/THREE_FINGERS/FOUR_FINGERS only
-        # ever get produced by _read_call_finger_gesture while
-        # active_mode == "call" (see _handle_frame), so this
-        # check is a defensive backstop, not the primary gate —
-        # kept for the same reason the old classifier-category
-        # version of this check existed, so nothing downstream
-        # can publish one of these names outside Call mode even
-        # if the override above were ever bypassed.
+        # ONE_FINGER/TWO_FINGERS/THREE_FINGERS/FOUR_FINGERS only ever
+        # get produced by _read_call_finger_gesture while
+        # active_mode == "call" (see _handle_frame) — this is a
+        # defensive backstop, not the primary gate, so nothing
+        # downstream can publish one of these names outside Call mode
+        # even if the override above were ever bypassed.
         if (
             gesture_name in self.CALL_TOGGLE_GESTURES
             and self.active_mode != "call"
@@ -2115,10 +1992,10 @@ class GestureRecognizer:
 
         if gesture_name in self.CALL_TOGGLE_GESTURES:
 
-            # Require a real, continuous hold — since the raw
-            # gesture was first seen, not just since it crossed
-            # confirm_frames — before a mic/camera/call-audio/
-            # background-blur toggle is trusted enough to fire.
+            # Require a real, continuous hold — since the raw gesture
+            # was first seen, not just since it crossed confirm_frames
+            # — before a mic/camera/call-audio/background-blur toggle
+            # is trusted enough to fire.
             held_seconds = (
                 time.time() - self.candidate_start_time
                 if self.candidate_start_time is not None
@@ -2128,10 +2005,10 @@ class GestureRecognizer:
             if held_seconds < self.call_toggle_hold_seconds:
                 return
 
-            # Locked out on its own, independent of last_gesture
-            # below — see locked_toggle_gestures in __init__ for
-            # why last_gesture's ordinary same-as-before check
-            # isn't enough on its own to stop a second toggle.
+            # Locked out on its own, independent of last_gesture below
+            # — see locked_toggle_gestures in __init__ for why
+            # last_gesture's ordinary same-as-before check isn't
+            # enough on its own to stop a second toggle.
             if gesture_name in self.locked_toggle_gestures:
                 return
 
@@ -2155,10 +2032,6 @@ class GestureRecognizer:
             }
         )
 
-    # ---------------------------------
-    # Debug Snapshot (for calibration view)
-    # ---------------------------------
-
     def _publish_debug(
         self,
         frame,
@@ -2166,6 +2039,7 @@ class GestureRecognizer:
         gesture_name,
         confidence
     ):
+        """Publish a gesture_debug snapshot for the calibration view."""
 
         anchor = None
 

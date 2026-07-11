@@ -1,3 +1,8 @@
+"""Standalone manual test that polls and prints the active window's title
+using the pygetwindow library, as a simpler alternative to the pywin32-based
+active_window_test_advanced.py.
+"""
+
 import pygetwindow as gw
 import time
 

@@ -1,3 +1,9 @@
+"""Standalone exploratory script for MediaPipe's GestureRecognizer task.
+
+Runs the built-in gesture recognizer on a live webcam feed and overlays
+the top-scoring gesture, to verify the API before wiring it into the
+main application.
+"""
 import cv2
 import mediapipe as mp
 import time
@@ -6,11 +12,9 @@ import os
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# === PATH ===
 BASE_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "gesture_recognizer.task")
 
-# === LOAD MODEL ===
 base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 
 options = vision.GestureRecognizerOptions(
@@ -21,7 +25,6 @@ options = vision.GestureRecognizerOptions(
 
 recognizer = vision.GestureRecognizer.create_from_options(options)
 
-# === CAMERA ===
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 if not cap.isOpened():
@@ -44,8 +47,6 @@ while True:
         data=rgb
     )
 
-    # === RECOGNITION ===
-
     timestamp = int(time.time() * 1000)
     result = recognizer.recognize_for_video(mp_image, timestamp)
 
@@ -63,7 +64,6 @@ while True:
                     (0, 255, 0),
                     2)
 
-    # === FPS ===
     current_time = time.time()
     fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
     prev_time = current_time

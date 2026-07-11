@@ -319,9 +319,10 @@ earlier fist-vs-open-shape design that chose one or the other.
 
 Static, one-hand gestures, each firing a real Microsoft Teams keyboard
 shortcut — mic toggle, camera toggle, call-audio toggle, background-blur
-toggle, raise hand. Replaces the earlier Window Management mode
-entirely (see §11); the `ctrl+shift+w` combo and voice-trigger slot were
-reused as-is rather than reassigned.
+toggle. Replaces the earlier Window Management mode entirely (see §11);
+the `ctrl+shift+w` combo and voice-trigger slot were reused as-is rather
+than reassigned. There is deliberately no raise-hand gesture — Call mode
+only ever toggles persistent state, nothing momentary.
 
 | Gesture | Action | Teams shortcut (Mac) |
 |---|---|---|
@@ -329,7 +330,6 @@ reused as-is rather than reassigned.
 | 2 fingers raised | `TOGGLE_CAMERA` | Cmd+Shift+O |
 | 3 fingers raised | `TOGGLE_CALL_AUDIO` | macOS system output mute (no Teams shortcut exists) |
 | 4 fingers raised | `TOGGLE_BACKGROUND_BLUR` | Cmd+Shift+P |
-| `OK_SIGN` (thumb+index touching) | `RAISE_HAND` | Cmd+Shift+K |
 
 **There is no app-agnostic "mute the current call" system API** — this
 is inherently tied to whichever app the user is actually calling
@@ -368,29 +368,33 @@ Each of the four gestures is also a single OS-level toggle shortcut
 firing it while already in the target state flips it the other way
 rather than being a no-op.
 
-**`TOGGLE_CALL_AUDIO` has no dedicated Teams shortcut.** Only mic,
-camera, and raise-hand are exposed as Teams keyboard shortcuts — muting
-the call's own incoming audio specifically is not. `OSController.
-toggle_call_audio` instead toggles the Mac's system-wide audio output
-mute via `osascript`, which silences the call's sound along with
-everything else on the machine. This is the only way to reliably
-silence a call's audio from outside the Teams window without
-UI-scripting a click on Teams' own volume control.
-
-**`OK_SIGN` is hand-coded, not a MediaPipe category either**, for the
-same reason as the finger count above — no bundled `"OK"` category
-exists. `OK_SIGN` is computed directly from thumb/index landmark
-distance (`GestureRecognizer._check_ok_sign`) — the exact same
-touch-distance geometry Cursor mode's `PINCH` already uses, just scoped
-to Call mode and edge-triggered (fires once when the fingers first
-touch, not again until they separate) rather than distinguishing click
-from drag.
+**`TOGGLE_CALL_AUDIO` has no dedicated Teams shortcut.** Only mic and
+camera are exposed as Teams keyboard shortcuts — muting the call's own
+incoming audio specifically is not. `OSController.toggle_call_audio`
+instead toggles the Mac's system-wide audio output mute via
+`osascript`, which silences the call's sound along with everything else
+on the machine. This is the only way to reliably silence a call's audio
+from outside the Teams window without UI-scripting a click on Teams'
+own volume control.
 
 **Detection is gated to Call mode at the source.**
 `GestureRecognizer._handle_frame` only computes a finger-count gesture
 at all while `active_mode == "call"` — so someone naturally counting on
 their fingers mid-swipe in Flip mode is never detected as a system
 command.
+
+**The overlay pointer is suppressed in Call mode.** One raised finger
+(`ONE_FINGER`, mic toggle) is, landmark-for-landmark, the exact same
+hand shape MediaPipe's own classifier calls `Pointing_Up` — the
+gesture every other mode uses to drive the translucent overlay dot (a
+lightweight laser pointer, see §2.1) or, in Cursor mode, the real OS
+cursor. Without a guard, raising one finger to toggle the mic would
+also move that overlay dot across the screen, which reads as "the
+Presentation-mode pointer fired instead of the toggle" even though the
+toggle itself fired correctly underneath it. `GestureRecognizer.
+_update_pointer` returns immediately whenever `active_mode == "call"`,
+before even checking `Pointing_Up` — Call mode has no pointer/cursor
+use of its own, so nothing is lost by suppressing it entirely.
 
 ### 2.5 Quick Command Circle — gesture only: Closed_Fist → Open_Palm
 
@@ -443,32 +447,57 @@ new one's `enter_actions`.
 | `OPEN_MAIL` | — |
 | `OPEN_CALENDAR` | — |
 
-### 3.2 Study — `"study mode"`
+### 3.2 Job Search — `"job search mode"`
 
 | On enter | On exit |
 |---|---|
 | `ENABLE_DO_NOT_DISTURB` | `DISABLE_DO_NOT_DISTURB` |
-| `OPEN_SAFARI` | — |
-| `OPEN_PREVIEW` | — |
-| `PLAY_FOCUS_MUSIC` (resumes whatever Spotify was last on — no fake playlist invented) | `PAUSE_FOCUS_MUSIC` |
+| `OPEN_JOB_SEARCH_WINDOWS` | — |
 
-### 3.3 Movie — `"movie mode"`
+`OPEN_JOB_SEARCH_WINDOWS` opens the `job_search` entry of
+`os_controller.window_groups` (`config/system.json`) — three Chrome
+windows: job-board searches, and two thesis-work windows (ChatGPT +
+Overleaf each). See §3.5 for how window groups are opened.
+
+### 3.3 Study — `"study mode"`
+
+| On enter | On exit |
+|---|---|
+| `ENABLE_DO_NOT_DISTURB` | `DISABLE_DO_NOT_DISTURB` |
+| `OPEN_STUDY_WINDOWS` | — |
+
+`OPEN_STUDY_WINDOWS` opens the `study` entry of
+`os_controller.window_groups` — three Chrome windows: ChatGPT threads,
+Overleaf + PlantUML, and research (Google Scholar/Images + IEEE Xplore).
+
+### 3.4 Movie — `"movie mode"`
 
 | On enter | On exit |
 |---|---|
 | `ENABLE_DO_NOT_DISTURB` | `DISABLE_DO_NOT_DISTURB` |
 | `PREVENT_DISPLAY_SLEEP` (`caffeinate -d`, so the screen doesn't dim mid-movie) | `ALLOW_DISPLAY_SLEEP` |
 | `OPEN_TV` (macOS's built-in TV.app) | — |
+| `OPEN_NETFLIX` (opens `netflix.com` in the browser) | — |
+| `RUN_CINEMA_MODE` (runs the user-authored **"Turn on cinema mode"** Shortcut, which drives the Magic Home smart lights) | — |
 
-### 3.4 News — `"news mode"`
+### 3.5 News — `"news mode"`
 
 | On enter | On exit |
 |---|---|
-| `OPEN_NEWS` (macOS's built-in News.app) | — (nothing was disruptively changed) |
+| `OPEN_NEWS_TABS` | — (nothing was disruptively changed) |
 
-`OPEN_TV`/`OPEN_NEWS` deliberately use Apple's own pre-installed TV/News
-apps rather than a specific third-party streaming/news site — real,
-always present on stock macOS, no invented URLs.
+`OPEN_NEWS_TABS` opens the `news` entry of `window_groups` — one Chrome
+window with a few default neutral news tabs (BBC World, Reuters World,
+TechCrunch); edit the URL list in `config/system.json` to change them.
+
+`OPEN_JOB_SEARCH_WINDOWS`/`OPEN_STUDY_WINDOWS`/`OPEN_NEWS_TABS` all go
+through `OSController.open_window_group`: for each inner URL list in the
+named `window_groups` entry, the first URL opens a brand-new Chrome
+window (`open -na "Google Chrome" --args --new-window <url>`) and, after
+a 1s pause for the window to actually open, the rest of that list's URLs
+join it as tabs (`open -a "Google Chrome" <url>`). `OPEN_TV` deliberately
+still uses Apple's own pre-installed TV.app — real, always present on
+stock macOS, no invented URL.
 
 ---
 
@@ -613,7 +642,6 @@ this if it matters in practice.
 | `PINCH` | Computed from thumb-tip/index-tip landmark distance | Cursor mode's click (quick tap) — hold+drag instead scrolls, §2.3 |
 | `DOUBLE_PINCH` | Two `PINCH` taps inside `double_pinch_window` (0.3s) | Cursor mode's right-click, §2.3 |
 | `ONE_FINGER` / `TWO_FINGERS` / `THREE_FINGERS` / `FOUR_FINGERS` | Count of non-thumb fingers extended (distance-from-wrist vs. each finger's own PIP joint), gated to Call mode only | Call mode's mic/camera/call-audio/background-blur toggles, §2.4 |
-| `OK_SIGN` | Hand-coded thumb/index-tip touch distance (same geometry as `PINCH`), gated to Call mode only | Call mode's raise-hand, §2.4 |
 
 `Open_Palm`/`Closed_Fist`/`Pointing_Up` are still recognized internally by
 `GestureRecognizer` (they drive the swipe session and the pointer stream)
@@ -938,15 +966,22 @@ whichever thread published it.
   API for Focus/DND outside the Shortcuts app — the older
   `defaults write ... killall NotificationCenter` trick is deprecated
   and version-fragile, so this codebase intentionally does not use it.
-- **Spotify** must be installed for Study mode's focus music
-  (`PLAY_FOCUS_MUSIC`/`PAUSE_FOCUS_MUSIC` silently no-op otherwise).
+- **Cinema mode automation** (Movie environment, `RUN_CINEMA_MODE`)
+  requires a Shortcut authored once, named exactly **"Turn on cinema
+  mode"**, that drives whatever Magic Home smart-light scene the user
+  wants — same `shortcuts run <name>` mechanism as Do Not Disturb above.
+- `PLAY_FOCUS_MUSIC`/`PAUSE_FOCUS_MUSIC` (resumes/pauses whatever
+  Spotify was last on) remain wired into the command table but are no
+  longer used by any environment — Study mode now opens Chrome window
+  groups instead (§3.3). Spotify must still be installed if a rule is
+  later added that calls them.
 - **VS Code's `code` CLI** must be on `PATH` for `OPEN_VSCODE`.
 - Third-party apps (Chrome, Slack, Discord, Telegram, Notion) must be
   installed for their `open_*` voice commands to do anything.
-- **Microsoft Teams** installed, for Call mode's mute/camera/raise-hand
-  shortcuts (§2.4) to have an app actually listening for them — sending
-  Cmd+Shift+M/O/K with Teams not running or not the app in the call does
-  nothing useful.
+- **Microsoft Teams** installed, for Call mode's mic/camera/background-
+  blur shortcuts (§2.4) to have an app actually listening for them —
+  sending Cmd+Shift+M/O/P with Teams not running or not the app in the
+  call does nothing useful.
 - **`models/face_landmarker.task`** must be present for `FaceRecognizer`
   to start at all — verified present in this repo with the blendshapes
   and geometry-pipeline components needed for §9's blendshape/head-pose
@@ -969,8 +1004,8 @@ exists and what was tried and dropped along the way:
 - **Window Management existed briefly as the 4th mode, then was removed
   again** and replaced by Call mode (§2.4) — same `ctrl+shift+w` slot,
   same position as the Quick Command Circle's 4th destination (§2.5),
-  different purpose entirely (mic/camera/raise-hand for Microsoft Teams
-  instead of maximize/minimize/snap-left/snap-right). Its
+  different purpose entirely (mic/camera/call-audio/background-blur for
+  Microsoft Teams instead of maximize/minimize/snap-left/snap-right). Its
   `MAXIMIZE_WINDOW`/`MINIMIZE_WINDOW`/`MOVE_WINDOW_LEFT`/
   `MOVE_WINDOW_RIGHT` commands and their `OSController`/`ActionExecutor`
   entries were removed outright, not kept around unused.

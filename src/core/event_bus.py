@@ -1,13 +1,18 @@
+"""Publish/subscribe hub that every pipeline module communicates through.
+
+All input, processing, interpretation, fusion, execution and UI modules
+talk exclusively via EventBus.publish/subscribe/unsubscribe — never through
+direct calls to one another.
+"""
+
 import time
 
 
 class EventBus:
     def __init__(self):
-        # {event_type: [callbacks]}
         self._subscribers = {}
 
     def subscribe(self, event_type, callback):
-        # Add subscriber
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
 
@@ -15,7 +20,6 @@ class EventBus:
             self._subscribers[event_type].append(callback)
 
     def unsubscribe(self, event_type, callback):
-        # Remove subscriber
         if event_type in self._subscribers:
             if callback in self._subscribers[event_type]:
                 self._subscribers[event_type].remove(callback)
@@ -28,7 +32,10 @@ class EventBus:
         }
 
         if event_type in self._subscribers:
-            for callback in list(self._subscribers[event_type]):  # FIX
+            # Copy the list before iterating: a callback may itself
+            # subscribe/unsubscribe, which would otherwise mutate this
+            # list mid-loop.
+            for callback in list(self._subscribers[event_type]):
                 try:
                     callback(event)
                 except Exception as e:

@@ -1,17 +1,21 @@
+"""Time-windowed buffer of the latest signal per source.
+
+Backs MultimodalFusion: holds each source's most recent signal until it
+either expires after `timeout` or is explicitly cleared, so signals from
+different modalities that arrive within a short span of each other can
+still be seen as simultaneous.
+"""
+
 import time
 
 
 class TemporalSync:
 
-    def __init__(self, timeout=2.0):
+    def __init__(self, timeout: float = 2.0):
 
         self.timeout = timeout
 
         self.signals = {}
-
-    # ---------------------------------
-    # Store signal
-    # ---------------------------------
 
     def store_signal(
         self,
@@ -30,25 +34,18 @@ class TemporalSync:
 
             "timestamp": time.time(),
 
-            # A persistent signal (a physically held
-            # keyboard combo) stays valid until explicitly
-            # cleared rather than expiring after `timeout`
-            # — a key held longer than the timeout should
-            # not silently drop out of the buffer while
+            # A persistent signal (a physically held keyboard combo) stays
+            # valid until explicitly cleared rather than expiring after
+            # `timeout`, since it shouldn't drop out of the buffer while
             # still physically pressed.
             "persistent": persistent,
 
-            # Voice-only: "exact" / "semantic" / "llm" —
-            # which tier of IntentModel resolved this signal.
-            # None for every other source.
+            # Voice-only: "exact"/"semantic"/"llm", which tier of
+            # IntentModel resolved this signal. None for every other source.
             "tier": tier
         }
 
         self.cleanup()
-
-    # ---------------------------------
-    # Get signal
-    # ---------------------------------
 
     def get_signal(
         self,
@@ -59,19 +56,11 @@ class TemporalSync:
 
         return self.signals.get(source)
 
-    # ---------------------------------
-    # Get all signals
-    # ---------------------------------
-
     def get_signals(self):
 
         self.cleanup()
 
         return self.signals
-
-    # ---------------------------------
-    # Clear source
-    # ---------------------------------
 
     def clear_signal(
         self,
@@ -82,23 +71,14 @@ class TemporalSync:
 
             del self.signals[source]
 
-    # ---------------------------------
-    # Clear all
-    # ---------------------------------
-
     def clear_all(self):
 
         self.signals.clear()
 
-    # ---------------------------------
-    # Clear only non-persistent signals
-    # ---------------------------------
-
-    # Used after a rule fires: momentary voice/gesture
-    # signals should be consumed so they cannot immediately
-    # re-match, but a still-held keyboard combo should
-    # remain available for the next gesture/voice signal
-    # that arrives while it is held.
+    # Used after a rule fires: momentary voice/gesture signals should be
+    # consumed so they cannot immediately re-match, but a still-held
+    # keyboard combo remains available for the next signal that arrives
+    # while it is held.
     def clear_non_persistent(self):
 
         to_remove = [
@@ -110,10 +90,6 @@ class TemporalSync:
         for source in to_remove:
 
             del self.signals[source]
-
-    # ---------------------------------
-    # Cleanup expired signals
-    # ---------------------------------
 
     def cleanup(self):
 

@@ -1,3 +1,12 @@
+"""MediaPipe-based head-pose and facial-expression gesture detection.
+
+Consumes camera_frame events, runs FaceModel on each frame, and publishes
+face_signal events (CONFIRM, HEAD_TILT_LEFT/RIGHT, EYEBROWS_UP/DOWN,
+MOUTH_OPEN, DOUBLE_BLINK, DOUBLE_EYEBROWS_UP) for downstream fusion/mapping.
+Tracking is suppressed entirely while any gesture mode is active — these
+signals are an idle-only "global layer".
+"""
+
 import math
 import time
 
@@ -59,86 +68,52 @@ class FaceRecognizer:
 
         self.face_model = FaceModel()
 
-        # ---------------------------------
-        # Head-Pose Velocity Baseline
-        # ---------------------------------
-
-        # Previous frame's pitch (degrees), used only to
-        # compute instantaneous angular velocity — the same
-        # frame-to-frame velocity approach GestureRecognizer
-        # uses for swipe detection, applied to head rotation
-        # instead of fingertip position.
+        # Previous frame's pitch (degrees), used only to compute
+        # instantaneous angular velocity — the same frame-to-frame
+        # velocity approach GestureRecognizer uses for swipe detection,
+        # applied to head rotation instead of fingertip position.
         self.previous_pitch = None
         self.previous_face_time = None
 
-        # ---------------------------------
-        # Nod (Confirm)
-        # ---------------------------------
-
-        # A nod is a two-phase swing: a fast rotation past the
-        # threshold in one direction (phase 1), followed within
-        # NOD_PHASE_WINDOW by a fast rotation back the other way
-        # (phase 2). Only the completed round trip fires — a
-        # single fast glance in one direction alone never does.
+        # A nod is a two-phase swing: a fast rotation past the threshold
+        # in one direction (phase 1), followed within NOD_PHASE_WINDOW by
+        # a fast rotation back the other way (phase 2). Only the completed
+        # round trip fires — a single fast glance in one direction alone
+        # never does.
         self.nod_phase_sign = None
         self.nod_phase_time = 0
         self.last_nod_time = 0
 
-        # ---------------------------------
-        # Head Tilt (direction selector)
-        # ---------------------------------
-
-        # "left"/"right"/None — which tilt zone the head is
-        # currently in, so a held tilt fires once on entry
-        # instead of repeatedly every frame.
+        # "left"/"right"/None — which tilt zone the head is currently in,
+        # so a held tilt fires once on entry instead of every frame.
         self.tilt_zone = None
-
-        # ---------------------------------
-        # Eyebrows (modifier)
-        # ---------------------------------
 
         self.eyebrows_raised = False
 
-        # Timestamp of the last EYEBROWS_UP rising edge, used only
-        # to detect a second raise following within
-        # DOUBLE_EYEBROWS_WINDOW — same pattern as last_blink_time
-        # below, applied to the eyebrow instead of the eyelid.
+        # Timestamp of the last EYEBROWS_UP rising edge, used only to
+        # detect a second raise following within DOUBLE_EYEBROWS_WINDOW —
+        # same pattern as last_blink_time below, applied to the eyebrow
+        # instead of the eyelid.
         self.last_eyebrows_raise_time = 0
 
-        # ---------------------------------
-        # Mouth Open
-        # ---------------------------------
-
         self.mouth_open = False
-
-        # ---------------------------------
-        # Double Blink (screenshot)
-        # ---------------------------------
 
         self.eyes_closed = False
 
         self.last_blink_time = 0
 
-        # Mirrored from SignalMapper's "mode_changed" event —
-        # used to suppress head/face tracking entirely while
-        # ANY mode is active (see start()/_handle_frame).
+        # Mirrored from SignalMapper's "mode_changed" event — used to
+        # suppress head/face tracking entirely while ANY mode is active
+        # (see start()/_handle_frame).
         self.active_mode = None
 
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
-
-    # Every signal here (nod, tilt, eyebrows, mouth, blink) is
-    # meant to work only from idle — i.e. no mode
-    # (Flip, Presentation, Cursor, Call, Quick Circle) active.
-    # Confirmed by hands-on testing that letting these keep
-    # firing inside an active mode (e.g. incidental head
-    # movement while swiping in Flip mode) reads as noise, not
-    # a deliberate "global layer" action, even though the
-    # Alt/Ctrl-gated rules in fusion.json (see docs §9.1) are
-    # written as mode-independent — so tracking is suppressed
-    # outright per-mode here (see _handle_frame) rather than
-    # left to the consumer side.
+    # Every signal here (nod, tilt, eyebrows, mouth, blink) is meant to
+    # work only from idle. Hands-on testing confirmed that letting these
+    # keep firing inside an active mode (e.g. incidental head movement
+    # while swiping in Flip mode) reads as noise, even though the
+    # Alt/Ctrl-gated rules in fusion.json are written as mode-independent
+    # — so tracking is suppressed outright per-mode here rather than left
+    # to the consumer side.
     def start(self):
 
         self.event_bus.subscribe(
@@ -172,11 +147,9 @@ class FaceRecognizer:
 
     def _handle_frame(self, event):
 
-        # Suppressed while any mode is active — not just
-        # Cursor — so a mode's own gesture flow (e.g. Flip
-        # mode's swipes) never gets a spurious CONFIRM/
-        # HEAD_TILT/etc. reaction mixed in from incidental head
-        # movement. These signals only mean anything from idle.
+        # Suppressed while any mode is active so a mode's own gesture flow
+        # (e.g. Flip mode's swipes) never gets a spurious CONFIRM/
+        # HEAD_TILT/etc. reaction mixed in from incidental head movement.
         if self.active_mode is not None:
             return
 
@@ -195,11 +168,10 @@ class FaceRecognizer:
         if not result.face_landmarks:
 
             # Face lost — reset only the velocity baseline, so
-            # reacquiring the face doesn't compute a huge,
-            # meaningless spike from wherever the head last
-            # was to wherever it is now. Everything else
-            # (blink/mouth/eyebrow edge state, nod phase) is
-            # left as-is; a one-frame dropout is common and
+            # reacquiring the face doesn't compute a huge, meaningless
+            # spike from wherever the head last was to wherever it is
+            # now. Everything else (blink/mouth/eyebrow edge state, nod
+            # phase) is left as-is; a one-frame dropout is common and
             # shouldn't cancel a swing already in progress.
             self.previous_pitch = None
             self.previous_face_time = None
@@ -258,36 +230,24 @@ class FaceRecognizer:
             blendshapes
         )
 
-    # ---------------------------------
-    # Head Pose
-    # ---------------------------------
-
-    # Landmark index of each eye's OUTER corner in MediaPipe's
-    # 468/478-point face mesh — used only for _compute_roll,
-    # not the blendshape/matrix pipeline.
+    # Landmark index of each eye's OUTER corner in MediaPipe's 468/478-point
+    # face mesh — used only for _compute_roll, not the blendshape/matrix
+    # pipeline.
     RIGHT_EYE_OUTER_CORNER = 33
     LEFT_EYE_OUTER_CORNER = 263
 
-    # Pitch/yaw: standard rotation-matrix -> Euler-angle
-    # decomposition, unchanged. Nod only ever looks at relative
-    # sign changes (a swing away then back), so it is
-    # unaffected by the matrix's exact axis convention not
-    # having been empirically verified against a real camera.
+    # Pitch/yaw use the standard rotation-matrix -> Euler-angle
+    # decomposition; nod only looks at relative sign changes, so it's
+    # unaffected by the matrix's exact axis convention.
     #
-    # Roll: NOT taken from the matrix decomposition anymore.
-    # That decomposition assumes one specific Euler rotation
-    # order (Z then Y then X); MediaPipe's actual matrix
-    # convention doesn't necessarily match it, so the extracted
-    # roll came out coupled with pitch/yaw instead of tracking
-    # a pure sideways tilt — no threshold on a signal like that
-    # can ever behave well, however it's tuned. Roll is instead
-    # computed directly from the 2D angle between the two outer
-    # eye corners in image space: on an upright face this line
-    # is horizontal (roll ~ 0); tilting the head rotates it by
-    # exactly the same angle the head physically tilted, with
-    # no dependency on any 3D matrix convention at all — pure
-    # 2D geometry, so it is the one number here guaranteed to
-    # track physical head tilt cleanly.
+    # Roll is NOT taken from that decomposition: it assumes one specific
+    # Euler rotation order that MediaPipe's matrix doesn't necessarily
+    # match, so the extracted roll came out coupled with pitch/yaw instead
+    # of tracking a pure sideways tilt. Roll is instead computed directly
+    # from the 2D angle between the two outer eye corners in image space —
+    # horizontal on an upright face, rotating by exactly the angle the
+    # head physically tilted, with no dependency on any 3D matrix
+    # convention at all.
     def _head_pose(self, result):
 
         if (
@@ -331,16 +291,13 @@ class FaceRecognizer:
         delta_x = left_eye.x - right_eye.x
         delta_y = left_eye.y - right_eye.y
 
-        # Negated: confirmed by hands-on testing that the raw
-        # atan2 value came out with the opposite sign from the
-        # physical tilt direction (tilting the head to the
-        # subject's own right produced a NEGATIVE angle, firing
-        # HEAD_TILT_LEFT instead of HEAD_TILT_RIGHT). Negating
-        # here is the correct fix — swapping which landmark is
-        # called "left"/"right" instead would rotate the angle
-        # by 180 degrees (atan2(-y, -x) != -atan2(y, x)), which
-        # would wreck the roll ~ 0 upright baseline rather than
-        # just flipping left vs right.
+        # Negated: hands-on testing showed the raw atan2 value came out
+        # with the opposite sign from the physical tilt direction
+        # (tilting right produced a negative angle, firing
+        # HEAD_TILT_LEFT). Negating is the correct fix — swapping which
+        # landmark is "left"/"right" instead would rotate the angle by
+        # 180 degrees (atan2(-y, -x) != -atan2(y, x)), wrecking the
+        # roll ~ 0 upright baseline rather than just flipping left/right.
         return -math.degrees(
             math.atan2(
                 delta_y,
@@ -376,10 +333,6 @@ class FaceRecognizer:
         self.previous_face_time = current_time
 
         return pitch_velocity
-
-    # ---------------------------------
-    # Nod (Confirm)
-    # ---------------------------------
 
     def _check_nod(self, current_time, pitch_velocity):
 
@@ -424,10 +377,6 @@ class FaceRecognizer:
 
             self.last_nod_time = current_time
 
-    # ---------------------------------
-    # Head Tilt (direction selector)
-    # ---------------------------------
-
     def _check_tilt(self, roll):
 
         if roll is None:
@@ -450,10 +399,6 @@ class FaceRecognizer:
         elif abs(roll) < self.TILT_EXIT_DEGREES:
 
             self.tilt_zone = None
-
-    # ---------------------------------
-    # Blendshapes (eyebrows, mouth, blink)
-    # ---------------------------------
 
     def _blendshape_scores(self, result):
 
@@ -478,12 +423,10 @@ class FaceRecognizer:
 
             self._fire_face_signal("EYEBROWS_UP")
 
-            # A single raise fires nothing further — resting
-            # the eyebrows naturally rises and falls sometimes.
-            # Only a second raise completing within
-            # DOUBLE_EYEBROWS_WINDOW of the first counts as the
-            # deliberate double-raise used for the screenshot
-            # trigger (§9.1), same idea as _check_blink below.
+            # A single raise fires nothing further — only a second raise
+            # completing within DOUBLE_EYEBROWS_WINDOW of the first counts
+            # as the deliberate double-raise, same idea as _check_blink
+            # below.
             if (
                 current_time - self.last_eyebrows_raise_time
                 <= self.DOUBLE_EYEBROWS_WINDOW
@@ -491,9 +434,9 @@ class FaceRecognizer:
 
                 self._fire_face_signal("DOUBLE_EYEBROWS_UP")
 
-                # Reset rather than leaving it at current_time,
-                # so a third raise right after doesn't chain
-                # into a second DOUBLE_EYEBROWS_UP.
+                # Reset rather than leaving it at current_time, so a
+                # third raise right after doesn't chain into a second
+                # DOUBLE_EYEBROWS_UP.
                 self.last_eyebrows_raise_time = 0
 
             else:
@@ -568,18 +511,14 @@ class FaceRecognizer:
 
                 self._fire_face_signal("DOUBLE_BLINK")
 
-                # Reset rather than leaving it at current_time,
-                # so a third blink right after doesn't chain
-                # into a second DOUBLE_BLINK.
+                # Reset rather than leaving it at current_time, so a
+                # third blink right after doesn't chain into a second
+                # DOUBLE_BLINK.
                 self.last_blink_time = 0
 
             else:
 
                 self.last_blink_time = current_time
-
-    # ---------------------------------
-    # Publish
-    # ---------------------------------
 
     def _fire_face_signal(self, signal):
 
@@ -591,17 +530,10 @@ class FaceRecognizer:
             }
         )
 
-    # ---------------------------------
-    # Debug Snapshot (for --debug-face calibration view)
-    # ---------------------------------
-
-    # Mirrors GestureRecognizer._publish_debug's approach: publish
-    # every raw number a threshold is compared against, plus the
-    # threshold itself, so FaceDebugView can render live values
-    # next to the line they need to cross — that is what makes
-    # tuning TILT_ENTER_DEGREES / EYEBROWS_RAISE_THRESHOLD /
-    # MOUTH_OPEN_THRESHOLD against a real face and camera possible
-    # instead of guessing from code alone.
+    # Mirrors GestureRecognizer._publish_debug's approach: publish every
+    # raw number a threshold is compared against, plus the threshold
+    # itself, so FaceDebugView can render live values next to the line
+    # they need to cross for calibration against a real face and camera.
     def _publish_debug(
         self,
         frame,

@@ -1,14 +1,14 @@
+"""Standalone manual test of MediaPipe's GestureRecognizer for detecting
+directional hand swipes (up/down/left/right) from index-fingertip velocity,
+run in isolation before this logic was wired into the main app.
+"""
+
 import cv2
 import mediapipe as mp
 import time
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-
-
-# ---------------------------------
-# MediaPipe Gesture Recognizer
-# ---------------------------------
 
 base_options = python.BaseOptions(
     model_asset_path=
@@ -26,10 +26,6 @@ recognizer = (
     )
 )
 
-# ---------------------------------
-# Open Camera
-# ---------------------------------
-
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
@@ -37,10 +33,6 @@ if not cap.isOpened():
     print("Failed to open camera")
 
     exit()
-
-# ---------------------------------
-# Motion Variables
-# ---------------------------------
 
 previous_x = None
 previous_y = None
@@ -53,10 +45,6 @@ last_motion_time = 0
 
 motion_cooldown = 0.5
 
-# ---------------------------------
-# Main Loop
-# ---------------------------------
-
 while True:
 
     ret, frame = cap.read()
@@ -64,12 +52,8 @@ while True:
     if not ret:
         continue
 
-    # Mirror image
+    # Mirror image so on-screen motion matches the user's own movement
     frame = cv2.flip(frame, 1)
-
-    # ---------------------------------
-    # Convert Frame
-    # ---------------------------------
 
     rgb_frame = cv2.cvtColor(
         frame,
@@ -81,17 +65,9 @@ while True:
         data=rgb_frame
     )
 
-    # ---------------------------------
-    # Gesture Recognition
-    # ---------------------------------
-
     result = recognizer.recognize(
         mp_image
     )
-
-    # ---------------------------------
-    # No Hand
-    # ---------------------------------
 
     if not result.hand_landmarks:
 
@@ -105,17 +81,12 @@ while True:
 
         continue
 
-    # ---------------------------------
-    # Hand Landmarks
-    # ---------------------------------
-
     hand_landmarks = (
         result.hand_landmarks[0]
     )
 
     height, width, _ = frame.shape
 
-    # Draw landmarks
     for landmark in hand_landmarks:
 
         x = int(landmark.x * width)
@@ -128,10 +99,6 @@ while True:
             (0, 255, 0),
             -1
         )
-
-    # ---------------------------------
-    # Index Finger
-    # ---------------------------------
 
     index_tip = hand_landmarks[8]
 
@@ -149,15 +116,7 @@ while True:
         -1
     )
 
-    # ---------------------------------
-    # Time
-    # ---------------------------------
-
     current_time = time.time()
-
-    # ---------------------------------
-    # Motion Detection
-    # ---------------------------------
 
     if (
         previous_x is not None
@@ -180,7 +139,6 @@ while True:
             previous_time
         )
 
-        # Avoid division by zero
         if delta_time > 0:
 
             velocity_x = (
@@ -193,7 +151,6 @@ while True:
                 delta_time
             )
 
-            # Debug text
             cv2.putText(
                 frame,
                 f"VX: {velocity_x:.2f}",
@@ -224,10 +181,6 @@ while True:
                 abs(velocity_y)
             )
 
-            # ---------------------------------
-            # RIGHT SWIPE
-            # ---------------------------------
-
             if (
                 velocity_x >
                 velocity_threshold
@@ -250,10 +203,6 @@ while True:
                 last_motion_time = (
                     current_time
                 )
-
-            # ---------------------------------
-            # LEFT SWIPE
-            # ---------------------------------
 
             elif (
                 velocity_x <
@@ -278,10 +227,6 @@ while True:
                     current_time
                 )
 
-            # ---------------------------------
-            # DOWN SWIPE
-            # ---------------------------------
-
             elif (
                 velocity_y >
                 velocity_threshold
@@ -304,10 +249,6 @@ while True:
                 last_motion_time = (
                     current_time
                 )
-
-            # ---------------------------------
-            # UP SWIPE
-            # ---------------------------------
 
             elif (
                 velocity_y <
@@ -332,18 +273,10 @@ while True:
                     current_time
                 )
 
-    # ---------------------------------
-    # Save Previous Values
-    # ---------------------------------
-
     previous_x = current_x
     previous_y = current_y
 
     previous_time = current_time
-
-    # ---------------------------------
-    # Show Window
-    # ---------------------------------
 
     cv2.imshow(
         "Gesture Motion Test",
@@ -352,10 +285,6 @@ while True:
 
     if cv2.waitKey(1) == ord("q"):
         break
-
-# ---------------------------------
-# Cleanup
-# ---------------------------------
 
 cap.release()
 

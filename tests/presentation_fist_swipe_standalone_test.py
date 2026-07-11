@@ -1,3 +1,28 @@
+"""Standalone calibration script for Presentation-mode gestures.
+
+No imports from src/ — safe to copy, run, and tweak on its own. Once the
+trackbar values below look right on your own camera/presenting distance,
+copy them into the matching presentation_fist_* constants in
+src/processing/gesture/gesture_recognizer.py.
+
+Unlike the index-finger swipe used by Flip mode (armed by a Closed_Fist
+-> Open_Palm transition), Presentation mode's slide-switch gesture needs
+no separate arm/disarm step: holding a closed fist IS the active state,
+and the WRIST (landmark 0) is tracked instead of a fingertip, since it
+stays reliably trackable even clenched and farther from the camera than
+desk-distance gestures were tuned for. Mirrors
+GestureRecognizer._check_fist_motion, simplified here by skipping its
+confirm_frames debounce, since this script's own trackbars are the thing
+being tuned.
+
+Also mirrors the laser-pointer behavior (Pointing_Up) from
+GestureRecognizer._update_presentation_pointer, so both Presentation-mode
+gestures can be checked at actual presenting distance in one place. The
+pointer is relative, not absolute: it snaps to the center the moment
+Pointing_Up starts, and hand movement from there is measured in units of
+the hand's own size at that instant, so the same physical movement
+sweeps the whole frame regardless of distance from the camera.
+"""
 import math
 import os
 import time
@@ -7,42 +32,6 @@ import mediapipe as mp
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-
-
-# ---------------------------------
-# Standalone script. No imports from
-# src/ — safe to copy, run and tweak
-# on its own for calibration. Once the
-# trackbar values below look right on
-# your own camera/presenting distance,
-# copy the numbers into the matching
-# presentation_fist_* constants in
-# src/processing/gesture/gesture_recognizer.py.
-#
-# Unlike the index-finger swipe used by Flip mode
-# (armed by a Closed_Fist -> Open_Palm transition),
-# Presentation mode's slide-switch gesture needs no
-# separate arm/disarm step: holding a closed fist IS
-# the active state, and the WRIST (landmark 0) is
-# tracked instead of a fingertip, since it stays
-# reliably trackable even clenched and farther from
-# the camera than desk-distance gestures were tuned
-# for. Mirrors GestureRecognizer._check_fist_motion —
-# simplified here by skipping its confirm_frames
-# debounce, since this script's own trackbars are the
-# thing being tuned, not the debounce.
-#
-# Also mirrors the laser-pointer behavior (Pointing_Up)
-# from GestureRecognizer._update_presentation_pointer, so
-# both Presentation-mode gestures — slide switching and
-# the pointer — can be checked at actual presenting
-# distance in one place. The pointer here is relative, not
-# absolute: it snaps to the center the moment Pointing_Up
-# starts, and hand movement from there is measured in
-# units of the hand's own size at that instant, so the
-# same physical movement sweeps the whole frame regardless
-# of distance from the camera.
-# ---------------------------------
 
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
@@ -57,18 +46,11 @@ MODEL_PATH = os.path.join(
 
 WINDOW_NAME = "Presentation Fist Swipe Standalone Test"
 
-# ---------------------------------
-# Default Thresholds (starting point —
-# trackbars below let you drag these
-# live, no code edits/restarts needed
-# while tuning).
-# ---------------------------------
-
-# Calibrated against actual presenting distance using this
-# script — see presentation_fist_velocity_threshold /
-# presentation_fist_min_frame_distance in
-# src/processing/gesture/gesture_recognizer.py, which now
-# start from these same numbers.
+# Starting points only — the trackbars below let you drag these live
+# without restarting. Calibrated against actual presenting distance;
+# see presentation_fist_velocity_threshold / presentation_fist_min_frame_distance
+# in src/processing/gesture/gesture_recognizer.py, which start from these
+# same numbers.
 DEFAULT_VELOCITY_THRESHOLD_X100 = 50
 DEFAULT_MIN_FRAME_DISTANCE_X10000 = 75
 DEFAULT_VERTICAL_CONE_DEGREES = 25
@@ -88,11 +70,6 @@ SLIDE_ACTIONS = {
     "HAND_RIGHT": "NEXT_SLIDE",
     "HAND_LEFT": "PREVIOUS_SLIDE"
 }
-
-
-# ---------------------------------
-# MediaPipe Gesture Recognizer
-# ---------------------------------
 
 base_options = python.BaseOptions(
     model_asset_path=MODEL_PATH
@@ -158,13 +135,6 @@ def read_gesture(result):
     return name, confidence
 
 
-# ---------------------------------
-# Direction From Speed (mirrors
-# GestureRecognizer._resolve_signal exactly —
-# speed decides direction, distance only
-# filters out landmark jitter)
-# ---------------------------------
-
 def resolve_signal(
     velocity_x,
     velocity_y,
@@ -174,6 +144,9 @@ def resolve_signal(
     min_frame_distance,
     vertical_cone_degrees
 ):
+    """Mirrors GestureRecognizer._resolve_signal exactly: speed decides
+    direction, distance only filters out landmark jitter.
+    """
 
     angle_from_vertical = math.degrees(
         math.atan2(
@@ -212,18 +185,6 @@ def resolve_signal(
     return None
 
 
-# ---------------------------------
-# Laser Pointer (Pointing_Up) — relative,
-# hand-size-scaled box. Mirrors
-# GestureRecognizer._update_presentation_pointer:
-# the moment Pointing_Up starts, the pointer
-# snaps to the center, and hand movement from
-# there is measured in units of the hand size
-# at that instant, so the same physical movement
-# sweeps the whole frame regardless of distance
-# from the camera.
-# ---------------------------------
-
 def hand_scale(hand_landmarks):
 
     wrist = hand_landmarks[0]
@@ -243,6 +204,9 @@ def reset_pointer():
 
 
 def update_presentation_pointer(hand_landmarks, box_size_in_hands):
+    """Mirrors GestureRecognizer._update_presentation_pointer's relative,
+    hand-size-scaled pointer box.
+    """
 
     index_tip = hand_landmarks[8]
 
@@ -348,10 +312,6 @@ def draw_pointer(frame, hand_landmarks, box_size_in_hands):
         2
     )
 
-
-# ---------------------------------
-# State
-# ---------------------------------
 
 state = {
 
@@ -466,17 +426,12 @@ def check_fist_motion(
     state["previous_time"] = current_time
 
 
-# ---------------------------------
-# Drawing
-# ---------------------------------
-
 def draw_cone(display, anchor_point, cone_degrees):
-
-    # Draws the actual UP/DOWN vs LEFT/RIGHT sector split
-    # as 4 rays from the wrist, matching exactly the angle
-    # resolve_signal decides on — same idea as
-    # GestureDebugView._draw_cone_lines, applied to the
-    # wrist instead of the fingertip anchor.
+    """Draws the UP/DOWN vs LEFT/RIGHT sector split as 4 rays from the
+    wrist, matching the angle resolve_signal decides on — same idea as
+    GestureDebugView._draw_cone_lines, applied to the wrist instead of
+    the fingertip anchor.
+    """
     cone_radians = math.radians(cone_degrees)
 
     dx = math.sin(cone_radians)
@@ -624,10 +579,6 @@ def draw_overlay(
     )
 
 
-# ---------------------------------
-# Trackbars
-# ---------------------------------
-
 cv2.namedWindow(WINDOW_NAME)
 
 cv2.createTrackbar(
@@ -670,10 +621,6 @@ cv2.createTrackbar(
     lambda value: None
 )
 
-
-# ---------------------------------
-# Camera Loop
-# ---------------------------------
 
 cap = cv2.VideoCapture(0)
 

@@ -1,3 +1,12 @@
+"""Voice-command interpretation stage.
+
+Receives text_ready (final Vosk transcripts only), gates it behind a wake
+word with a rolling silence timeout, matches it against config/mapping.json's
+voice commands (exact match first, then optional semantic/LLM fallback), and
+publishes intent_detected. The only module allowed to turn a spoken phrase
+into an internal command.
+"""
+
 import time
 
 from concurrent.futures import ProcessPoolExecutor
@@ -53,14 +62,11 @@ class IntentModel:
             )
         )
 
-        # None means no session is open. While a session is
-        # open, this holds the time.time() deadline by which
-        # more speech must arrive or the session is considered
-        # gone silent. Every new utterance inside an open
-        # session pushes the deadline forward by another
-        # silence_timeout_seconds — it is a rolling "still
-        # talking" window, not a fixed deadline from the wake
-        # word itself.
+        # None means no session is open. While open, this holds the
+        # time.time() deadline by which more speech must arrive or the
+        # session is considered gone silent — a rolling "still talking"
+        # window, not a fixed deadline from the wake word itself, since
+        # every new utterance pushes it forward by silence_timeout_seconds.
         self.session_deadline = None
 
         self.pending_command_text = ""
@@ -90,19 +96,13 @@ class IntentModel:
             "mlx-community/Llama-3.2-3B-Instruct-4bit"
         )
 
-        # Lazily created. Semantic matching and LLM
-        # inference run in a separate OS process (not just
-        # a thread) so a slow/cold model load or a long LLM
-        # generation can never hold the CPython GIL and
-        # stall other threads in this process — in
-        # particular the pynput CGEventTap callback thread,
-        # which macOS will permanently disable if it does
-        # not return quickly.
+        # Lazily created. Semantic matching and LLM inference run in a
+        # separate OS process (not just a thread) so a slow/cold model
+        # load or a long LLM generation can never hold the CPython GIL and
+        # stall other threads — in particular the pynput CGEventTap
+        # callback thread, which macOS permanently disables if it doesn't
+        # return quickly.
         self.nlu_executor = None
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -126,10 +126,6 @@ class IntentModel:
             )
 
             self.nlu_executor = None
-
-    # ---------------------------------
-    # Handle Text
-    # ---------------------------------
 
     def _handle_text(self, event):
 
@@ -156,10 +152,6 @@ class IntentModel:
                 result
             )
 
-    # ---------------------------------
-    # Process Text
-    # ---------------------------------
-
     def process_text(
         self,
         text,
@@ -169,7 +161,6 @@ class IntentModel:
         if not text:
             return None
 
-        # Normalize
         text = (
             self._normalize(text)
             .lower()
@@ -178,11 +169,10 @@ class IntentModel:
 
         cleaned_text = text
 
-        # A previous session went silent for too long — close
-        # it out and report whatever never turned into a
-        # command before considering this new text at all, so
-        # a fresh wake word right after a timed-out session
-        # starts clean instead of inheriting stale pending text.
+        # A previous session went silent for too long — close it out and
+        # report whatever never turned into a command before considering
+        # this new text, so a fresh wake word right after a timed-out
+        # session starts clean instead of inheriting stale pending text.
         if self._session_timed_out():
 
             if self.pending_command_text:
@@ -193,16 +183,10 @@ class IntentModel:
 
             self._end_session()
 
-        # ---------------------------------
-        # Wake Word Gate
-        #
-        # "jack" opens a listening session. Every utterance
-        # heard while the session is open pushes the silence
-        # deadline forward — the session only ends when a
-        # command is recognized or nothing new is heard for
-        # silence_timeout_seconds.
-        # ---------------------------------
-
+        # Wake word gate: "jack" opens a listening session. Every
+        # utterance heard while open pushes the silence deadline forward —
+        # the session only ends when a command is recognized or nothing
+        # new is heard for silence_timeout_seconds.
         normalized_wake_word = (
             self._normalize(self.wake_word)
             .lower()
@@ -222,13 +206,10 @@ class IntentModel:
 
         if cleaned_text.startswith(wake_prefix):
 
-            # Vosk sometimes packs the wake word and the
-            # following (possibly unclear) speech into a
-            # single final result, e.g. "jack [unk]" or
-            # "jack open browser". Start the session either
-            # way, then try the remainder as the command
-            # right away.
-
+            # Vosk sometimes packs the wake word and the following
+            # (possibly unclear) speech into a single final result, e.g.
+            # "jack [unk]" or "jack open browser". Start the session
+            # either way, then try the remainder as the command right away.
             self._start_session()
 
             cleaned_text = cleaned_text[
@@ -242,26 +223,22 @@ class IntentModel:
 
         elif wake_word_heard:
 
-            # The grammar recognizer caught the wake word
-            # somewhere in this utterance (partial or final),
-            # even though the text here — possibly rewritten
-            # by the open-vocab fallback — no longer starts
-            # with it. Trust Vosk's own detection rather than
-            # requiring the (sometimes lossy) free-text
+            # The grammar recognizer caught the wake word somewhere in
+            # this utterance (partial or final), even though the text
+            # here — possibly rewritten by the open-vocab fallback — no
+            # longer starts with it. Trust Vosk's own detection rather
+            # than requiring the (sometimes lossy) free-text
             # transcription to still contain "jack".
-
             self._start_session()
 
             self.pending_command_text = cleaned_text
 
         elif self._session_is_active():
 
-            # A continuation within an already-open session.
-            # Vosk sometimes finalizes one spoken command as
-            # several separate utterances (a brief mid-
-            # sentence pause is enough to trigger an early
-            # endpoint), so accumulate instead of replacing.
-
+            # A continuation within an already-open session. Vosk
+            # sometimes finalizes one spoken command as several separate
+            # utterances (a brief mid-sentence pause is enough to trigger
+            # an early endpoint), so accumulate instead of replacing.
             if self.pending_command_text:
 
                 cleaned_text = (
@@ -281,10 +258,6 @@ class IntentModel:
                 )
 
             return None
-
-        # ---------------------------------
-        # Match Commands
-        # ---------------------------------
 
         for command, phrase in (
             self.voice_commands.items()
@@ -339,17 +312,13 @@ class IntentModel:
                     "tier": "llm"
                 }
 
-        # No match yet — keep the session open (the deadline
-        # was already pushed forward by _start_session /
-        # this method's callers) so a continuation utterance
-        # can still complete the command before it goes quiet.
+        # No match yet — keep the session open (the deadline was already
+        # pushed forward by _start_session/this method's callers) so a
+        # continuation utterance can still complete the command before it
+        # goes quiet.
         self._renew_session()
 
         return None
-
-    # ---------------------------------
-    # Session (wake word / silence timeout)
-    # ---------------------------------
 
     def _start_session(self):
 
@@ -399,25 +368,17 @@ class IntentModel:
             >= self.session_deadline
         )
 
-    # ---------------------------------
-    # Debug
-    # ---------------------------------
-
     def _print_not_understood(
         self,
         cleaned_text
     ):
 
-        # Always on, not gated behind --debug-voice — this is
-        # the outcome-level "did it understand me" signal, not
-        # the noisier raw partial/final transcript stream.
+        # Always on, not gated behind --debug-voice — this is the
+        # outcome-level "did it understand me" signal, not the noisier
+        # raw partial/final transcript stream.
         print(
             f"[RESOLVED] not understood: \"{cleaned_text}\""
         )
-
-    # ---------------------------------
-    # NLU Worker Process (lazy)
-    # ---------------------------------
 
     def _get_nlu_executor(self):
 
@@ -428,10 +389,6 @@ class IntentModel:
             )
 
         return self.nlu_executor
-
-    # ---------------------------------
-    # Semantic Fallback
-    # ---------------------------------
 
     def _match_semantic(
         self,
@@ -449,10 +406,6 @@ class IntentModel:
 
         return future.result()
 
-    # ---------------------------------
-    # LLM Fallback
-    # ---------------------------------
-
     def _match_llm(
         self,
         text
@@ -468,10 +421,6 @@ class IntentModel:
         )
 
         return future.result()
-
-    # ---------------------------------
-    # Normalize Text
-    # ---------------------------------
 
     def _normalize(self, text):
 

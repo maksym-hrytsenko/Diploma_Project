@@ -1,3 +1,10 @@
+"""Standalone calibration tool for the directional-swipe ("joystick") hand
+gesture: fist-then-open-palm starts a tracking session, and the velocity of
+the index fingertip resolves into HAND_UP/DOWN/LEFT/RIGHT signals. It has no
+imports from src/, so it is safe to copy, run, and tweak on its own to tune
+the thresholds below before carrying them over to the main app.
+"""
+
 import math
 import os
 import time
@@ -7,13 +14,6 @@ import mediapipe as mp
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-
-
-# ---------------------------------
-# Standalone script. No imports from
-# src/ — safe to copy, run and tweak
-# on its own for calibration.
-# ---------------------------------
 
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
@@ -82,10 +82,6 @@ CONFIRM_FRAMES = 4
 # about most.
 HAND_LOST_FRAMES = 5
 
-
-# ---------------------------------
-# MediaPipe Gesture Recognizer
-# ---------------------------------
 
 base_options = python.BaseOptions(
     model_asset_path=MODEL_PATH
@@ -156,10 +152,6 @@ def read_gesture(result):
 
     return gesture_name, confidence
 
-
-# ---------------------------------
-# Session / Zone State
-# ---------------------------------
 
 state = {
     "last_gesture": None,
@@ -449,10 +441,6 @@ def check_motion(hand_landmarks):
     state["previous_time"] = current_time
 
 
-# ---------------------------------
-# Drawing
-# ---------------------------------
-
 def to_pixels(x, y, width, height):
 
     return (
@@ -646,10 +634,6 @@ def draw_overlay(frame, hand_landmarks, gesture_name):
         1
     )
 
-
-# ---------------------------------
-# Camera Loop
-# ---------------------------------
 
 cap = cv2.VideoCapture(0)
 

@@ -1,3 +1,11 @@
+"""Standalone exploratory script for testing real-time speech recognition with Vosk.
+
+Streams microphone audio through a Vosk KaldiRecognizer, prints partial and
+final transcription results with latency, and matches a few hardcoded
+phrases to command names. Used to verify Vosk's real-time recognition API
+in isolation before relying on it elsewhere in the project.
+"""
+
 import os
 import json
 import queue
@@ -10,16 +18,10 @@ from vosk import (
     KaldiRecognizer
 )
 
-# =====================================
-# SETTINGS
-# =====================================
-
 SAMPLE_RATE = 16000
 
-# -------------------------------------
-# Cross-platform model path
-# -------------------------------------
-
+# Path built relative to this file so the script works regardless of the
+# working directory it's launched from.
 BASE_DIR = os.path.dirname(
     os.path.dirname(
         os.path.abspath(__file__)
@@ -32,15 +34,7 @@ MODEL_PATH = os.path.join(
     "vosk-model-small-en-us-0.15"
 )
 
-# =====================================
-# AUDIO QUEUE
-# =====================================
-
 audio_queue = queue.Queue()
-
-# =====================================
-# AUDIO CALLBACK
-# =====================================
 
 def callback(
     indata,
@@ -76,17 +70,9 @@ print("Model loaded.")
 
 print("Speak into the microphone...\n")
 
-# =====================================
-# LATENCY TRACKING
-# =====================================
-
 is_recording = False
 
 start_time = None
-
-# =====================================
-# START AUDIO STREAM
-# =====================================
 
 with sd.RawInputStream(
 
@@ -105,10 +91,6 @@ with sd.RawInputStream(
 
         data = audio_queue.get()
 
-        # ---------------------------------
-        # FINAL RESULT
-        # ---------------------------------
-
         if recognizer.AcceptWaveform(data):
 
             result = json.loads(
@@ -122,7 +104,6 @@ with sd.RawInputStream(
 
             if text:
 
-                # Latency
                 if start_time:
 
                     latency = (
@@ -144,10 +125,6 @@ with sd.RawInputStream(
                     f"Latency: "
                     f"{latency:.2f} sec"
                 )
-
-                # ---------------------------------
-                # Command detection
-                # ---------------------------------
 
                 if "open browser" in text:
 
@@ -177,10 +154,6 @@ with sd.RawInputStream(
             is_recording = False
 
             start_time = None
-
-        # ---------------------------------
-        # PARTIAL RESULT
-        # ---------------------------------
 
         else:
 

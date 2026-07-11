@@ -1,3 +1,21 @@
+"""Standalone manual test script, no imports from src/.
+
+Reproduces exactly the two pieces of native window setup that
+src/ui/native_window.py applies to the quick_circle overlay (per-window
+collectionBehavior/level, and the app-wide activation policy), so the fix
+for the "circle spawns its own empty Space" bug can be checked by hand
+without running the full pipeline (camera/mic/gestures).
+
+Manual verification steps:
+    1. Run this script.
+    2. Open a couple of full-screen apps / extra Desktops in Mission
+       Control so there is more than one Space to be on.
+    3. Switch between Spaces and full-screen apps freely — the red circle
+       should already be sitting on top of whichever one you land on, with
+       no new empty Space ever appearing and no focus jump.
+    4. Ctrl+C in the terminal to quit.
+"""
+
 import sys
 
 from PyQt6.QtCore import Qt
@@ -14,35 +32,6 @@ from AppKit import (
 )
 
 import objc
-
-
-# ---------------------------------
-# Standalone script. No imports from
-# src/ — reproduces exactly the two
-# pieces of native window setup that
-# src/ui/native_window.py applies to
-# the quick_circle overlay (per-window
-# collectionBehavior/level, and the
-# app-wide activation policy), so the
-# fix can be checked by hand without
-# running the full pipeline (camera/
-# mic/gestures).
-#
-# Manual verification steps:
-#   1. Run this script.
-#   2. Open a couple of full-screen
-#      apps / extra Desktops in Mission
-#      Control so there is more than
-#      one Space to be on.
-#   3. Switch between Spaces and
-#      full-screen apps freely — the
-#      red circle should already be
-#      sitting on top of whichever one
-#      you land on, with no new empty
-#      Space ever appearing and no
-#      focus jump.
-#   4. Ctrl+C in the terminal to quit.
-# ---------------------------------
 
 
 class TestCircle(QWidget):

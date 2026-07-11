@@ -1,19 +1,28 @@
+"""Microphone audio input.
+
+Captures raw audio from the input device via sounddevice on a background
+thread and publishes each chunk as `audio_chunk` through EventBus. Performs
+no speech recognition itself — SpeechRecognizer does that downstream. Sits
+in the Input layer of the pipeline.
+"""
+
 import queue
 import threading
 
 import sounddevice as sd
 
 from config.config_loader import load_system_config
+from core.event_bus import EventBus
 
 
 class MicrophoneInput:
 
     def __init__(
         self,
-        event_bus,
-        samplerate=None,
-        channels=None,
-        device=None
+        event_bus: EventBus,
+        samplerate: int | None = None,
+        channels: int | None = None,
+        device: int | None = None
     ):
 
         self.event_bus = event_bus
@@ -49,10 +58,6 @@ class MicrophoneInput:
         # None means: use the OS default input device
         self.device = device
 
-    # ---------------------------------
-    # Audio Callback
-    # ---------------------------------
-
     def _audio_callback(
         self,
         indata,
@@ -69,10 +74,6 @@ class MicrophoneInput:
         self.audio_queue.put(
             bytes(indata)
         )
-
-    # ---------------------------------
-    # Start
-    # ---------------------------------
 
     def start(self):
 
@@ -113,10 +114,6 @@ class MicrophoneInput:
             "[MicrophoneInput] Started"
         )
 
-    # ---------------------------------
-    # Stop
-    # ---------------------------------
-
     def stop(self):
 
         self.running = False
@@ -130,10 +127,6 @@ class MicrophoneInput:
         print(
             "[MicrophoneInput] Stopped"
         )
-
-    # ---------------------------------
-    # Audio Processing Loop
-    # ---------------------------------
 
     def _process_audio(self):
 

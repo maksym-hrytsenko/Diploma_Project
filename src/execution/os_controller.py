@@ -1,3 +1,10 @@
+"""macOS system-action backend.
+
+Translates high-level commands from ActionExecutor into concrete OS effects:
+synthetic input (pyautogui/Quartz), app/URL launches, and Shortcuts/AppleScript
+calls. Contains no decision logic — it only executes what it is told.
+"""
+
 import subprocess
 import time
 import webbrowser
@@ -9,24 +16,16 @@ from config.config_loader import load_system_config
 
 class OSController:
 
-    # macOS system media key codes (NSSystemDefined event
-    # data1 high byte), the same codes a physical keyboard's
-    # media keys send. Used for volume only — Sound Up/Down
-    # is handled by CoreAudio directly and doesn't depend on
-    # any app owning "Now Playing" (see volume_up/volume_down).
+    # NSSystemDefined event data1 high byte — the codes a physical keyboard's
+    # media keys send. Used for volume only; play/pause/next/previous use
+    # MediaRemote instead (see MEDIA_REMOTE_BUNDLE_PATH below).
     NX_KEYTYPE_SOUND_UP = 0
     NX_KEYTYPE_SOUND_DOWN = 1
 
-    # MRMediaRemoteCommand values (MediaRemote.framework,
-    # private). This is the same command path macOS uses to
-    # route Control Center's Now Playing widget and Bluetooth
-    # headphone remote buttons (AVRCP) to whichever app owns
-    # "now playing" — used instead of NX_KEYTYPE HID media-key
-    # events for play/pause/next/previous, since on at least
-    # one dev machine the HID media-key path (both synthetic
-    # and a real physical key) silently reached no app at all,
-    # while this path — confirmed via headphone remote buttons
-    # and Control Center — worked. See
+    # MediaRemote.framework is private but is the same command path macOS
+    # uses for Control Center's Now Playing widget and AVRCP headphone
+    # buttons. Used instead of NX_KEYTYPE HID media-key events because the
+    # HID path silently reached no app on at least one dev machine — see
     # tests/mediaremote_standalone_test.py.
     MEDIA_REMOTE_BUNDLE_PATH = (
         "/System/Library/PrivateFrameworks/MediaRemote.framework"
@@ -48,13 +47,9 @@ class OSController:
             {}
         )
 
-        # Total on-screen distance (real pixels) a single Flip
-        # Mode swipe scrolls, spread across many small ticks
-        # with a short pause between each so it reads as a
-        # smooth glide rather than one abrupt jump. Raised from
-        # an original 90px, then again (200px -> 500px, a 2.5x
-        # jump) after further user feedback that up/down swipes
-        # still needed to travel noticeably farther.
+        # Total on-screen distance (pixels) a single Flip Mode swipe scrolls,
+        # spread across many small ticks with a pause between each so it
+        # reads as a smooth glide rather than one abrupt jump.
         self.FLIP_SCROLL_PIXELS = flip_scroll_config.get(
             "pixels",
             500
@@ -70,11 +65,9 @@ class OSController:
             0.014
         )
 
-        # Hotkey combos, target app names/URLs and Shortcuts
-        # names are all user-tunable (e.g. a different call app
-        # than Teams, a different browser) — see the
-        # "os_controller" section of config/system.json for the
-        # defaults each falls back to below.
+        # Hotkeys, app names/URLs and Shortcuts names are user-tunable via
+        # the "os_controller" section of config/system.json; each getter
+        # below falls back to a hardcoded default if unset.
         self.hotkeys = config.get(
             "hotkeys",
             {}
@@ -95,48 +88,35 @@ class OSController:
             {}
         )
 
-        # This app moves the cursor continuously and on
-        # purpose (Cursor mode follows the fingertip every
-        # frame) — the corner-abort safety net is meant for
-        # runaway scripts, not a live, hand-driven pointer,
-        # and a fingertip position that happens to map to a
-        # screen corner would otherwise silently cancel that
-        # frame's move.
+        # Each entry is a list of tab-groups: one new Chrome window per inner
+        # list, first URL opening the window and the rest joining as tabs.
+        self.window_groups = config.get(
+            "window_groups",
+            {}
+        )
+
+        # Cursor mode moves the pointer continuously on purpose; the
+        # corner-abort safety net is meant for runaway scripts, not a live,
+        # hand-driven pointer that may legitimately pass through a corner.
         pyautogui.FAILSAFE = False
 
-        # pyautogui inserts a 0.1s sleep after EVERY call by
-        # default (PAUSE). Cursor mode calls moveTo() once per
-        # camera frame — at the default PAUSE that caps cursor
-        # updates to ~10fps and stalls whichever thread
-        # published the frame for 100ms each time, which reads
-        # as the cursor barely following the finger at all.
+        # pyautogui's default 0.1s PAUSE after every call would cap Cursor
+        # mode's per-frame moveTo() to ~10fps.
         pyautogui.PAUSE = 0
 
         self._warn_if_not_trusted()
 
-        # Tracks the caffeinate subprocess started by
-        # prevent_display_sleep, so allow_display_sleep can
-        # stop the right one.
         self.caffeinate_process = None
 
-        # Cached MRMediaRemoteSendCommand function pointer —
-        # loading the private framework bundle is only needed
-        # once, not on every play/pause/next/previous call.
+        # Cached MRMediaRemoteSendCommand pointer; loading the private
+        # framework bundle is only needed once.
         self.media_remote_send_command = None
 
-    # ---------------------------------
-    # Accessibility Permission Check
-    # ---------------------------------
-
-    # Every OS-level action in this class (cursor, scroll,
-    # window/app control) is a synthetic input event, which
-    # macOS silently drops — no exception, nothing — unless
-    # Accessibility permission is granted to whatever process
-    # is actually running python. This is the single most
-    # common reason "nothing happens" with no visible error,
-    # so it's checked once, loudly, at startup instead of
-    # leaving it to be discovered the hard way.
-    def _warn_if_not_trusted(self):
+    # Every OS-level action in this class is a synthetic input event, which
+    # macOS silently drops unless Accessibility permission is granted to the
+    # process running python — this is the most common cause of "nothing
+    # happens" with no error, so it's surfaced loudly at startup.
+    def _warn_if_not_trusted(self) -> None:
 
         try:
 
@@ -164,15 +144,9 @@ class OSController:
                 f"[ACCESSIBILITY CHECK ERROR] {e}"
             )
 
-    # ---------------------------------
-    # Config-Driven Hotkeys / Apps
-    # ---------------------------------
-
-    # Every hotkey is stored as a list of key names (even a
-    # single-key combo like "f5") so pyautogui.hotkey(*keys)
-    # handles them all uniformly — for a single key this is the
-    # same keyDown+keyUp sequence pyautogui.press() performs.
-    def _send_hotkey(self, name, default):
+    # Hotkeys are stored as a list of key names, even for a single key like
+    # "f5", so pyautogui.hotkey(*keys) can handle every combo uniformly.
+    def _send_hotkey(self, name: str, default: list[str]) -> None:
 
         keys = self.hotkeys.get(
             name,
@@ -181,30 +155,22 @@ class OSController:
 
         pyautogui.hotkey(*keys)
 
-    def _app_name(self, name, default):
+    def _app_name(self, name: str, default: str) -> str:
 
         return self.apps.get(
             name,
             default
         )
 
-    # ---------------------------------
-    # Mouse (Cursor Mode)
-    # ---------------------------------
-
-    def click(self):
+    def click(self) -> None:
 
         pyautogui.click()
 
-    def right_click(self):
+    def right_click(self) -> None:
 
         pyautogui.rightClick()
 
-    # Absolute move — the cursor jumps straight to the given
-    # screen position, mirroring wherever the fingertip
-    # currently is within the camera's view (converted to
-    # screen pixels by the caller).
-    def move_cursor_to(self, x_pixels, y_pixels):
+    def move_cursor_to(self, x_pixels: int, y_pixels: int) -> None:
 
         try:
 
@@ -220,53 +186,43 @@ class OSController:
                 f"[CURSOR ERROR] {e}"
             )
 
-    def scroll_by(self, pixel_amount_x, pixel_amount_y):
+    def scroll_by(self, pixel_amount_x: int, pixel_amount_y: int) -> None:
 
         self._post_pixel_scroll(
             pixel_amount_y,
             pixel_amount_x
         )
 
-    # ---------------------------------
-    # Zoom (Cursor Mode, Alt + pinch distance)
-    # ---------------------------------
-
-    # Cmd+"=" / Cmd+"-" is the standard zoom-in/out shortcut
-    # across Safari, Preview, Photos and most other macOS
-    # apps — there is no single system-wide "zoom the frontmost
-    # app's content" API, so this piggybacks on the same
-    # keyboard shortcut a user would press themselves.
-    def zoom_in(self):
+    # Cmd+"="/Cmd+"-" is the standard zoom shortcut across Safari, Preview,
+    # Photos and most macOS apps; there is no system-wide "zoom the
+    # frontmost app's content" API to call instead.
+    def zoom_in(self) -> None:
 
         self._send_hotkey(
             "zoom_in",
             ["command", "="]
         )
 
-    def zoom_out(self):
+    def zoom_out(self) -> None:
 
         self._send_hotkey(
             "zoom_out",
             ["command", "-"]
         )
 
-    # ---------------------------------
-    # Scroll (Flip Mode)
-    # ---------------------------------
-
-    def scroll_up(self):
+    def scroll_up(self) -> None:
 
         self._smooth_scroll(
             self.FLIP_SCROLL_PIXELS
         )
 
-    def scroll_down(self):
+    def scroll_down(self) -> None:
 
         self._smooth_scroll(
             -self.FLIP_SCROLL_PIXELS
         )
 
-    def _smooth_scroll(self, total_pixels):
+    def _smooth_scroll(self, total_pixels: int) -> None:
 
         tick_pixels = total_pixels // self.FLIP_SCROLL_TICKS
 
@@ -279,19 +235,10 @@ class OSController:
 
             time.sleep(self.FLIP_SCROLL_TICK_DELAY)
 
-    # ---------------------------------
-    # Pixel-Precise Scroll (shared helper)
-    # ---------------------------------
-
-    # Uses a real, hardware-accurate pixel-unit scroll event
-    # (via Quartz) instead of pyautogui's coarser "line/click"
-    # scroll units — this is what makes both the Flip Mode
-    # glide and the Cursor Mode drag-to-scroll move the
-    # content by an actual, predictable number of pixels.
-    # pixel_amount_x defaults to 0 since every other caller
-    # (Flip Mode's vertical-only glide) never needs a
-    # horizontal component.
-    def _post_pixel_scroll(self, pixel_amount_y, pixel_amount_x=0):
+    # Uses a hardware-accurate pixel-unit scroll event (via Quartz) instead
+    # of pyautogui's coarser line/click units, so both Flip Mode's glide and
+    # Cursor Mode's drag-to-scroll move content by a predictable pixel amount.
+    def _post_pixel_scroll(self, pixel_amount_y: int, pixel_amount_x: int = 0) -> None:
 
         if pixel_amount_y == 0 and pixel_amount_x == 0:
             return
@@ -300,9 +247,8 @@ class OSController:
 
             import Quartz
 
-            # wheelCount=2 tells Quartz to read a second
-            # (horizontal) wheel delta alongside the vertical
-            # one, same pixel-unit event either way.
+            # wheelCount=2 makes Quartz read a second (horizontal) wheel
+            # delta alongside the vertical one.
             event = Quartz.CGEventCreateScrollWheelEvent(
                 None,
                 Quartz.kCGScrollEventUnitPixel,
@@ -322,36 +268,25 @@ class OSController:
                 f"[SCROLL ERROR] {e}"
             )
 
-    # ---------------------------------
-    # Flip Next / Previous (Flip Mode)
-    # ---------------------------------
-
-    # Always switches macOS Spaces/desktops — no longer tries to
-    # guess whether the frontmost app has its own "next/previous"
-    # arrow-key navigation. That per-app heuristic (an AppleScript
-    # frontmost-app-name lookup against a hardcoded allowlist) was
-    # removed at the user's request: left/right swipes in Flip
-    # mode should do one predictable thing every time, not a
-    # different action depending on what's in front.
-    def flip_next(self):
+    # Always switches macOS Spaces rather than guessing whether the
+    # frontmost app has its own next/previous navigation — a prior per-app
+    # heuristic was removed so Flip Mode swipes behave the same way in
+    # every app.
+    def flip_next(self) -> None:
 
         self._send_hotkey(
             "flip_next",
             ["ctrl", "right"]
         )
 
-    def flip_previous(self):
+    def flip_previous(self) -> None:
 
         self._send_hotkey(
             "flip_previous",
             ["ctrl", "left"]
         )
 
-    # ---------------------------------
-    # Applications
-    # ---------------------------------
-
-    def _open_mac_app(self, app_name):
+    def _open_mac_app(self, app_name: str) -> None:
 
         try:
 
@@ -365,7 +300,7 @@ class OSController:
                 f"[APPLICATION ERROR] {app_name}: {e}"
             )
 
-    def open_vscode(self):
+    def open_vscode(self) -> None:
 
         try:
 
@@ -379,117 +314,113 @@ class OSController:
                 f"[VSCODE ERROR] {e}"
             )
 
-    def open_terminal(self):
+    def open_terminal(self) -> None:
 
         self._open_mac_app(
             self._app_name("terminal", "Terminal")
         )
 
-    def open_safari(self):
+    def open_safari(self) -> None:
 
         self._open_mac_app(
             self._app_name("safari", "Safari")
         )
 
-    def open_chrome(self):
+    def open_chrome(self) -> None:
 
         self._open_mac_app(
             self._app_name("chrome", "Google Chrome")
         )
 
-    def open_spotify(self):
+    def open_spotify(self) -> None:
 
         self._open_mac_app(
             self._app_name("spotify", "Spotify")
         )
 
-    def open_slack(self):
+    def open_slack(self) -> None:
 
         self._open_mac_app(
             self._app_name("slack", "Slack")
         )
 
-    def open_discord(self):
+    def open_discord(self) -> None:
 
         self._open_mac_app(
             self._app_name("discord", "Discord")
         )
 
-    def open_mail(self):
+    def open_mail(self) -> None:
 
         self._open_mac_app(
             self._app_name("mail", "Mail")
         )
 
-    def open_calendar(self):
+    def open_calendar(self) -> None:
 
         self._open_mac_app(
             self._app_name("calendar", "Calendar")
         )
 
-    def open_notes(self):
+    def open_notes(self) -> None:
 
         self._open_mac_app(
             self._app_name("notes", "Notes")
         )
 
-    def open_telegram(self):
+    def open_telegram(self) -> None:
 
         self._open_mac_app(
             self._app_name("telegram", "Telegram")
         )
 
-    def open_finder(self):
+    def open_finder(self) -> None:
 
         self._open_mac_app(
             self._app_name("finder", "Finder")
         )
 
-    def open_notion(self):
+    def open_notion(self) -> None:
 
         self._open_mac_app(
             self._app_name("notion", "Notion")
         )
 
-    def open_photos(self):
+    def open_photos(self) -> None:
 
         self._open_mac_app(
             self._app_name("photos", "Photos")
         )
 
-    def open_preview(self):
+    def open_preview(self) -> None:
 
         self._open_mac_app(
             self._app_name("preview", "Preview")
         )
 
-    def open_settings(self):
+    def open_settings(self) -> None:
 
         self._open_mac_app(
             self._app_name("settings", "System Settings")
         )
 
-    def open_tv(self):
+    def open_tv(self) -> None:
 
         self._open_mac_app(
             self._app_name("tv", "TV")
         )
 
-    def open_news(self):
+    def open_news(self) -> None:
 
         self._open_mac_app(
             self._app_name("news", "News")
         )
 
-    # ---------------------------------
-    # Websites
-    # ---------------------------------
-
-    def open_website(self, url):
+    def open_website(self, url: str) -> None:
 
         webbrowser.open(url)
 
-    def open_browser(self):
+    def open_browser(self) -> None:
 
         webbrowser.open(
             self.urls.get(
@@ -498,7 +429,7 @@ class OSController:
             )
         )
 
-    def open_chatgpt(self):
+    def open_chatgpt(self) -> None:
 
         webbrowser.open(
             self.urls.get(
@@ -507,7 +438,7 @@ class OSController:
             )
         )
 
-    def open_github(self):
+    def open_github(self) -> None:
 
         webbrowser.open(
             self.urls.get(
@@ -516,11 +447,92 @@ class OSController:
             )
         )
 
-    # ---------------------------------
-    # Focus Music (Study Environment)
-    # ---------------------------------
+    def open_netflix(self) -> None:
 
-    def play_focus_music(self):
+        webbrowser.open(
+            self.urls.get(
+                "netflix",
+                "https://www.netflix.com"
+            )
+        )
+
+    # A window group is a list of tab-groups: each inner list becomes one
+    # Chrome window, its first URL opening the window and the rest joining
+    # it as tabs.
+    def open_window_group(self, group_name: str) -> None:
+
+        for tab_urls in self.window_groups.get(
+            group_name,
+            []
+        ):
+
+            if not tab_urls:
+                continue
+
+            self._open_chrome_new_window(
+                tab_urls[0]
+            )
+
+            time.sleep(1)
+
+            for url in tab_urls[1:]:
+                self._open_chrome_tab(url)
+
+    def _open_chrome_new_window(self, url: str) -> None:
+
+        try:
+
+            subprocess.Popen(
+                [
+                    "open", "-na",
+                    self._app_name("chrome", "Google Chrome"),
+                    "--args", "--new-window", url
+                ]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CHROME WINDOW ERROR] {url}: {e}"
+            )
+
+    def _open_chrome_tab(self, url: str) -> None:
+
+        try:
+
+            subprocess.Popen(
+                [
+                    "open", "-a",
+                    self._app_name("chrome", "Google Chrome"),
+                    url
+                ]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CHROME TAB ERROR] {url}: {e}"
+            )
+
+    def open_job_search_windows(self) -> None:
+
+        self.open_window_group(
+            "job_search"
+        )
+
+    def open_study_windows(self) -> None:
+
+        self.open_window_group(
+            "study"
+        )
+
+    def open_news_tabs(self) -> None:
+
+        self.open_window_group(
+            "news"
+        )
+
+    def play_focus_music(self) -> None:
 
         try:
 
@@ -543,7 +555,7 @@ class OSController:
                 f"[MUSIC ERROR] {e}"
             )
 
-    def pause_focus_music(self):
+    def pause_focus_music(self) -> None:
 
         try:
 
@@ -566,83 +578,51 @@ class OSController:
                 f"[MUSIC ERROR] {e}"
             )
 
-    # ---------------------------------
-    # Media Play / Pause (Global)
-    # ---------------------------------
-
-    # Works with whichever player currently owns "now
-    # playing" (Spotify, Music, a browser tab, QuickTime,
-    # ...) by sending an MRMediaRemoteSendCommand, the same
-    # command path Control Center's Now Playing widget and
-    # Bluetooth headphone remote buttons use — not an
-    # app-specific AppleScript call, and not a synthetic
-    # NX_KEYTYPE HID key press (see MR_COMMAND_* comment
-    # above for why).
-    #
-    # This is inherently a single toggle command, not separate
-    # absolute play/pause commands, so "start" and "stop" both
-    # send the identical command: saying "stop" while already
-    # paused resumes playback. See docs/SYSTEM_FUNCTIONS.md
-    # for this accepted limitation.
-    def media_play_pause(self):
+    # This is a single toggle command, not separate play/pause commands —
+    # sending it while already paused resumes playback. Accepted limitation,
+    # see docs/SYSTEM_FUNCTIONS.md.
+    def media_play_pause(self) -> None:
 
         self._post_media_remote_command(
             self.MR_COMMAND_TOGGLE_PLAY_PAUSE
         )
 
-    # ---------------------------------
-    # Next / Previous Track (Global)
-    # ---------------------------------
-
-    # Same MediaRemote command mechanism as media_play_pause —
-    # works with whichever player owns "now playing", not tied
-    # to one specific app.
-    def next_track(self):
+    def next_track(self) -> None:
 
         self._post_media_remote_command(
             self.MR_COMMAND_NEXT_TRACK
         )
 
-    def previous_track(self):
+    def previous_track(self) -> None:
 
         self._post_media_remote_command(
             self.MR_COMMAND_PREVIOUS_TRACK
         )
 
-    # ---------------------------------
-    # Volume (Global)
-    # ---------------------------------
-
-    # Unlike media_play_pause/next_track/previous_track, these
-    # do NOT depend on any app registering itself as macOS's
-    # "Now Playing" — Sound Up/Down are handled directly by
-    # CoreAudio at the system level, so they change the actual
-    # output volume regardless of which (if any) app is
-    # playing anything. Each call is one "tick" (the same
-    # ~6.25%-of-full-range step a physical volume key press
-    # does), not a custom percentage — matching a single
-    # eyebrow-raise to a single discrete step rather than a
-    # continuous ramp.
-    def volume_up(self):
+    # Unlike the MediaRemote calls above, volume is handled directly by
+    # CoreAudio and doesn't depend on any app owning "Now Playing". Each
+    # call is one hardware "tick" (~6.25% of full range), matching a single
+    # gesture to a single discrete step rather than a continuous ramp.
+    def volume_up(self) -> None:
 
         self._post_system_media_key(
             self.NX_KEYTYPE_SOUND_UP
         )
 
-    def volume_down(self):
+    def volume_down(self) -> None:
 
         self._post_system_media_key(
             self.NX_KEYTYPE_SOUND_DOWN
         )
 
-    def _post_system_media_key(self, nx_keytype):
+    def _post_system_media_key(self, nx_keytype: int) -> None:
 
         try:
 
             from AppKit import NSEvent
             import Quartz
 
-            def post(key_down):
+            def post(key_down: bool) -> None:
 
                 flags = 0xa00 if key_down else 0xb00
 
@@ -680,12 +660,7 @@ class OSController:
                 f"[MEDIA ERROR] {e}"
             )
 
-    # ---------------------------------
-    # MediaRemote Command (Global Play/
-    # Pause/Next/Previous)
-    # ---------------------------------
-
-    def _post_media_remote_command(self, command):
+    def _post_media_remote_command(self, command: int) -> None:
 
         try:
 
@@ -730,19 +705,11 @@ class OSController:
 
         return self.media_remote_send_command
 
-    # ---------------------------------
-    # Do Not Disturb
-    # ---------------------------------
-
-    # Raw `defaults write` + `killall NotificationCenter`
-    # toggling is version-fragile and deprecated on modern
-    # macOS. The supported approach is running a Focus
-    # toggle through the Shortcuts app — this requires the
-    # user to author "Enable Do Not Disturb" and "Disable
-    # Do Not Disturb" Shortcuts once (see
-    # docs/SYSTEM_FUNCTIONS.md setup section).
-
-    def enable_do_not_disturb(self):
+    # Raw `defaults write` + `killall NotificationCenter` toggling is
+    # version-fragile and deprecated; the supported approach is running a
+    # Focus toggle through the Shortcuts app (user must author the two
+    # Shortcuts once — see docs/SYSTEM_FUNCTIONS.md setup section).
+    def enable_do_not_disturb(self) -> None:
 
         try:
 
@@ -761,7 +728,7 @@ class OSController:
                 f"[DND ERROR] {e}"
             )
 
-    def disable_do_not_disturb(self):
+    def disable_do_not_disturb(self) -> None:
 
         try:
 
@@ -780,11 +747,28 @@ class OSController:
                 f"[DND ERROR] {e}"
             )
 
-    # ---------------------------------
-    # Display Sleep (Movie / Presentation)
-    # ---------------------------------
+    # Runs a user-authored Shortcuts automation that controls the Magic
+    # Home smart lights; there is no direct Magic Home API call here.
+    def run_cinema_mode(self) -> None:
 
-    def prevent_display_sleep(self):
+        try:
+
+            shortcut_name = self.shortcuts.get(
+                "cinema_mode",
+                "Turn on cinema mode"
+            )
+
+            subprocess.Popen(
+                ["shortcuts", "run", shortcut_name]
+            )
+
+        except Exception as e:
+
+            print(
+                f"[CINEMA MODE ERROR] {e}"
+            )
+
+    def prevent_display_sleep(self) -> None:
 
         try:
 
@@ -798,7 +782,7 @@ class OSController:
                 f"[CAFFEINATE ERROR] {e}"
             )
 
-    def allow_display_sleep(self):
+    def allow_display_sleep(self) -> None:
 
         if self.caffeinate_process is None:
             return
@@ -815,85 +799,55 @@ class OSController:
 
         self.caffeinate_process = None
 
-    # ---------------------------------
-    # Slides (Presentation Mode)
-    # ---------------------------------
-
-    # Entering Presentation mode only arms this app's own
-    # next/previous-slide mapping — it does not itself start
-    # the on-screen slideshow. F5 is PowerPoint/Keynote's own
-    # "start slideshow from the beginning" shortcut, sent as a
-    # real keystroke so it reaches whichever presentation app
-    # currently has focus, the same app-agnostic approach as
-    # next_slide/previous_slide below.
-    def start_slideshow(self):
+    # F5 is PowerPoint/Keynote's own "start from the beginning" shortcut;
+    # entering Presentation mode only arms next/previous-slide mapping,
+    # it does not start the slideshow itself.
+    def start_slideshow(self) -> None:
 
         self._send_hotkey(
             "start_slideshow",
             ["f5"]
         )
 
-    def next_slide(self):
+    def next_slide(self) -> None:
 
         self._send_hotkey(
             "next_slide",
             ["right"]
         )
 
-    def previous_slide(self):
+    def previous_slide(self) -> None:
 
         self._send_hotkey(
             "previous_slide",
             ["left"]
         )
 
-    # ---------------------------------
-    # Call Mode (Microsoft Teams)
-    # ---------------------------------
-
-    # Teams' own meeting-control shortcuts, sent as real
-    # keystrokes — there is no app-agnostic "mute the current
-    # call" system API, so this is inherently tied to whichever
-    # call app the user has (Teams, per current project
-    # configuration). These are Teams for Mac's documented
-    # bindings as of this writing; Microsoft has changed them
-    # before, so re-verify against Teams' own Settings ->
-    # Keyboard shortcuts page if they stop firing.
-    #
-    # Each of these is a single toggle shortcut, the same
-    # limitation already documented for media_play_pause: there
-    # is no distinct "turn on"/"turn off" keystroke, so firing it
-    # while already in the target state (e.g. already unmuted)
-    # flips it the other way rather than no-op'ing. This is the
-    # honest consequence of the one-finger/two-finger/etc. gesture
-    # itself only being a single toggle trigger (see
-    # GestureRecognizer.locked_toggle_gestures for how a gesture
-    # is prevented from firing twice in a row without the hand
-    # actually leaving the frame in between).
-    def toggle_mic(self):
+    # Teams for Mac's own meeting-control shortcuts, sent as real
+    # keystrokes; there is no app-agnostic "mute the current call" API.
+    # Microsoft has changed these bindings before — re-verify against
+    # Teams' Settings -> Keyboard shortcuts if they stop firing. Each is a
+    # single toggle: firing it while already in the target state flips it
+    # back rather than no-op'ing (see GestureRecognizer.locked_toggle_gestures
+    # for how a gesture is kept from firing twice in a row).
+    def toggle_mic(self) -> None:
 
         self._send_hotkey(
             "toggle_mic",
             ["command", "shift", "m"]
         )
 
-    def toggle_camera(self):
+    def toggle_camera(self) -> None:
 
         self._send_hotkey(
             "toggle_camera",
             ["command", "shift", "o"]
         )
 
-    # Teams has no documented keyboard shortcut for muting the
-    # call's own incoming audio specifically (only mic, camera,
-    # and raise-hand are exposed as shortcuts) — this instead
-    # toggles the Mac's system-wide audio output mute, which
-    # silences the call's sound along with everything else on
-    # the machine. An honest limitation, not a bug: it is the
-    # only way to reliably silence a call's audio from outside
-    # the Teams window without UI-scripting a click on Teams' own
-    # volume control.
-    def toggle_call_audio(self):
+    # Teams exposes no shortcut for muting the call's own incoming audio,
+    # so this toggles the Mac's system-wide output mute instead, silencing
+    # everything, not just the call.
+    def toggle_call_audio(self) -> None:
 
         try:
 
@@ -913,32 +867,16 @@ class OSController:
                 f"[CALL AUDIO ERROR] {e}"
             )
 
-    # Cmd+Shift+P is Teams for Mac's background-effects toggle
-    # as of this writing — like the other Teams shortcuts above,
-    # re-verify against Teams' own Settings -> Keyboard shortcuts
-    # page if it stops firing.
-    def toggle_background_blur(self):
+    def toggle_background_blur(self) -> None:
 
         self._send_hotkey(
             "toggle_background_blur",
             ["command", "shift", "p"]
         )
 
-    def raise_hand(self):
-
-        self._send_hotkey(
-            "raise_hand",
-            ["command", "shift", "k"]
-        )
-
-    # ---------------------------------
-    # Screenshot (Shift+Alt face layer)
-    # ---------------------------------
-
-    # Full-screen capture, saved to the desktop — macOS's own
-    # built-in shortcut, not an interactive region-select
-    # (Cmd+Shift+4), so it needs no follow-up mouse drag.
-    def take_screenshot(self):
+    # macOS's built-in full-screen capture shortcut, not the interactive
+    # region-select (Cmd+Shift+4), so it needs no follow-up mouse drag.
+    def take_screenshot(self) -> None:
 
         self._send_hotkey(
             "take_screenshot",

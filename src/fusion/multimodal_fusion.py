@@ -1,12 +1,21 @@
+"""Synchronization stage of the fusion layer.
+
+Receives normalized_signal from CommandInterpreter, buffers each source's
+signal in a TemporalSync window (so voice/gesture/keyboard/face signals
+arriving within a short span can combine), and republishes the active set
+as fusion_signal for SignalMapper to decide on. Never decides an action itself.
+"""
+
 import json
 import os
 
+from core.event_bus import EventBus
 from fusion.temporal_sync import TemporalSync
 
 
 class MultimodalFusion:
 
-    def __init__(self, event_bus):
+    def __init__(self, event_bus: EventBus):
 
         self.event_bus = event_bus
 
@@ -15,10 +24,6 @@ class MultimodalFusion:
         self.sync = TemporalSync(
             timeout=signal_timeout
         )
-
-    # ---------------------------------
-    # Load fusion.json settings
-    # ---------------------------------
 
     def _load_signal_timeout(self):
 
@@ -56,10 +61,6 @@ class MultimodalFusion:
 
             return 2.0
 
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
-
     def start(self):
 
         self.event_bus.subscribe(
@@ -83,10 +84,6 @@ class MultimodalFusion:
             "clear_fusion_signals",
             self._clear_signals
         )
-
-    # ---------------------------------
-    # Handle Signal
-    # ---------------------------------
 
     def _handle_signal(self, event):
 
@@ -124,18 +121,15 @@ class MultimodalFusion:
 
         if source == "keyboard" and keyboard_event == "up":
 
-            # The combo just broke — drop it immediately
-            # rather than letting it linger until it times
-            # out on its own.
+            # The combo just broke — drop it immediately rather than
+            # letting it linger until it times out on its own.
             self.sync.clear_signal(source)
 
         else:
 
-            # A keyboard combo is held for as long as the
-            # physical keys are down, so it must not expire
-            # on the fixed voice/gesture timeout — every
-            # other source stays exactly as momentary as
-            # before.
+            # A keyboard combo is held for as long as the physical keys
+            # are down, so it must not expire on the fixed voice/gesture
+            # timeout — every other source stays as momentary as before.
             self.sync.store_signal(
 
                 source=source,
@@ -165,22 +159,14 @@ class MultimodalFusion:
             }
 
         )
-    # ---------------------------------
-    # Clear Signals
-    # ---------------------------------
 
-    # Only clears momentary (voice/gesture) signals so they
-    # cannot immediately re-match the rule that just fired.
-    # A still-physically-held keyboard combo is left in
-    # place, ready to combine with the next gesture/voice
-    # signal that arrives while it is held.
+    # Only clears momentary (voice/gesture) signals so they cannot
+    # immediately re-match the rule that just fired. A still-physically-held
+    # keyboard combo is left in place, ready to combine with the next
+    # gesture/voice signal that arrives while it is held.
     def _clear_signals(self, event):
 
         self.sync.clear_non_persistent()
-
-    # ---------------------------------
-    # Public API
-    # ---------------------------------
 
     def get_active_signals(self):
 

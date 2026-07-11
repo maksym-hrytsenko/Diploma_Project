@@ -1,3 +1,12 @@
+"""Calibration HUD for FaceRecognizer.
+
+Renders a cv2 window over the live camera feed showing head-pose angles and
+blendshape scores next to the thresholds FaceRecognizer compares them
+against, so those thresholds can be tuned against a real face and camera
+instead of guessed from code alone. Enabled via the ``--debug-face`` flag;
+separate from FaceRecognizer's own detection logic.
+"""
+
 import threading
 
 import cv2
@@ -5,33 +14,23 @@ import cv2
 
 class FaceDebugView:
 
-    # A live HUD over the camera feed for calibrating
-    # FaceRecognizer's thresholds (head tilt, eyebrows, mouth,
-    # blink) against a real face and camera — same role
-    # GestureDebugView plays for hand gestures, and the same
-    # main-thread-only rendering constraint applies (cv2.imshow /
-    # cv2.waitKey must run on the main thread on macOS).
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
 
         self.window_name = "Face Debug"
 
+        # cv2.imshow/cv2.waitKey must run on the main thread (macOS), so the
+        # event handler (camera thread) only stores the latest snapshot and
+        # the main loop calls render() to draw it.
         self.lock = threading.Lock()
 
         self.latest_data = None
 
         self.window_open = False
 
-        # Pixel width of the full bar drawn for each 0.0-1.0
-        # blendshape score. Visual size only, no effect on
-        # detection.
         self.bar_width = 200
         self.bar_height = 14
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -55,10 +54,6 @@ class FaceDebugView:
 
             self.window_open = False
 
-    # ---------------------------------
-    # Receive Snapshot (camera thread)
-    # ---------------------------------
-
     def _handle_debug(self, event):
 
         data = event.get(
@@ -69,10 +64,6 @@ class FaceDebugView:
         with self.lock:
 
             self.latest_data = data
-
-    # ---------------------------------
-    # Draw + Show (main thread only)
-    # ---------------------------------
 
     def render(self):
 
@@ -109,10 +100,6 @@ class FaceDebugView:
         self.window_open = True
 
         cv2.waitKey(1)
-
-    # ---------------------------------
-    # Overlay
-    # ---------------------------------
 
     def _draw_overlay(self, display, data):
 
@@ -224,9 +211,6 @@ class FaceDebugView:
 
         y += 25
 
-        # abs(roll) against the same enter/exit thresholds
-        # _check_tilt itself compares against, so the printed
-        # zone always matches what the recognizer just decided.
         roll_color = (255, 255, 255)
 
         if tilt_zone is not None:
@@ -287,7 +271,6 @@ class FaceDebugView:
         bar_x = 10
         bar_y = y
 
-        # Background track for the full 0.0-1.0 range.
         cv2.rectangle(
             display,
             (bar_x, bar_y),
@@ -308,10 +291,8 @@ class FaceDebugView:
             -1
         )
 
-        # Vertical tick marks at the enter/exit thresholds —
-        # exactly the two numbers each check compares the live
-        # score against, so where the filled bar sits relative
-        # to these ticks is the whole calibration story.
+        # Tick marks at the enter/exit thresholds each check compares the
+        # live score against.
         enter_x = bar_x + int(
             max(0.0, min(1.0, enter_threshold)) * self.bar_width
         )

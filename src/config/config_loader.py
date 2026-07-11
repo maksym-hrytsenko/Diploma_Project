@@ -1,11 +1,16 @@
+"""JSON config loading shared by every pipeline module.
+
+Loads and caches system.json, mapping.json and fusion.json — the files
+that back OSController hotkeys/apps/URLs, the voice/gesture command
+mapping, and the multimodal fusion rules respectively.
+"""
+
 import json
 import os
 
 
-# All config JSON files live alongside this module, in
-# src/config/ — resolved from this file's own location so
-# every caller gets the same path regardless of the process's
-# current working directory.
+# Resolved from this file's own location, not the process cwd, so every
+# caller gets the same path regardless of where the app was launched from.
 _CONFIG_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -13,7 +18,16 @@ _CONFIG_DIR = os.path.dirname(
 _cache = {}
 
 
-def load_config(filename, force_reload=False):
+def load_config(filename: str, force_reload: bool = False) -> dict:
+    """Load a JSON config file from src/config/, caching by filename.
+
+    Args:
+        filename: Name of the JSON file inside src/config/.
+        force_reload: Bypass the cache and re-read from disk.
+
+    Returns:
+        The parsed JSON content.
+    """
 
     if not force_reload and filename in _cache:
         return _cache[filename]
@@ -36,7 +50,7 @@ def load_config(filename, force_reload=False):
     return data
 
 
-def load_system_config(force_reload=False):
+def load_system_config(force_reload: bool = False) -> dict:
 
     return load_config(
         "system.json",
@@ -44,7 +58,7 @@ def load_system_config(force_reload=False):
     )
 
 
-def load_mapping_config(force_reload=False):
+def load_mapping_config(force_reload: bool = False) -> dict:
 
     return load_config(
         "mapping.json",
@@ -52,7 +66,7 @@ def load_mapping_config(force_reload=False):
     )
 
 
-def load_fusion_config(force_reload=False):
+def load_fusion_config(force_reload: bool = False) -> dict:
 
     return load_config(
         "fusion.json",

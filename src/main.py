@@ -1,4 +1,13 @@
+"""Application entry point.
+
+Wires every module of the multimodal control pipeline (input -> processing ->
+interpretation -> fusion -> execution -> UI) to a shared EventBus, starts them
+in dependency order, and drives the Qt event loop alongside the system's own
+polling loop.
+"""
+
 import sys
+import threading
 import time
 
 from PyQt6.QtWidgets import QApplication
@@ -27,34 +36,28 @@ from fusion.signal_mapper import SignalMapper
 from execution.action_executor import ActionExecutor
 
 from ui.quick_command_overlay import QuickCommandOverlay
+from ui.main_window import MainWindow
+from ui.floating_status_bar import FloatingStatusBar
 from ui.native_window import configure_accessory_app
 
 from config.config_loader import load_system_config
 
 
-def main():
+def main() -> None:
 
-    # Calibration helper: opens a window showing the
-    # camera feed with the anchor point, tracked finger
-    # and current zone drawn on top
+    # --debug-gesture: overlays the camera feed with the anchor point,
+    # tracked finger and current zone.
     debug_gesture = "--debug-gesture" in sys.argv
 
-    # Same idea as --debug-gesture, but for FaceRecognizer's head
-    # tilt / eyebrows / mouth / blink thresholds (§9 in
-    # docs/SYSTEM_FUNCTIONS.md) — opens a window showing live
-    # pitch/yaw/roll and blendshape scores next to the exact
-    # thresholds they're compared against.
+    # --debug-face: overlays live pitch/yaw/roll and blendshape scores
+    # against the thresholds they're compared to (see docs/SYSTEM_FUNCTIONS.md §9).
     debug_face = "--debug-face" in sys.argv
 
-    # Prints every recognized voice phrase and wake-word
-    # gate decision to the terminal — off by default so
-    # normal runs stay quiet.
     debug_voice = "--debug-voice" in sys.argv
 
-    # Must exist, on the main thread, before ActionExecutor
-    # constructs PointerOverlay (a QWidget). Qt requires
-    # its widgets to be created after a QApplication and
-    # on the thread that owns the application.
+    # Qt requires its widgets to be created after a QApplication exists, on
+    # the thread that owns it — this must run before ActionExecutor builds
+    # PointerOverlay.
     qt_app = QApplication(sys.argv)
 
     loop_sleep_seconds = load_system_config().get(
@@ -65,20 +68,13 @@ def main():
         0.01
     )
 
-    # Must run before any overlay widget (PointerOverlay,
-    # QuickCommandOverlay) is constructed — see
-    # configure_accessory_app's own comment for why this is
-    # what actually stops the quick-circle overlay from
-    # spawning its own empty Space.
+    # Must run before any overlay widget (PointerOverlay, QuickCommandOverlay)
+    # is constructed — see configure_accessory_app for why.
     configure_accessory_app()
 
     event_bus = EventBus()
 
     state_manager = StateManager()
-
-    # ---------------------------------
-    # Keyboard Modules
-    # ---------------------------------
 
     keyboard_input = KeyboardInput(
         event_bus
@@ -87,10 +83,6 @@ def main():
     keyboard_processor = KeyboardProcessor(
         event_bus
     )
-
-    # ---------------------------------
-    # Voice Modules
-    # ---------------------------------
 
     microphone_input = MicrophoneInput(
         event_bus
@@ -107,10 +99,6 @@ def main():
         state_manager,
         debug=debug_voice
     )
-
-    # ---------------------------------
-    # Camera / Gesture Modules
-    # ---------------------------------
 
     camera_input = CameraInput(
         event_bus
@@ -140,10 +128,6 @@ def main():
             event_bus
         )
 
-    # ---------------------------------
-    # Core Pipeline
-    # ---------------------------------
-
     interpreter = CommandInterpreter(
         event_bus
     )
@@ -164,18 +148,38 @@ def main():
         event_bus
     )
 
-    # ---------------------------------
-    # Start Modules
-    #
-    # Started in reverse pipeline order —
-    # every consumer subscribes before the
-    # producer that could feed it anything
-    # starts running, so no early event
-    # (e.g. a mode_changed fired the instant
-    # a camera frame arrives) is ever missed.
-    # ---------------------------------
+    main_window = MainWindow(
+        event_bus
+    )
 
+    floating_status_bar = FloatingStatusBar(
+        event_bus
+    )
+
+    # Set from FloatingStatusBar's close (X) button, via the
+    # "ui_quit_requested" event — the only way to stop the whole pipeline
+    # from the UI without going through a terminal Ctrl-C.
+    shutdown_requested = threading.Event()
+
+    def _handle_quit_requested(event):
+
+        shutdown_requested.set()
+
+    event_bus.subscribe(
+        "ui_quit_requested",
+        _handle_quit_requested
+    )
+
+    # Started in reverse pipeline order so every consumer subscribes before
+    # the producer that could feed it starts running — otherwise an early
+    # event could be published before anything is listening for it.
     executor.start()
+
+    main_window.start()
+
+    main_window.show()
+
+    floating_status_bar.start()
 
     quick_command_overlay.start()
 
@@ -209,25 +213,17 @@ def main():
 
     keyboard_input.start()
 
-    # ---------------------------------
-    # Main Loop
-    # ---------------------------------
-
     try:
 
-        while True:
+        while not shutdown_requested.is_set():
 
-            # Drains events pynput's callback thread only ever
-            # queued (never published directly — see
-            # KeyboardInput for why) and publishes them here on
-            # the main thread, where the rest of the pipeline
-            # (and any OSController side effect it triggers) is
-            # safe to actually run.
+            # KeyboardInput only queues events from pynput's callback thread;
+            # this publishes them here on the main thread, where the rest of
+            # the pipeline (and any OSController side effect) is safe to run.
             keyboard_input.poll()
 
-            # cv2.imshow / cv2.waitKey must run on the main
-            # thread, so the debug window is drawn here
-            # instead of from the camera capture thread
+            # cv2.imshow/cv2.waitKey must run on the main thread, so the
+            # debug windows are drawn here rather than from the capture thread.
             if gesture_debug_view is not None:
 
                 gesture_debug_view.render()
@@ -236,11 +232,8 @@ def main():
 
                 face_debug_view.render()
 
-            # Non-blocking; delivers the queued
-            # position_updated signal onto this thread and
-            # lets the pointer overlay's QTimer/paintEvent
-            # run, without giving up control of the loop
-            # the way app.exec() would.
+            # Non-blocking pump for the pointer overlay's QTimer/paintEvent,
+            # without ceding control of the loop the way app.exec() would.
             qt_app.processEvents()
 
             if gesture_debug_view is None and face_debug_view is None:
@@ -251,6 +244,10 @@ def main():
 
         print("\nStopping...")
 
+    finally:
+
+        # Runs whether the loop ended via Ctrl-C or via the floating
+        # status bar's close (X) button setting shutdown_requested.
         keyboard_input.stop()
 
         keyboard_processor.stop()
@@ -284,6 +281,10 @@ def main():
         executor.stop()
 
         quick_command_overlay.stop()
+
+        main_window.stop()
+
+        floating_status_bar.stop()
 
         print("System stopped.")
 

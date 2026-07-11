@@ -35,6 +35,7 @@
         "START_SLIDESHOW": "start presentation",
 
         "WORK_MODE": "work mode",
+        "JOB_SEARCH_MODE": "job search mode",
         "STUDY_MODE": "study mode",
         "MOVIE_MODE": "movie mode",
         "NEWS_MODE": "news mode",
@@ -81,8 +82,7 @@
         "ONE_FINGER": "ONE_FINGER",
         "TWO_FINGERS": "TWO_FINGERS",
         "THREE_FINGERS": "THREE_FINGERS",
-        "FOUR_FINGERS": "FOUR_FINGERS",
-        "OK_SIGN": "OK_SIGN"
+        "FOUR_FINGERS": "FOUR_FINGERS"
     },
 
     "face": {
@@ -138,6 +138,7 @@
             "START_SLIDESHOW",
 
             "WORK_MODE",
+            "JOB_SEARCH_MODE",
             "STUDY_MODE",
             "MOVIE_MODE",
             "NEWS_MODE",
@@ -184,8 +185,7 @@
             "ONE_FINGER",
             "TWO_FINGERS",
             "THREE_FINGERS",
-            "FOUR_FINGERS",
-            "OK_SIGN"
+            "FOUR_FINGERS"
         ],
 
         "face": [

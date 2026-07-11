@@ -1,3 +1,8 @@
+"""Standalone manual test that polls and prints the foreground window's title,
+PID, and owning process name using pywin32/psutil, to check that active-window
+detection works in isolation before it was wired into the main app.
+"""
+
 import win32gui
 import win32process
 import psutil

@@ -1,3 +1,8 @@
+"""Standalone manual test that logs every keyboard and mouse event (via
+pynput) with a timestamp, to inspect raw input timing/format before it was
+wired into the main app's input-handling pipeline.
+"""
+
 from pynput import mouse, keyboard
 import time
 
@@ -5,7 +10,6 @@ print("=== Full Input Test Started ===")
 print("ESC to stop\n")
 
 
-# --- Keyboard ---
 def on_key_press(key):
     timestamp = time.time()
     try:
@@ -25,7 +29,6 @@ def on_key_release(key):
         return False
 
 
-# --- Mouse ---
 def on_move(x, y):
     timestamp = time.time()
     print(f"{timestamp:.6f} | MOUSE | move | ({x}, {y})")
@@ -42,7 +45,6 @@ def on_scroll(x, y, dx, dy):
     print(f"{timestamp:.6f} | MOUSE | scroll | dx={dx}, dy={dy} | ({x}, {y})")
 
 
-# --- Listeners ---
 mouse_listener = mouse.Listener(
     on_move=on_move,
     on_click=on_click,

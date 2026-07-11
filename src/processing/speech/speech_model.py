@@ -1,3 +1,11 @@
+"""Offline speech recognition core, backing SpeechRecognizer.
+
+Wraps Vosk's grammar-constrained recognizer (built from config/mapping.json's
+voice phrases), gates results through Silero VAD to reject ambient noise,
+and falls back to open-vocabulary Whisper transcription when the grammar
+can't cover what was said.
+"""
+
 import json
 
 from concurrent.futures import ProcessPoolExecutor
@@ -68,41 +76,31 @@ class VoskSpeechModel:
 
         self.utterance_chunks = []
 
-        # True the moment the grammar recognizer sees the
-        # wake word in ANY partial or final hypothesis during
-        # the utterance currently being spoken — tracked
-        # independently of what the final text ends up being,
-        # since Whisper's open-vocab re-transcription of the
-        # rest of the utterance can (and does) fail to
-        # reproduce "jack" even when Vosk's own grammar
-        # decoder caught it clearly a moment earlier.
+        # True the moment the grammar recognizer sees the wake word in ANY
+        # partial or final hypothesis during the current utterance —
+        # tracked independently of the final text, since Whisper's
+        # open-vocab re-transcription can fail to reproduce "jack" even
+        # when Vosk's own grammar decoder caught it clearly a moment earlier.
         self.utterance_heard_wake_word = False
 
-        # Lazily created. Whisper transcription runs in a
-        # separate OS process (not just a thread) so that a
-        # slow/cold model load or a long transcription can
-        # never hold the CPython GIL and stall other threads
-        # in this process — in particular the pynput
-        # CGEventTap callback thread, which macOS will
-        # permanently disable if it does not return quickly.
+        # Lazily created. Whisper transcription runs in a separate OS
+        # process (not just a thread) so a slow/cold model load or a long
+        # transcription can never hold the CPython GIL and stall other
+        # threads — in particular the pynput CGEventTap callback thread,
+        # which macOS permanently disables if it doesn't return quickly.
         self.open_vocab_executor = None
 
         self._load_nlu_fallback_config()
 
-        # Tiny/fast (~1s load, ~40ms per check) — safe to
-        # run in-process, unlike Whisper/LLM. Filters out
-        # ambient sound (background video/music/room noise)
-        # so it never reaches the grammar result or the
-        # open-vocab fallback in the first place.
+        # Tiny/fast (~1s load, ~40ms per check) — safe to run in-process,
+        # unlike Whisper/LLM. Filters out ambient sound (background
+        # video/music/room noise) before it reaches the grammar result or
+        # the open-vocab fallback.
         self.vad_model = (
             load_silero_vad()
             if self.vad_enabled
             else None
         )
-
-    # ---------------------------------
-    # Load Grammar
-    # ---------------------------------
 
     def _load_grammar(self):
 
@@ -127,10 +125,6 @@ class VoskSpeechModel:
 
         return json.dumps(grammar)
 
-    # ---------------------------------
-    # Load Wake Word
-    # ---------------------------------
-
     def _load_wake_word(self):
 
         system = load_system_config()
@@ -139,10 +133,6 @@ class VoskSpeechModel:
             "wake_word",
             "jack"
         )
-
-    # ---------------------------------
-    # Load NLU Fallback Config
-    # ---------------------------------
 
     def _load_nlu_fallback_config(self):
 
@@ -180,10 +170,6 @@ class VoskSpeechModel:
             bytes_per_second * min_fallback_audio_seconds
         )
 
-    # ---------------------------------
-    # Process Audio
-    # ---------------------------------
-
     def process_audio(
         self,
         audio_chunk
@@ -195,10 +181,6 @@ class VoskSpeechModel:
         self.utterance_chunks.append(
             audio_chunk
         )
-
-        # ---------------------------------
-        # Final Result
-        # ---------------------------------
 
         if self.recognizer.AcceptWaveform(
             audio_chunk
@@ -226,25 +208,22 @@ class VoskSpeechModel:
 
             self.utterance_chunks = []
 
-            # Discard the whole utterance if no actual
-            # speech was detected in it. This is what keeps
-            # a TV/video/music playing nearby from being
-            # treated as spoken commands.
+            # Discard the whole utterance if no actual speech was detected
+            # in it — this is what keeps a TV/video/music playing nearby
+            # from being treated as spoken commands.
             if not self._has_speech(buffered_audio):
 
                 return None
 
             used_open_vocab = False
 
-            # Vosk's phrase-list grammar can chain multiple
-            # list entries into one final result, so any
-            # "[unk]" token anywhere means part of the
-            # utterance fell outside the ~38-phrase grammar —
-            # re-transcribe the whole thing with the open-
-            # vocabulary model rather than only acting on an
-            # exact "[unk]" match (which would miss this and
-            # leave the literal token "[unk]" to be matched
-            # against commands downstream).
+            # Vosk's phrase-list grammar can chain multiple list entries
+            # into one final result, so any "[unk]" token anywhere means
+            # part of the utterance fell outside the grammar —
+            # re-transcribe the whole thing with the open-vocabulary model
+            # rather than only acting on an exact "[unk]" match, which
+            # would leave the literal token "[unk]" to be matched against
+            # commands downstream.
             if "[unk]" in text.split():
 
                 fallback_text = self._fallback_transcribe(
@@ -275,10 +254,6 @@ class VoskSpeechModel:
 
                 }
 
-        # ---------------------------------
-        # Partial Result
-        # ---------------------------------
-
         partial = json.loads(
             self.recognizer.PartialResult()
         )
@@ -303,10 +278,6 @@ class VoskSpeechModel:
             }
 
         return None
-
-    # ---------------------------------
-    # Voice Activity Detection
-    # ---------------------------------
 
     def _has_speech(
         self,
@@ -336,10 +307,6 @@ class VoskSpeechModel:
 
         return len(speech_timestamps) > 0
 
-    # ---------------------------------
-    # Open-Vocabulary Fallback
-    # ---------------------------------
-
     def _fallback_transcribe(
         self,
         audio_bytes
@@ -351,9 +318,8 @@ class VoskSpeechModel:
         if not audio_bytes:
             return None
 
-        # Too short to plausibly be a spoken command —
-        # skip it rather than risk Whisper hallucinating
-        # text out of a noise/breath blip.
+        # Too short to plausibly be a spoken command — skip it rather than
+        # risk Whisper hallucinating text out of a noise/breath blip.
         if len(audio_bytes) < self.min_fallback_audio_bytes:
             return None
 
@@ -370,10 +336,6 @@ class VoskSpeechModel:
         )
 
         return future.result()
-
-    # ---------------------------------
-    # Shutdown
-    # ---------------------------------
 
     def close(self):
 

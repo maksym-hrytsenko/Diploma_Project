@@ -72,9 +72,6 @@
     "drag_activation_distance": 0.03,
     "double_pinch_window": 0.3,
 
-    "ok_sign_release_multiplier": 1.6,
-    "ok_sign_cooldown": 0.6,
-
     "call_toggle_hold_seconds": 1.5,
 
     "precision_scale": 0.5,
@@ -108,14 +105,14 @@
       "toggle_mic": ["command", "shift", "m"],
       "toggle_camera": ["command", "shift", "o"],
       "toggle_background_blur": ["command", "shift", "p"],
-      "raise_hand": ["command", "shift", "k"],
       "take_screenshot": ["command", "shift", "3"]
     },
 
     "urls": {
       "browser": "https://google.com",
       "chatgpt": "https://chatgpt.com",
-      "github": "https://github.com"
+      "github": "https://github.com",
+      "netflix": "https://www.netflix.com"
     },
 
     "apps": {
@@ -123,24 +120,70 @@
       "safari": "Safari",
       "chrome": "Google Chrome",
       "spotify": "Spotify",
-      "slack": "Slack",
       "discord": "Discord",
-      "mail": "Mail",
       "calendar": "Calendar",
       "notes": "Notes",
       "telegram": "Telegram",
       "finder": "Finder",
       "notion": "Notion",
       "photos": "Photos",
-      "preview": "Preview",
-      "settings": "System Settings",
-      "tv": "TV",
-      "news": "News"
+      "settings": "System Settings"
     },
 
     "shortcuts": {
       "enable_dnd": "Enable Do Not Disturb",
-      "disable_dnd": "Disable Do Not Disturb"
+      "disable_dnd": "Disable Do Not Disturb",
+      "cinema_mode": "Turn on cinema mode"
+    },
+
+    "window_groups": {
+      "job_search": [
+        [
+          "https://www.prace.cz/hledat/?searchForm%5Blocality_codes%5D=R200000&searchForm%5Bprofs%5D=PLC%3BControl+Systems%3BRobotics%3BEmbedded%3BAutomatizace%3B%C5%98%C3%ADdic%C3%AD+syst%C3%A9my%3BTestovac%C3%AD+in%C5%BEen%C3%BDr%3BAutomation%3BPr%C5%AFmyslov%C3%A1+automatizace%3BAutomatiza%C4%8Dn%C3%AD+in%C5%BEen%C3%BDr%3BPLC+program%C3%A1tor%3BSCADA",
+          "https://www.jobs.cz/prace/praha/?profession%5B%5D=201100585&profession%5B%5D=201100562&q%5B%5D=C&q%5B%5D=C%2B%2B&q%5B%5D=Programming&q%5B%5D=IT&q%5B%5D=Automation&q%5B%5D=PLC&q%5B%5D=SCADA&q%5B%5D=Robotics&q%5B%5D=Industrial&q%5B%5D=St%C3%A1%C5%BE&q%5B%5D=Absolvent&q%5B%5D=Automatizace&q%5B%5D=junior%20software&employment%5B%5D=part&employment%5B%5D=internships&contract%5B%5D=agreement&education=uni&language-skill%5B%5D=en&language-skill%5B%5D=ru&language-skill%5B%5D=cs&suitable-for=graduates&locality%5Bradius%5D=0",
+          "https://www.startupjobs.cz/nabidky/ai-vyvojar,back-end-vyvojar,front-end-vyvojar,full-stack-vyvojar,hardware-and-firmware-engineer,mobilni-vyvojar,software-architekt,tester?lokalita=Praha:50.08584:14.422954:20km&pracovni-rezim=hybrid,onsite&uvazek=part-time&seniorita=junior",
+          "https://www.linkedin.com/jobs/search/?currentJobId=4374107382&distance=25.0&f_E=1%2C2%2C3&f_JT=P%2CC%2CI&f_PP=106978326&geoId=104508036&keywords=junior%20software&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true",
+          "https://cz.indeed.com/jobs?q=trainee+program&nl=&l=hlavn%C3%AD+m%C4%9Bsto+praha&radius=25&from=searchOnDesktopSerp&start=10&vjk=75baa9271ffe265f",
+          "https://www.prace.cz/hledat/?searchForm%5Blocality_codes%5D=R200000&searchForm%5Bprofs%5D=Mechatronics+Engineer%3BR%26D+Engineer%3BSystems+Engineer%3BRobotics%3BAutomation+Engineer&searchForm%5Bother%5D=&searchForm%5Bemployment_type_codes%5D%5B%5D=201300001&searchForm%5Bemployment_type_codes%5D%5B%5D=201300002&searchForm%5Bemployment_type_codes%5D%5B%5D=201300004&searchForm%5Bminimal_salary%5D=&searchForm%5Beducation%5D=&searchForm%5Bsuitable_for%5D=203000001&searchForm%5Bsearch%5D=",
+          "https://t-mobile.jobs.cz/?location=R200000&field=200900011&field=200900012&field=200900013&field=200900034&"
+        ],
+        [
+          "https://chatgpt.com/g/g-p-695869674cbc819195e5c96a7d37a275-work/c/698d03d1-596c-832d-9835-1df17c776bd8",
+          "https://www.overleaf.com/project/698cc5db40cf687fd9995a54"
+        ],
+        [
+          "https://chatgpt.com/g/g-p-695869674cbc819195e5c96a7d37a275-work/c/6996ce82-bb34-8329-af7a-2fa18821c4e6",
+          "https://www.overleaf.com/project/6996d093a4acb967467aadf4"
+        ]
+      ],
+
+      "study": [
+        [
+          "https://chatgpt.com/g/g-p-699337a99ea0819193ade9bb1573840b/c/69bb0d8f-1344-832f-b758-fed0c7fee2ee",
+          "https://chatgpt.com/g/g-p-699337a99ea0819193ade9bb1573840b-dp/c/69938865-88cc-832c-a110-95d0f4429c2b",
+          "https://chatgpt.com/c/69c30393-0f60-8332-91a3-2f98c261b359",
+          "https://chatgpt.com/c/69c2989f-afe0-8327-9a58-0ec0151b8b1f",
+          "https://chatgpt.com/g/g-p-69c283b47f64819198d2e31038450885-dp-code/c/69c2989f-afe0-8327-9a58-0ec0151b8b1f",
+          "https://notebooklm.google.com/notebook/29466bef-8221-46b4-9f6c-ee794c262477"
+        ],
+        [
+          "https://www.overleaf.com/project/699378f72e4f358ac67efe6b",
+          "https://www.plantuml.com/plantuml/uml/SyfFKj2rKt3CoKnELR1Io4ZDoSa70000"
+        ],
+        [
+          "https://scholar.google.com/",
+          "https://images.google.com/",
+          "https://ieeexplore.ieee.org/Xplore/dynhome.jsp?tag=1"
+        ]
+      ],
+
+      "news": [
+        [
+          "https://www.bbc.com/news/world",
+          "https://www.reuters.com/world/",
+          "https://techcrunch.com/"
+        ]
+      ]
     }
   },
 

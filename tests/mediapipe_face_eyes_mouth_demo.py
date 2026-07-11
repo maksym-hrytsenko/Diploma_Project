@@ -1,3 +1,9 @@
+"""Standalone exploratory script for MediaPipe's FaceLandmarker task.
+
+Detects face landmarks from a live webcam feed and derives simple
+open/closed states for the eyes and mouth from landmark distances, to
+verify the API and heuristic before wiring it into the main application.
+"""
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -7,11 +13,9 @@ import os
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# === PATH ===
 BASE_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "face_landmarker.task")
 
-# === LOAD MODEL ===
 base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 
 options = vision.FaceLandmarkerOptions(
@@ -22,7 +26,6 @@ options = vision.FaceLandmarkerOptions(
 
 landmarker = vision.FaceLandmarker.create_from_options(options)
 
-# === CAMERA ===
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 prev_time = 0
@@ -50,12 +53,12 @@ while True:
         h, w, _ = frame.shape
         face = result.face_landmarks[0]
 
-        # === DRAW LANDMARKS ===
         for lm in face:
             cx, cy = int(lm.x * w), int(lm.y * h)
             cv2.circle(frame, (cx, cy), 1, (0, 255, 0), -1)
 
-        # === MOUTH (indices approximate) ===
+        # Landmark indices are the approximate inner mouth/eye contour points
+        # in MediaPipe's 468-point face mesh.
         upper_lip = face[13]
         lower_lip = face[14]
 
@@ -66,7 +69,6 @@ while True:
 
         mouth_state = "Open" if mouth_dist > 0.02 else "Closed"
 
-        # === EYES ===
         left_eye_top = face[159]
         left_eye_bottom = face[145]
 
@@ -77,7 +79,6 @@ while True:
 
         eye_state = "Open" if eye_dist > 0.01 else "Closed"
 
-        # === DISPLAY ===
         cv2.putText(frame, f'Mouth: {mouth_state}',
                     (10, 40),
                     cv2.FONT_HERSHEY_SIMPLEX,
@@ -88,7 +89,6 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1, (255, 0, 0), 2)
 
-    # === FPS ===
     current_time = time.time()
     fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
     prev_time = current_time

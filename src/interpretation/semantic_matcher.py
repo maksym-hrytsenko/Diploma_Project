@@ -1,3 +1,11 @@
+"""Embedding-similarity fallback for voice commands.
+
+Used by IntentModel when a spoken phrase doesn't exactly match a
+config/mapping.json entry: embeds the phrase and every known command phrase
+with a sentence-transformer model and returns the closest command if its
+cosine similarity clears the caller's threshold.
+"""
+
 from sentence_transformers import (
     SentenceTransformer,
     util
@@ -28,10 +36,6 @@ class SemanticMatcher:
             self.phrases,
             convert_to_tensor=True
         )
-
-    # ---------------------------------
-    # Match
-    # ---------------------------------
 
     def match(
         self,

@@ -1,3 +1,11 @@
+"""Standalone exploratory script for testing OpenAI Whisper transcription.
+
+Records short audio clips from the microphone in a loop, transcribes each
+with a local Whisper model, prints latency, and matches a few hardcoded
+phrases to command names. Used to verify Whisper's transcription API in
+isolation before relying on it elsewhere in the project.
+"""
+
 import whisper
 import sounddevice as sd
 import numpy as np
@@ -5,16 +13,14 @@ import scipy.io.wavfile as wav
 import time
 import os
 
-# ====== FIX для ffmpeg ======
+# Whisper shells out to ffmpeg; on this machine it isn't on PATH by default.
 os.environ["PATH"] += ";C:\\ffmpeg\\bin"
 
-# ====== Налаштування ======
 MODEL_NAME = "base"   # tiny / base / small
 SAMPLE_RATE = 16000
 DURATION = 5
 AUDIO_FILE = "test_audio.wav"
 
-# ====== Завантаження моделі ======
 print("Loading Whisper model...")
 model = whisper.load_model(MODEL_NAME)
 print("Model loaded.\n")
@@ -24,7 +30,6 @@ print("Press Ctrl+C to stop\n")
 
 while True:
     try:
-        # ====== Запис ======
         print(f"\nRecording for {DURATION} seconds... Speak now!")
 
         audio = sd.rec(int(DURATION * SAMPLE_RATE),
@@ -36,10 +41,8 @@ while True:
 
         print("Recording finished.")
 
-        # ====== Збереження ======
         wav.write(AUDIO_FILE, SAMPLE_RATE, audio)
 
-        # ====== Розпізнавання ======
         print("Processing audio...")
 
         start_time = time.time()
@@ -49,14 +52,12 @@ while True:
         end_time = time.time()
         latency = end_time - start_time
 
-        # ====== Результат ======
         text = result["text"].strip()
 
         print("\n=== RESULT ===")
         print("Recognized:", text)
         print(f"Latency: {latency:.2f} sec")
 
-        # ====== Команди ======
         text_lower = text.lower()
 
         if "open browser" in text_lower:

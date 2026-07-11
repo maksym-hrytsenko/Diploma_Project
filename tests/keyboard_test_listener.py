@@ -1,3 +1,8 @@
+"""Standalone exploratory script for the `keyboard` library's global hook API.
+
+Logs every key press/release event with a timestamp to verify hook
+behavior before wiring the library into the main application.
+"""
 import keyboard
 import time
 
@@ -8,10 +13,8 @@ def on_event(event):
     timestamp = time.time()
     print(f"{timestamp:.6f} | key: {event.name} | type: {event.event_type}")
 
-# ловимо всі події (press + release)bn
 keyboard.hook(on_event)
 
-# зупинка по ESC
 keyboard.wait("esc")
 
 print("\n=== Stopped ===")

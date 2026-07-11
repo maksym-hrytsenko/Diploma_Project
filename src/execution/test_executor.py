@@ -1,3 +1,9 @@
+"""Standalone manual test harness for ActionExecutor, run outside the app.
+
+Note: predates ActionExecutor's current EventBus-driven constructor and
+execute() API, kept for reference rather than exercised in CI.
+"""
+
 from action_executor import ActionExecutor
 
 

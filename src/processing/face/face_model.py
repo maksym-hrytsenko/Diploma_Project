@@ -1,3 +1,11 @@
+"""MediaPipe FaceLandmarker wrapper.
+
+Thin adapter around MediaPipe's face-landmarker task: converts a BGR camera
+frame to the format the model expects and runs it in VIDEO mode, returning
+head-pose landmarks, the facial transformation matrix, and blendshape
+scores. Used by FaceRecognizer, which owns all detection/threshold logic.
+"""
+
 import time
 
 import cv2
@@ -11,7 +19,7 @@ class FaceModel:
 
     def __init__(
         self,
-        model_path="models/face_landmarker.task"
+        model_path: str = "models/face_landmarker.task"
     ):
 
         base_options = python.BaseOptions(
@@ -52,9 +60,9 @@ class FaceModel:
             data=rgb_frame
         )
 
-        # VIDEO mode, same reasoning as GestureModel: lets
-        # MediaPipe track the face across frames instead of
-        # re-detecting it from scratch every time.
+        # VIDEO mode lets MediaPipe track the face across frames instead of
+        # re-detecting it from scratch every time (same reasoning as
+        # GestureModel).
         timestamp_ms = int(
             (time.time() - self.start_time) * 1000
         )

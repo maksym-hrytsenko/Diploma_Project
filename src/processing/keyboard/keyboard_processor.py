@@ -1,28 +1,31 @@
+"""Keyboard signal normalization.
+
+Tracks which keys are physically held from keyboard_raw events and publishes
+keyboard_signal "down"/"up" transitions for the current combo. Sits in the
+Processing layer — CommandInterpreter validates/normalizes these further
+downstream.
+"""
+
+
 class KeyboardProcessor:
 
     def __init__(self, event_bus):
 
         self.event_bus = event_bus
 
-        # Keys physically held down right now
         self.current_keys = set()
 
-        # The combo string last announced as "down", so a
-        # change in current_keys can be compared against
-        # it — None means nothing is currently held.
+        # The combo string last announced as "down", so a change in
+        # current_keys can be compared against it — None means nothing is
+        # currently held.
         self.currently_held_combo = None
 
-        # Modifier priority
         self.modifier_order = [
             "ctrl",
             "alt",
             "shift",
             "capslock"
         ]
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -38,19 +41,11 @@ class KeyboardProcessor:
             self._handle_raw
         )
 
-    # ---------------------------------
-    # Handle Raw Keyboard Events
-    # ---------------------------------
-
-    # Press and release are tracked as two separate moments
-    # rather than waiting for a full press-then-release
-    # cycle to complete before publishing anything. This
-    # means a combo is announced ("down") the instant it is
-    # fully held, and announced again ("up") the instant it
-    # breaks — so a still-held combo stays valid the whole
-    # time a key is down, not just at the moment it is
-    # released, letting another gesture/voice action fire
-    # alongside it mid-hold.
+    # Press and release are tracked as two separate moments rather than
+    # waiting for a full press-then-release cycle before publishing
+    # anything, so a still-held combo stays valid the whole time a key is
+    # down (not just at release), letting another gesture/voice action
+    # fire alongside it mid-hold.
     def _handle_raw(self, event):
 
         key = (
@@ -81,10 +76,6 @@ class KeyboardProcessor:
             return
 
         self._update_combo()
-
-    # ---------------------------------
-    # Announce Combo Transitions
-    # ---------------------------------
 
     def _update_combo(self):
 
@@ -117,10 +108,6 @@ class KeyboardProcessor:
                 }
             )
 
-    # ---------------------------------
-    # Build Combination
-    # ---------------------------------
-
     def _build_combo(self, keys):
 
         if not keys:
@@ -128,16 +115,11 @@ class KeyboardProcessor:
 
         keys = list(keys)
 
-        # Sort modifiers first
         keys.sort(
             key=self._sort_key
         )
 
         return "+".join(keys)
-
-    # ---------------------------------
-    # Sort Priority
-    # ---------------------------------
 
     def _sort_key(self, key):
 

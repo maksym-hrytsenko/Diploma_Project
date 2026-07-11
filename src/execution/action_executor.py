@@ -1,5 +1,14 @@
+"""Final stage of the pipeline: turns decided commands into OS effects.
+
+Subscribes to SignalMapper's command_event, plus the continuous
+pointer/pinch streams that bypass fusion, and dispatches each to
+OSController. Contains no decision logic of its own — every command
+arrives already decided.
+"""
+
 import pyautogui
 
+from core.event_bus import EventBus
 from execution.os_controller import OSController
 from ui.pointer_overlay import PointerOverlay
 
@@ -8,7 +17,7 @@ from config.config_loader import load_system_config
 
 class ActionExecutor:
 
-    def __init__(self, event_bus):
+    def __init__(self, event_bus: EventBus):
 
         self.event_bus = event_bus
 
@@ -23,21 +32,16 @@ class ActionExecutor:
 
         self.command_table = self._build_command_table()
 
-        # Which gesture mode is currently active, mirrored
-        # from SignalMapper's "mode_changed" event. Needed
-        # only to route the three continuous, fusion-bypassing
-        # streams below (pointer position, pinch-drag,
-        # pinch-zoom) to the right place — every discrete
-        # command still arrives fully decided via
-        # command_event, with no branching here.
+        # Mirrored from SignalMapper's "mode_changed" event, used only to
+        # route the continuous, fusion-bypassing streams below (pointer
+        # position, pinch-drag, pinch-zoom); discrete commands already
+        # arrive fully decided via command_event.
         self.active_mode = None
 
-        # Running total of raw pinch-distance change since the
-        # last zoom step fired. Firing a Cmd+"="/Cmd+"-" on
-        # every single frame's tiny delta would spam keystrokes
-        # far faster than any app's zoom animation can follow —
-        # this accumulates deltas and only fires once enough
-        # distance has been covered.
+        # Accumulates raw pinch-distance deltas and only fires a zoom
+        # hotkey once zoom_step_threshold is crossed — firing on every
+        # frame's tiny delta would spam keystrokes faster than any app's
+        # zoom animation can follow.
         self.zoom_accumulator = 0.0
 
         self.zoom_step_threshold = execution_config.get(
@@ -45,23 +49,16 @@ class ActionExecutor:
             0.05
         )
 
-        # Mirrors PointerOverlay's own MIRROR_X convention, so
-        # the real cursor sits on the same side as the user's
-        # hand from their own point of view.
+        # Mirrors PointerOverlay's own MIRROR_X convention, so the real
+        # cursor sits on the same side as the user's hand from their own
+        # point of view.
         self.mirror_cursor_x = execution_config.get(
             "mirror_cursor_x",
             True
         )
 
-    # ---------------------------------
-    # Command Table
-    # ---------------------------------
-
-    # A static lookup from command string to an OSController
-    # method — not decision logic. The decision (which
-    # command to fire, for which signals) already happened
-    # in SignalMapper; this table only knows how to carry
-    # a decided command out.
+    # A static lookup from command string to an OSController method, not
+    # decision logic — the decision already happened in SignalMapper.
     def _build_command_table(self):
 
         controller = self.os_controller
@@ -107,7 +104,6 @@ class ActionExecutor:
             "TOGGLE_CAMERA": controller.toggle_camera,
             "TOGGLE_CALL_AUDIO": controller.toggle_call_audio,
             "TOGGLE_BACKGROUND_BLUR": controller.toggle_background_blur,
-            "RAISE_HAND": controller.raise_hand,
 
             "NEXT_TRACK": controller.next_track,
             "PREVIOUS_TRACK": controller.previous_track,
@@ -128,10 +124,6 @@ class ActionExecutor:
 
             "MEDIA_PLAY_PAUSE": controller.media_play_pause
         }
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -160,7 +152,6 @@ class ActionExecutor:
             self._handle_mode_changed
         )
 
-        # Debug SignalMapper
         self.event_bus.subscribe(
             "fusion_signal",
             self._debug_event
@@ -208,10 +199,6 @@ class ActionExecutor:
             self._debug_event
         )
 
-    # ---------------------------------
-    # Handle Commands
-    # ---------------------------------
-
     def _handle_command(self, event):
 
         data = event.get(
@@ -244,10 +231,6 @@ class ActionExecutor:
 
         handler()
 
-    # ---------------------------------
-    # Track Active Mode
-    # ---------------------------------
-
     def _handle_mode_changed(self, event):
 
         data = event.get(
@@ -258,11 +241,6 @@ class ActionExecutor:
         self.active_mode = data.get(
             "mode"
         )
-
-    # ---------------------------------
-    # Handle Pointer (Cursor Mode vs.
-    # laser pointer overlay)
-    # ---------------------------------
 
     def _handle_pointer(self, event):
 
@@ -293,14 +271,10 @@ class ActionExecutor:
 
     def _move_real_cursor_to(self, normalized_x, normalized_y):
 
-        # Absolute move — take the fingertip's position in
-        # the camera frame and put the cursor at that exact
-        # same relative spot on the real screen.
         screen_width, screen_height = pyautogui.size()
 
-        # Mirrors PointerOverlay's convention, so the
-        # cursor sits on the same side the user's hand is
-        # on from their own point of view.
+        # Mirrors PointerOverlay's convention, so the cursor sits on the
+        # same side the user's hand is on from their own point of view.
         display_x = (
             (1.0 - normalized_x)
             if self.mirror_cursor_x
@@ -314,10 +288,6 @@ class ActionExecutor:
             pixel_x,
             pixel_y
         )
-
-    # ---------------------------------
-    # Handle Pinch-Drag (Cursor Mode scroll)
-    # ---------------------------------
 
     def _handle_pinch_drag(self, event):
 
@@ -337,17 +307,12 @@ class ActionExecutor:
 
         screen_width, screen_height = pyautogui.size()
 
-        # Natural/drag scrolling: the content moves WITH
-        # the hand, as if physically grabbed — dragging up
-        # (delta_y < 0) pulls later content into view (same
-        # direction as OSController.scroll_down), dragging
-        # down (delta_y > 0) reveals earlier content (same
-        # direction as scroll_up). Same idea horizontally:
-        # dragging left (delta_x < 0) pulls content on the
-        # right into view, dragging right (delta_x > 0)
-        # reveals content on the left. Converted to real
-        # screen pixels so the content moves by roughly the
-        # same distance the hand moved.
+        # Natural/drag scrolling: content moves WITH the hand, as if
+        # physically grabbed — dragging up pulls later content into view
+        # (same direction as OSController.scroll_down), dragging down
+        # reveals earlier content (same as scroll_up), and the same logic
+        # applies horizontally. Converted to real screen pixels so content
+        # moves roughly the same distance the hand moved.
         pixel_amount_x = int(
             delta_x * screen_width
         )
@@ -360,11 +325,6 @@ class ActionExecutor:
             pixel_amount_x,
             pixel_amount_y
         )
-
-    # ---------------------------------
-    # Handle Pinch-Zoom (Cursor Mode,
-    # Alt + pinch distance)
-    # ---------------------------------
 
     def _handle_pinch_zoom(self, event):
 
@@ -394,10 +354,6 @@ class ActionExecutor:
             self.os_controller.zoom_out()
 
             self.zoom_accumulator += self.zoom_step_threshold
-
-    # ---------------------------------
-    # Debug SignalMapper
-    # ---------------------------------
 
     def _debug_event(self, event):
 

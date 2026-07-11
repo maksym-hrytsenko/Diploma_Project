@@ -1,3 +1,12 @@
+"""Validation/normalization stage of the interpretation layer.
+
+Receives keyboard_signal, intent_detected, gesture_signal and face_signal,
+checks each against config/mapping.json's valid_signals and per-modality
+mappings, and republishes matches as normalized_signal. Performs no
+multimodal logic and no voice phrase mapping — that already happened in
+IntentModel.
+"""
+
 import json
 import os
 
@@ -19,10 +28,6 @@ class CommandInterpreter:
         self.valid_signals = {}
 
         self._load_mapping()
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -67,10 +72,6 @@ class CommandInterpreter:
             "face_signal",
             self._handle_face
         )
-
-    # ---------------------------------
-    # Load mapping.json
-    # ---------------------------------
 
     def _load_mapping(self):
 
@@ -132,9 +133,6 @@ class CommandInterpreter:
             self.face_mapping = {}
 
             self.valid_signals = {}
-    # ---------------------------------
-    # Keyboard
-    # ---------------------------------
 
     def _handle_keyboard(self, event):
 
@@ -175,20 +173,15 @@ class CommandInterpreter:
 
                 "confidence": 1.0,
 
-                # "down" while the combo is held, "up" the
-                # instant it breaks — MultimodalFusion uses
-                # this to keep a held combo valid for as
-                # long as it is physically held, instead of
+                # "down" while the combo is held, "up" the instant it
+                # breaks — MultimodalFusion uses this to keep a held combo
+                # valid for as long as it is physically held, instead of
                 # only at the moment of release.
                 "event": data.get("event")
 
             }
 
         )
-
-    # ---------------------------------
-    # Voice
-    # ---------------------------------
 
     def _handle_voice(self, event):
 
@@ -233,10 +226,6 @@ class CommandInterpreter:
             }
 
         )
-
-    # ---------------------------------
-    # Gesture
-    # ---------------------------------
 
     def _handle_gesture(self, event):
 
@@ -283,10 +272,6 @@ class CommandInterpreter:
             }
 
         )
-
-    # ---------------------------------
-    # Face
-    # ---------------------------------
 
     def _handle_face(self, event):
 

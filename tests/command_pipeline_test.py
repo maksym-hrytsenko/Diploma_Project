@@ -1,19 +1,14 @@
-# ---------------------------------
-# Unlike the *_standalone_test.py scripts in this folder,
-# this one does NOT need a camera, microphone, or keyboard —
-# it drives the real pipeline (CommandInterpreter ->
-# MultimodalFusion -> SignalMapper -> ActionExecutor) by
-# publishing the exact same raw EventBus events the real
-# recognizers publish (gesture_signal, face_signal,
-# keyboard_signal, intent_detected), with OSController mocked
-# out so nothing actually happens on the Mac. This tests the
-# CONFIG/WIRING (mapping.json + fusion.json + command_table),
-# not gesture/face/voice RECOGNITION itself — it cannot catch
-# "MediaPipe misclassified my hand", only "this signal, once
-# recognized, is or isn't wired to the right OS action".
-#
-# Run: venv/bin/python tests/command_pipeline_test.py
-# ---------------------------------
+"""End-to-end test of the command pipeline's config/wiring.
+
+Unlike the *_standalone_test.py scripts in this folder, this one needs no
+camera, microphone, or keyboard: it drives the real pipeline (CommandInterpreter
+-> MultimodalFusion -> SignalMapper -> ActionExecutor) by publishing the same
+raw EventBus events the real recognizers would, with OSController mocked out.
+It tests whether mapping.json/fusion.json/the command table are wired
+correctly, not gesture/face/voice recognition itself.
+
+Run: venv/bin/python tests/command_pipeline_test.py
+"""
 
 import sys
 import os
@@ -67,10 +62,8 @@ def run():
 
         controller = MockOSController.return_value
 
-        # ---------------------------------
-        # Publishers — mirror exactly what the real
-        # recognizers publish, field for field.
-        # ---------------------------------
+        # Publishers below mirror exactly what the real recognizers
+        # publish, field for field.
 
         def voice(command, confidence=1.0):
 
@@ -362,8 +355,8 @@ def run():
         gesture("DOUBLE_PINCH")
         check("cursor: gesture double pinch (right-click)", "right_click")
 
-        # Continuous streams bypass fusion entirely — go
-        # straight from the publisher to ActionExecutor.
+        # Continuous streams bypass fusion entirely — straight from the
+        # publisher to ActionExecutor.
         stream(
             "pointer_position",
             {"x": 0.5, "y": 0.5, "source": "gesture"}

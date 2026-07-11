@@ -1,21 +1,13 @@
-import time
+"""Standalone test for the MediaRemote framework command path.
 
-# ---------------------------------
-# Standalone test for the MediaRemote
-# framework command path — the same
-# mechanism macOS uses to route
-# Control Center's Now Playing widget
-# and Bluetooth headphone remote
-# buttons (AVRCP) to whichever app
-# owns "now playing". This is a
-# private framework, so it is tested
-# in isolation here before touching
-# OSController, since a syntax or
-# signature mistake would otherwise
-# silently do nothing (no exception),
-# same failure mode already seen with
-# the NX_KEYTYPE HID key approach.
-# ---------------------------------
+This is the same private mechanism macOS uses to route Control Center's
+Now Playing widget and Bluetooth headphone remote buttons (AVRCP) to
+whichever app owns "now playing". Because it's a private framework, it
+is tested in isolation here before touching OSController: a syntax or
+signature mistake would otherwise silently do nothing (no exception),
+the same failure mode already seen with the NX_KEYTYPE HID key approach.
+"""
+import time
 
 import objc
 from Foundation import NSBundle
@@ -25,10 +17,8 @@ MEDIA_REMOTE_BUNDLE_PATH = (
     "/System/Library/PrivateFrameworks/MediaRemote.framework"
 )
 
-# MRMediaRemoteCommand values, as
-# reverse-engineered from the
-# framework's public headers/symbols.
-# Only the ones this project needs.
+# MRMediaRemoteCommand values, reverse-engineered from the framework's
+# public headers/symbols. Only the ones this project needs.
 COMMAND_PLAY = 0
 COMMAND_PAUSE = 1
 COMMAND_TOGGLE_PLAY_PAUSE = 2

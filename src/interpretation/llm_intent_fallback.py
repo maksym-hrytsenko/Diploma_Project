@@ -1,3 +1,11 @@
+"""Local LLM fallback for voice commands.
+
+Used by IntentModel as a last resort when a spoken phrase matches neither
+config/mapping.json exactly nor SemanticMatcher's similarity threshold: asks
+a local MLX-hosted LLM to map the phrase to one of the known commands (or
+null), via a constrained JSON-only prompt.
+"""
+
 import json
 import re
 
@@ -22,10 +30,6 @@ class LLMIntentFallback:
         self.model, self.tokenizer = load(
             model_repo
         )
-
-    # ---------------------------------
-    # Interpret
-    # ---------------------------------
 
     def interpret(
         self,
@@ -55,10 +59,6 @@ class LLMIntentFallback:
             return None
 
         return command
-
-    # ---------------------------------
-    # Build Prompt
-    # ---------------------------------
 
     def _build_prompt(
         self,
@@ -97,10 +97,6 @@ class LLMIntentFallback:
             messages,
             add_generation_prompt=True
         )
-
-    # ---------------------------------
-    # Parse Command
-    # ---------------------------------
 
     def _parse_command(
         self,

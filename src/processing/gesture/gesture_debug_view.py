@@ -1,3 +1,12 @@
+"""Calibration HUD for GestureRecognizer.
+
+Renders a cv2 window over the live camera feed showing the anchor point,
+tracked finger and current directional zone, so GestureRecognizer's
+angle/distance thresholds can be tuned against real footage. Enabled via
+the ``--debug-gesture`` flag; separate from GestureRecognizer's own
+detection logic.
+"""
+
 import math
 import threading
 
@@ -12,11 +21,10 @@ class GestureDebugView:
 
         self.window_name = "Gesture Debug"
 
-        # gesture_debug arrives from the camera capture
-        # thread. cv2.imshow / cv2.waitKey must run on the
-        # main thread (required on macOS), so the handler
-        # only stores the latest snapshot here, and the
-        # main loop calls render() to actually draw it.
+        # gesture_debug arrives from the camera capture thread.
+        # cv2.imshow/cv2.waitKey must run on the main thread (required on
+        # macOS), so the handler only stores the latest snapshot here, and
+        # the main loop calls render() to actually draw it.
         self.lock = threading.Lock()
 
         self.latest_data = None
@@ -27,10 +35,6 @@ class GestureDebugView:
         self.marker_radius = 40
 
         self.cone_line_length = 150
-
-    # ---------------------------------
-    # Start / Stop
-    # ---------------------------------
 
     def start(self):
 
@@ -54,10 +58,6 @@ class GestureDebugView:
 
             self.window_open = False
 
-    # ---------------------------------
-    # Receive Snapshot (camera thread)
-    # ---------------------------------
-
     def _handle_debug(self, event):
 
         data = event.get(
@@ -68,10 +68,6 @@ class GestureDebugView:
         with self.lock:
 
             self.latest_data = data
-
-    # ---------------------------------
-    # Draw + Show (main thread only)
-    # ---------------------------------
 
     def render(self):
 
@@ -108,10 +104,6 @@ class GestureDebugView:
         self.window_open = True
 
         cv2.waitKey(1)
-
-    # ---------------------------------
-    # Overlay
-    # ---------------------------------
 
     def _draw_overlay(self, display, data):
 
@@ -205,10 +197,9 @@ class GestureDebugView:
         cone_degrees
     ):
 
-        # Draws the actual UP/DOWN vs LEFT/RIGHT sector
-        # split as 4 rays from the anchor, matching exactly
-        # the angle GestureRecognizer decides on.
-
+        # Draws the actual UP/DOWN vs LEFT/RIGHT sector split as 4 rays
+        # from the anchor, matching exactly the angle GestureRecognizer
+        # decides on.
         cone_radians = math.radians(cone_degrees)
 
         dx = math.sin(cone_radians)

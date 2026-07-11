@@ -1,9 +1,10 @@
-# Runs inside a separate worker process (see
-# ProcessPoolExecutor in intent_model.py). Kept as
-# module-level state + plain functions, not class methods,
-# so they can be pickled/targeted by the process pool and
-# so the loaded models persist across calls to this same
-# worker process instead of reloading every time.
+"""Entry points run inside IntentModel's NLU fallback worker process.
+
+Kept as module-level state plus plain functions, not class methods, so they
+can be pickled/targeted by ProcessPoolExecutor and so the loaded
+SemanticMatcher/LLMIntentFallback models persist across calls to this same
+worker process instead of reloading every time.
+"""
 
 _semantic_matcher = None
 
