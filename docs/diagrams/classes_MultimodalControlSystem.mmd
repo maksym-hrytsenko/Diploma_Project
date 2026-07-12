@@ -1,1 +1,551 @@
 classDiagram
+  class ActionExecutor {
+    active_mode : NoneType
+    command_table : dict
+    event_bus
+    mirror_cursor_x
+    os_controller
+    zoom_accumulator : float
+    zoom_step_threshold
+    start()
+    stop()
+  }
+  style ActionExecutor fill:#BBCC33
+  class CameraInput {
+    camera_index
+    cap : NoneType
+    event_bus
+    frame_height
+    frame_width
+    running : bool
+    thread : NoneType, Thread
+    start()
+    stop()
+  }
+  style CameraInput fill:#EEDD88
+  class CommandInterpreter {
+    event_bus
+    face_mapping : dict
+    gesture_mapping : dict
+    keyboard_mapping : dict
+    ui_mapping : dict
+    valid_signals : dict
+    voice_mapping : dict
+    start()
+    stop()
+  }
+  style CommandInterpreter fill:#EE8866
+  class DraggableFrame {
+    mouseMoveEvent(event)
+    mousePressEvent(event)
+    mouseReleaseEvent(event)
+  }
+  style DraggableFrame fill:#DDDDDD
+  class EventBus {
+    publish(event_type, data)
+    subscribe(event_type, callback)
+    unsubscribe(event_type, callback)
+  }
+  style EventBus fill:#44BB99
+  class FaceDebugView {
+    bar_height : int
+    bar_width : int
+    event_bus
+    latest_data : NoneType
+    lock : lock
+    window_name : str
+    window_open : bool
+    render()
+    start()
+    stop()
+  }
+  style FaceDebugView fill:#FFAABB
+  class FaceModel {
+    landmarker
+    start_time
+    process_frame(frame)
+  }
+  style FaceModel fill:#FFAABB
+  class FaceRecognizer {
+    BLINK_CLOSE_THRESHOLD : float
+    BLINK_OPEN_THRESHOLD : float
+    DOUBLE_BLINK_WINDOW : float
+    DOUBLE_EYEBROWS_WINDOW : float
+    EYEBROWS_LOWER_THRESHOLD : float
+    EYEBROWS_RAISE_THRESHOLD : float
+    LEFT_EYE_OUTER_CORNER : int
+    MOUTH_CLOSE_THRESHOLD : float
+    MOUTH_OPEN_THRESHOLD : float
+    NOD_COOLDOWN : float
+    NOD_PHASE_WINDOW : float
+    NOD_VELOCITY_THRESHOLD : int
+    RIGHT_EYE_OUTER_CORNER : int
+    TILT_ENTER_DEGREES : int
+    TILT_EXIT_DEGREES : int
+    active_mode : NoneType
+    event_bus
+    eyebrows_raised : bool
+    eyes_closed : bool
+    face_model
+    last_blink_time : int
+    last_eyebrows_raise_time : int
+    last_nod_time : int
+    mouth_open : bool
+    nod_phase_sign : NoneType, int
+    nod_phase_time : int
+    previous_face_time : NoneType
+    previous_pitch : NoneType
+    tilt_zone : NoneType, str
+    start()
+    stop()
+  }
+  style FaceRecognizer fill:#FFAABB
+  class FloatingStatusBar {
+    active_mode : NoneType
+    background_label
+    btn_expand
+    camera_active : bool
+    camera_toggle_signal
+    dim_chips : dict
+    event_bus : NoneType
+    highlight_chips : dict
+    keyboard_active : bool
+    keyboard_toggle_signal
+    microphone_active : bool
+    microphone_toggle_signal
+    mode_changed_signal
+    start()
+    stop()
+  }
+  style FloatingStatusBar fill:#DDDDDD
+  class GestureDebugView {
+    cone_line_length : int
+    event_bus
+    latest_data : NoneType
+    lock : lock
+    marker_radius : int
+    window_name : str
+    window_open : bool
+    render()
+    start()
+    stop()
+  }
+  style GestureDebugView fill:#FFAABB
+  class GestureModel {
+    recognizer
+    start_time
+    draw_landmarks(frame, hand_landmarks)
+    process_frame(frame)
+  }
+  style GestureModel fill:#FFAABB
+  class GestureRecognizer {
+    ACTIVE_ZONE_MARGIN
+    CALL_TOGGLE_GESTURES : tuple
+    FINGER_COUNT_GESTURES : dict
+    FINGER_EXTENSION_MARGIN
+    FINGER_TIP_PIP_LANDMARKS : tuple
+    PRECISION_SCALE
+    PRESENTATION_POINTER_BOX_HANDS
+    SAME_HAND_DISTANCE
+    SWIPE_MODES : set
+    active_mode : NoneType
+    anchor_x : NoneType
+    anchor_y : NoneType
+    call_toggle_hold_seconds
+    candidate_count : int
+    candidate_gesture : NoneType
+    candidate_start_time : NoneType
+    confidence_threshold
+    confirm_frames
+    double_pinch_window
+    drag_activation_distance
+    drag_activation_seconds
+    event_bus
+    freeze_duration
+    freeze_until : int
+    gesture_model
+    hand_lost_count : int
+    hand_lost_frames
+    hand_was_present : bool
+    is_dragging : bool
+    is_pinching : bool
+    last_gesture : NoneType, str
+    last_motion_time : int
+    last_ok_sign_time : int
+    last_signal : NoneType
+    locked_toggle_gestures : set
+    min_frame_distance
+    motion_cooldown
+    off_hand_debug_state : NoneType
+    off_hand_model
+    ok_sign_cooldown
+    ok_sign_release_distance
+    ok_touching : bool
+    pending_pinch_time : int
+    pending_single_pinch : bool
+    pinch_distance_threshold
+    pinch_previous_x : NoneType
+    pinch_previous_y : NoneType
+    pinch_start_time : int
+    pinch_start_x : NoneType
+    pinch_start_y : NoneType
+    precision_active : bool
+    precision_anchor_x : NoneType
+    precision_anchor_y : NoneType
+    presentation_fist_last_motion_time : int
+    presentation_fist_min_frame_distance
+    presentation_fist_motion_cooldown
+    presentation_fist_previous_time : NoneType
+    presentation_fist_previous_x : NoneType
+    presentation_fist_previous_y : NoneType
+    presentation_fist_velocity_threshold
+    presentation_fist_vertical_cone_degrees
+    presentation_pointer_anchor_x : NoneType
+    presentation_pointer_anchor_y : NoneType
+    presentation_pointer_hand_size : NoneType
+    previous_time : NoneType
+    previous_x : NoneType
+    previous_y : NoneType
+    tracking_active : bool
+    velocity_threshold
+    velocity_x : NoneType
+    velocity_y : NoneType
+    vertical_cone_degrees
+    zoom_previous_distance : NoneType
+    start()
+    stop()
+  }
+  style GestureRecognizer fill:#FFAABB
+  class InfoWindow {
+  }
+  style InfoWindow fill:#DDDDDD
+  class IntentModel {
+    debug : bool
+    event_bus
+    llm_confidence
+    llm_model_id
+    mapping
+    nlu_executor : NoneType, ProcessPoolExecutor
+    nlu_fallback_enabled
+    nlu_worker_timeout_seconds
+    pending_command_text : str
+    semantic_threshold
+    session_deadline : NoneType
+    silence_timeout_seconds
+    state_manager
+    system
+    voice_commands
+    wake_word
+    process_text(text, wake_word_heard)
+    start()
+    stop()
+  }
+  style IntentModel fill:#EE8866
+  class KeyboardInput {
+    event_bus
+    listener : NoneType
+    poll()
+    start()
+    stop()
+  }
+  style KeyboardInput fill:#EEDD88
+  class KeyboardProcessor {
+    current_keys : set
+    currently_held_combo : NoneType, str
+    event_bus
+    modifier_order : list
+    priority_keys : set
+    start()
+    stop()
+  }
+  style KeyboardProcessor fill:#FFAABB
+  class LLMIntentFallback {
+    commands : set
+    model
+    tokenizer : TokenizerWrapper
+    interpret(text)
+  }
+  style LLMIntentFallback fill:#EE8866
+  class MainWindow {
+    VIDEO_MIN_INTERVAL_SECONDS : float
+    active_mode : NoneType
+    background_label
+    btn_call_mode
+    btn_cursor_mode
+    btn_functions
+    btn_minimize_to_bar
+    btn_mode_flip
+    btn_presentation
+    btn_system_power
+    btn_window_close
+    btn_window_minimize
+    btn_window_settings
+    camera_active : bool
+    current_mode_patch
+    dim_toggle_camera
+    dim_toggle_keyboard
+    dim_toggle_microphone
+    event_bus : Optional[EventBus]
+    face_debug_signal
+    face_status_patch
+    gesture_debug_signal
+    glow_call_mode
+    glow_cursor
+    glow_mode_flip
+    glow_presentation
+    header_drag_area
+    icon_camera_placeholder
+    keyboard_active : bool
+    label_camera_placeholder_hint
+    label_camera_placeholder_title
+    label_current_mode
+    label_face_status
+    label_state_camera
+    label_state_keyboard
+    label_state_microphone
+    label_system_state
+    microphone_active : bool
+    mode_buttons : dict
+    mode_changed_signal
+    mode_glow_rings : dict
+    state_patch_camera
+    state_patch_keyboard
+    state_patch_microphone
+    switch_camera
+    switch_keyboard
+    switch_microphone
+    system_dim_overlay
+    system_on : bool
+    system_state_patch
+    video_area : tuple
+    video_frame_bg
+    video_label
+    video_radius : int
+    keyPressEvent(event)
+    start()
+    stop()
+  }
+  style MainWindow fill:#DDDDDD
+  class MicrophoneInput {
+    audio_queue : Queue
+    blocksize
+    channels
+    device : int | None
+    event_bus
+    running : bool
+    samplerate
+    stream : NoneType, RawInputStream
+    thread : NoneType, Thread
+    start()
+    stop()
+  }
+  style MicrophoneInput fill:#EEDD88
+  class MultimodalFusion {
+    event_bus
+    sync
+    clear_signals()
+    get_active_signals()
+    start()
+    stop()
+  }
+  style MultimodalFusion fill:#AAAA00
+  class OSController {
+    FLIP_SCROLL_PIXELS
+    FLIP_SCROLL_TICKS
+    FLIP_SCROLL_TICK_DELAY
+    MEDIA_REMOTE_BUNDLE_PATH : str
+    MR_COMMAND_NEXT_TRACK : int
+    MR_COMMAND_PREVIOUS_TRACK : int
+    MR_COMMAND_TOGGLE_PLAY_PAUSE : int
+    NX_KEYTYPE_SOUND_DOWN : int
+    NX_KEYTYPE_SOUND_UP : int
+    apps
+    caffeinate_process : NoneType, Popen
+    hotkeys
+    media_remote_send_command : NoneType
+    shortcuts
+    urls
+    window_groups
+    allow_display_sleep() None
+    click() None
+    disable_do_not_disturb() None
+    enable_do_not_disturb() None
+    flip_next() None
+    flip_previous() None
+    media_play_pause() None
+    move_cursor_to(x_pixels: int, y_pixels: int) None
+    next_slide() None
+    next_track() None
+    open_browser() None
+    open_calendar() None
+    open_chatgpt() None
+    open_chrome() None
+    open_discord() None
+    open_finder() None
+    open_github() None
+    open_job_search_windows() None
+    open_mail() None
+    open_netflix() None
+    open_news() None
+    open_news_tabs() None
+    open_notes() None
+    open_notion() None
+    open_photos() None
+    open_preview() None
+    open_safari() None
+    open_settings() None
+    open_slack() None
+    open_spotify() None
+    open_study_windows() None
+    open_telegram() None
+    open_terminal() None
+    open_tv() None
+    open_vscode() None
+    open_website(url: str) None
+    open_window_group(group_name: str) None
+    pause_focus_music() None
+    play_focus_music() None
+    prevent_display_sleep() None
+    previous_slide() None
+    previous_track() None
+    right_click() None
+    run_cinema_mode() None
+    scroll_by(pixel_amount_x: int, pixel_amount_y: int) None
+    scroll_down() None
+    scroll_up() None
+    start_slideshow() None
+    take_screenshot() None
+    toggle_background_blur() None
+    toggle_call_audio() None
+    toggle_camera() None
+    toggle_mic() None
+    volume_down() None
+    volume_up() None
+    zoom_in() None
+    zoom_out() None
+  }
+  style OSController fill:#BBCC33
+  class OffHandModel {
+    landmarker
+    process_frame(frame)
+  }
+  style OffHandModel fill:#FFAABB
+  class OpenVocabSpeechModel {
+    condition_on_previous_text
+    language
+    model_repo : NoneType
+    transcribe(audio_bytes)
+  }
+  style OpenVocabSpeechModel fill:#FFAABB
+  class PointerOverlay {
+    DOT_COLOR
+    DOT_RADIUS
+    HIDE_AFTER_MS
+    MIRROR_X
+    dot_x : NoneType, int
+    dot_y : NoneType, int
+    event_bus
+    hide_timer
+    position_updated
+    paintEvent(event)
+    start()
+    stop()
+    update_position(normalized_x, normalized_y)
+  }
+  style PointerOverlay fill:#DDDDDD
+  class QuickCommandOverlay {
+    DISPLAY_SIZE
+    IMAGE_PATH
+    circle_pixmap
+    circle_visible : bool
+    event_bus
+    mode_changed_signal
+    paintEvent(event)
+    start()
+    stop()
+  }
+  style QuickCommandOverlay fill:#DDDDDD
+  class SemanticMatcher {
+    commands : list
+    model : SentenceTransformer
+    phrase_embeddings
+    phrases : list
+    match(text, threshold)
+  }
+  style SemanticMatcher fill:#EE8866
+  class SettingsWindow {
+  }
+  style SettingsWindow fill:#DDDDDD
+  class SignalMapper {
+    SIGNAL_METHOD : dict
+    VOICE_TIER_LABEL : dict
+    current_environment : NoneType
+    current_mode : NoneType
+    environments : list
+    event_bus
+    mode_rules : list
+    modes : list
+    rules : list
+    settings : dict
+    system_enabled : bool
+    clear_environment()
+    clear_mode()
+    reload()
+    start()
+    stop()
+  }
+  style SignalMapper fill:#AAAA00
+  class SpeechRecognizer {
+    debug : bool
+    event_bus
+    last_partial_text : NoneType
+    state_manager
+    vosk_model
+    on_audio(event)
+    start()
+    stop()
+  }
+  style SpeechRecognizer fill:#FFAABB
+  class StateManager {
+    mode : str
+    get_mode()
+    set_mode(mode)
+  }
+  style StateManager fill:#44BB99
+  class TemporalSync {
+    signals : dict
+    timeout : float
+    cleanup()
+    clear_all()
+    clear_non_persistent()
+    clear_signal(source)
+    get_signal(source)
+    get_signals()
+    store_signal(source, signal, confidence, persistent, tier)
+  }
+  style TemporalSync fill:#AAAA00
+  class ToggleSwitch {
+    knob
+  }
+  style ToggleSwitch fill:#DDDDDD
+  class VoskSpeechModel {
+    min_fallback_audio_bytes : int
+    model : Model
+    nlu_fallback_enabled
+    open_vocab_executor : NoneType, ProcessPoolExecutor
+    open_vocab_model_id
+    recognizer : KaldiRecognizer
+    sample_rate
+    utterance_chunks : list
+    utterance_heard_wake_word : bool
+    vad_enabled
+    vad_model : OnnxWrapper, RecursiveScriptModule
+    wake_word
+    close()
+    process_audio(audio_chunk)
+  }
+  style VoskSpeechModel fill:#FFAABB
+  DraggableFrame --* MainWindow : header_drag_area
+  ToggleSwitch --* MainWindow : switch_camera
+  ToggleSwitch --* MainWindow : switch_microphone
+  ToggleSwitch --* MainWindow : switch_keyboard
