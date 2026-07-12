@@ -38,9 +38,14 @@ from execution.action_executor import ActionExecutor
 from ui.quick_command_overlay import QuickCommandOverlay
 from ui.main_window import MainWindow
 from ui.floating_status_bar import FloatingStatusBar
+from ui.pointer_overlay import PointerOverlay
 from ui.native_window import configure_accessory_app
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def main() -> None:
@@ -56,8 +61,8 @@ def main() -> None:
     debug_voice = "--debug-voice" in sys.argv
 
     # Qt requires its widgets to be created after a QApplication exists, on
-    # the thread that owns it — this must run before ActionExecutor builds
-    # PointerOverlay.
+    # the thread that owns it — this must run before PointerOverlay is
+    # constructed below.
     qt_app = QApplication(sys.argv)
 
     loop_sleep_seconds = load_system_config().get(
@@ -144,6 +149,10 @@ def main() -> None:
         event_bus
     )
 
+    pointer_overlay = PointerOverlay(
+        event_bus
+    )
+
     quick_command_overlay = QuickCommandOverlay(
         event_bus
     )
@@ -176,6 +185,8 @@ def main() -> None:
     # the producer that could feed it starts running — otherwise an early
     # event could be published before anything is listening for it.
     executor.start()
+
+    pointer_overlay.start()
 
     main_window.start()
 
@@ -244,7 +255,7 @@ def main() -> None:
 
     except KeyboardInterrupt:
 
-        print("\nStopping...")
+        logger.info("Stopping...")
 
     finally:
 
@@ -282,13 +293,15 @@ def main() -> None:
 
         executor.stop()
 
+        pointer_overlay.stop()
+
         quick_command_overlay.stop()
 
         main_window.stop()
 
         floating_status_bar.stop()
 
-        print("System stopped.")
+        logger.info("System stopped.")
 
 
 if __name__ == "__main__":

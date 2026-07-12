@@ -53,11 +53,6 @@ slot were reused as-is rather than reassigned to a new key.
 
 VOICE -- ENVIRONMENTS (opens apps + changes system state)
 ------------------------------------------------------------
-"work mode"
-    opens: Slack, Mail, Calendar
-    also:  turns Do Not Disturb ON
-    on exit: turns Do Not Disturb OFF
-
 "study mode"
     opens: Safari, Preview
     also:  turns Do Not Disturb ON, resumes/plays Spotify

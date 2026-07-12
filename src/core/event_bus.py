@@ -7,6 +7,11 @@ direct calls to one another.
 
 import time
 
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class EventBus:
     def __init__(self):
@@ -38,5 +43,8 @@ class EventBus:
             for callback in list(self._subscribers[event_type]):
                 try:
                     callback(event)
-                except Exception as e:
-                    print(f"[EventBus ERROR] {e}")
+                except Exception:
+                    logger.exception(
+                        "Subscriber callback failed for event '%s'",
+                        event_type
+                    )

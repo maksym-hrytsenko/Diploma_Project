@@ -17,6 +17,10 @@ from processing.gesture.gesture_model import (
 )
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class GestureRecognizer:
@@ -574,10 +578,10 @@ class GestureRecognizer:
                 frame
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[GESTURE MODEL ERROR] {e}"
+            logger.exception(
+                "Gesture model failed to process frame"
             )
 
             return
@@ -593,8 +597,8 @@ class GestureRecognizer:
 
             if self.hand_was_present:
 
-                print(
-                    "[GESTURE] Hand lost"
+                logger.debug(
+                    "Hand lost"
                 )
 
                 self.hand_was_present = False
@@ -609,8 +613,8 @@ class GestureRecognizer:
 
         if not self.hand_was_present:
 
-            print(
-                "[GESTURE] Hand detected"
+            logger.debug(
+                "Hand detected"
             )
 
             self.hand_was_present = True
@@ -690,10 +694,10 @@ class GestureRecognizer:
                     result.hand_landmarks[0]
                 )
 
-            except Exception as e:
+            except Exception:
 
-                print(
-                    f"[OFF-HAND ERROR] {e}"
+                logger.exception(
+                    "Off-hand detection failed"
                 )
 
                 off_hand_landmarks = None
@@ -704,10 +708,10 @@ class GestureRecognizer:
                 off_hand_landmarks
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[OFF-HAND ERROR] {e}"
+            logger.exception(
+                "Off-hand pinch check failed"
             )
 
             off_hand_pinching = False
@@ -877,10 +881,11 @@ class GestureRecognizer:
 
         self.off_hand_debug_state = state
 
-        print(
-            f"[OFF-HAND] {state} "
-            f"(candidates={candidate_count}, "
-            f"distance={distance:.3f})"
+        logger.debug(
+            "[OFF-HAND] %s (candidates=%s, distance=%.3f)",
+            state,
+            candidate_count,
+            distance
         )
 
     def _handle_hand_lost(
@@ -1031,8 +1036,8 @@ class GestureRecognizer:
             # transition. SignalMapper decides what it means right now
             # (e.g. opening the Quick Command Circle from idle) — this
             # class stays unaware of modes.
-            print(
-                "[GESTURE] HAND_SESSION_START"
+            logger.debug(
+                "HAND_SESSION_START"
             )
 
             self.event_bus.publish(
@@ -1057,8 +1062,8 @@ class GestureRecognizer:
             # SignalMapper decides what it means right now (e.g.
             # closing the Quick Command Circle without picking
             # anything).
-            print(
-                "[GESTURE] HAND_SESSION_END"
+            logger.debug(
+                "HAND_SESSION_END"
             )
 
             self.event_bus.publish(
@@ -1158,8 +1163,9 @@ class GestureRecognizer:
         trigger point for visual feedback.
         """
 
-        print(
-            f"[GESTURE] {signal}"
+        logger.debug(
+            "%s",
+            signal
         )
 
         self.event_bus.publish(
@@ -1367,8 +1373,9 @@ class GestureRecognizer:
 
             if signal is not None and cooldown_ready:
 
-                print(
-                    f"[GESTURE] {signal} (fist)"
+                logger.debug(
+                    "%s (fist)",
+                    signal
                 )
 
                 self.event_bus.publish(
@@ -1569,8 +1576,9 @@ class GestureRecognizer:
 
     def _fire_pinch_signal(self, signal):
 
-        print(
-            f"[GESTURE] {signal}"
+        logger.debug(
+            "%s",
+            signal
         )
 
         self.event_bus.publish(
@@ -1618,8 +1626,8 @@ class GestureRecognizer:
         self.ok_touching = True
         self.last_ok_sign_time = current_time
 
-        print(
-            "[GESTURE] OK_SIGN"
+        logger.debug(
+            "OK_SIGN"
         )
 
         self.event_bus.publish(
@@ -2022,8 +2030,9 @@ class GestureRecognizer:
 
         self.last_gesture = gesture_name
 
-        print(
-            f"[GESTURE] {gesture_name}"
+        logger.debug(
+            "%s",
+            gesture_name
         )
 
         self.event_bus.publish(

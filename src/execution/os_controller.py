@@ -12,6 +12,10 @@ import webbrowser
 import pyautogui
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class OSController:
@@ -124,24 +128,19 @@ class OSController:
 
             if not AXIsProcessTrusted():
 
-                print(
-                    "\n"
-                    "==================================================\n"
-                    "[ACCESSIBILITY WARNING] This process is NOT trusted "
-                    "for Accessibility.\n"
+                logger.warning(
+                    "This process is NOT trusted for Accessibility. "
                     "Cursor movement, clicks, scrolling and window "
                     "control will silently do nothing until you grant "
-                    "it.\n"
-                    "Fix: System Settings -> Privacy & Security -> "
+                    "it. Fix: System Settings -> Privacy & Security -> "
                     "Accessibility -> enable the app/terminal running "
-                    "this program.\n"
-                    "==================================================\n"
+                    "this program."
                 )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[ACCESSIBILITY CHECK ERROR] {e}"
+            logger.exception(
+                "Accessibility trust check failed"
             )
 
     # Hotkeys are stored as a list of key names, even for a single key like
@@ -180,10 +179,10 @@ class OSController:
                 duration=0
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CURSOR ERROR] {e}"
+            logger.exception(
+                "Cursor move failed"
             )
 
     def scroll_by(self, pixel_amount_x: int, pixel_amount_y: int) -> None:
@@ -262,10 +261,10 @@ class OSController:
                 event
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[SCROLL ERROR] {e}"
+            logger.exception(
+                "Scroll event failed"
             )
 
     # Always switches macOS Spaces rather than guessing whether the
@@ -294,10 +293,11 @@ class OSController:
                 ["open", "-a", app_name]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[APPLICATION ERROR] {app_name}: {e}"
+            logger.exception(
+                "Failed to open app: %s",
+                app_name
             )
 
     def open_vscode(self) -> None:
@@ -308,10 +308,10 @@ class OSController:
                 ["code"]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[VSCODE ERROR] {e}"
+            logger.exception(
+                "Failed to open VS Code"
             )
 
     def open_terminal(self) -> None:
@@ -490,10 +490,11 @@ class OSController:
                 ]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CHROME WINDOW ERROR] {url}: {e}"
+            logger.exception(
+                "Failed to open Chrome window: %s",
+                url
             )
 
     def _open_chrome_tab(self, url: str) -> None:
@@ -508,10 +509,11 @@ class OSController:
                 ]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CHROME TAB ERROR] {url}: {e}"
+            logger.exception(
+                "Failed to open Chrome tab: %s",
+                url
             )
 
     def open_job_search_windows(self) -> None:
@@ -549,10 +551,10 @@ class OSController:
                 ]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[MUSIC ERROR] {e}"
+            logger.exception(
+                "Failed to play focus music"
             )
 
     def pause_focus_music(self) -> None:
@@ -572,10 +574,10 @@ class OSController:
                 ]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[MUSIC ERROR] {e}"
+            logger.exception(
+                "Failed to pause focus music"
             )
 
     # This is a single toggle command, not separate play/pause commands —
@@ -654,10 +656,10 @@ class OSController:
             post(True)
             post(False)
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[MEDIA ERROR] {e}"
+            logger.exception(
+                "Media key event failed"
             )
 
     def _post_media_remote_command(self, command: int) -> None:
@@ -671,10 +673,10 @@ class OSController:
                 None
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[MEDIA ERROR] {e}"
+            logger.exception(
+                "MediaRemote command failed"
             )
 
     def _load_media_remote_send_command(self):
@@ -722,10 +724,10 @@ class OSController:
                 ["shortcuts", "run", shortcut_name]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[DND ERROR] {e}"
+            logger.exception(
+                "Failed to enable Do Not Disturb"
             )
 
     def disable_do_not_disturb(self) -> None:
@@ -741,10 +743,10 @@ class OSController:
                 ["shortcuts", "run", shortcut_name]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[DND ERROR] {e}"
+            logger.exception(
+                "Failed to disable Do Not Disturb"
             )
 
     # Runs a user-authored Shortcuts automation that controls the Magic
@@ -762,10 +764,10 @@ class OSController:
                 ["shortcuts", "run", shortcut_name]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CINEMA MODE ERROR] {e}"
+            logger.exception(
+                "Failed to run cinema mode shortcut"
             )
 
     def prevent_display_sleep(self) -> None:
@@ -776,10 +778,10 @@ class OSController:
                 ["caffeinate", "-d"]
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CAFFEINATE ERROR] {e}"
+            logger.exception(
+                "Failed to start caffeinate"
             )
 
     def allow_display_sleep(self) -> None:
@@ -791,10 +793,10 @@ class OSController:
 
             self.caffeinate_process.terminate()
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CAFFEINATE ERROR] {e}"
+            logger.exception(
+                "Failed to terminate caffeinate"
             )
 
         self.caffeinate_process = None
@@ -861,10 +863,10 @@ class OSController:
                 check=True
             )
 
-        except Exception as e:
+        except Exception:
 
-            print(
-                f"[CALL AUDIO ERROR] {e}"
+            logger.exception(
+                "Failed to toggle call audio"
             )
 
     def toggle_background_blur(self) -> None:

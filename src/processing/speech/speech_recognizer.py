@@ -9,6 +9,11 @@ from processing.speech.speech_model import (
     VoskSpeechModel
 )
 
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class SpeechRecognizer:
 
@@ -80,8 +85,9 @@ class SpeechRecognizer:
                 and partial_text != self.last_partial_text
             ):
 
-                print(
-                    f"[voice partial] \"{partial_text}\""
+                logger.debug(
+                    "[voice partial] \"%s\"",
+                    partial_text
                 )
 
                 self.last_partial_text = partial_text
@@ -107,10 +113,11 @@ class SpeechRecognizer:
                 else "grammar"
             )
 
-            print(
-                f"[voice final] \"{text}\" "
-                f"({source}, wake_word_heard="
-                f"{wake_word_heard})"
+            logger.debug(
+                "[voice final] \"%s\" (%s, wake_word_heard=%s)",
+                text,
+                source,
+                wake_word_heard
             )
 
         self.event_bus.publish(

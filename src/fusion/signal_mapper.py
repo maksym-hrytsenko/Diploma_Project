@@ -7,10 +7,12 @@ module in the pipeline allowed to make that decision. Publishes command_event
 and mode_changed.
 """
 
-import json
-import os
-
 from core.event_bus import EventBus
+from config.config_loader import load_fusion_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class SignalMapper:
@@ -77,6 +79,10 @@ class SignalMapper:
 
         self.current_environment = None
 
+        # Main window's System ON/OFF hub button — while False, no mode
+        # may be entered/exited and no command fires (see _handle_signal).
+        self.system_enabled = True
+
         self._load_fusion()
 
     def start(self):
@@ -86,6 +92,11 @@ class SignalMapper:
             self._handle_signal
         )
 
+        self.event_bus.subscribe(
+            "ui_system_toggle",
+            self._handle_system_toggle
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(
@@ -93,68 +104,67 @@ class SignalMapper:
             self._handle_signal
         )
 
+        self.event_bus.unsubscribe(
+            "ui_system_toggle",
+            self._handle_system_toggle
+        )
+
+    def _handle_system_toggle(self, event):
+
+        self.system_enabled = event.get(
+            "data",
+            {}
+        ).get(
+            "active",
+            True
+        )
+
     def _load_fusion(self):
 
         try:
 
-            base_dir = os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
-            )
-
-            config_path = os.path.join(
-                base_dir,
-                "config",
-                "fusion.json"
-            )
-
-            with open(
-                config_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
-                data = json.load(f)
-
-            self.settings = data.get(
-                "settings",
-                {}
-            )
-
-            self.rules = data.get(
-                "rules",
-                []
-            )
-
-            self.mode_rules = data.get(
-                "mode_rules",
-                []
-            )
-
-            self.modes = data.get(
-                "modes",
-                []
-            )
-
-            self.environments = data.get(
-                "environments",
-                []
+            data = load_fusion_config(
+                force_reload=True
             )
 
         except Exception:
 
-            self.settings = {}
+            logger.exception(
+                "Failed to load fusion.json — falling back to empty rules"
+            )
 
-            self.rules = []
+            data = {}
 
-            self.mode_rules = []
+        self.settings = data.get(
+            "settings",
+            {}
+        )
 
-            self.modes = []
+        self.rules = data.get(
+            "rules",
+            []
+        )
 
-            self.environments = []
+        self.mode_rules = data.get(
+            "mode_rules",
+            []
+        )
+
+        self.modes = data.get(
+            "modes",
+            []
+        )
+
+        self.environments = data.get(
+            "environments",
+            []
+        )
 
     def _handle_signal(self, event):
+
+        # System OFF — no mode changes, no commands, no quick_circle
+        if not self.system_enabled:
+            return
 
         data = event.get(
             "data",
@@ -314,8 +324,9 @@ class SignalMapper:
 
         self.current_mode = mode["mode"]
 
-        print(
-            f"[MAPPER] Mode -> {self.current_mode}"
+        logger.info(
+            "Mode -> %s",
+            self.current_mode
         )
 
         self.event_bus.publish(
@@ -328,8 +339,9 @@ class SignalMapper:
         if self.current_mode is None:
             return
 
-        print(
-            f"[MAPPER] Mode -> None (exit {self.current_mode})"
+        logger.info(
+            "Mode -> None (exit %s)",
+            self.current_mode
         )
 
         self.current_mode = None
@@ -378,8 +390,9 @@ class SignalMapper:
 
         self.current_environment = environment["environment"]
 
-        print(
-            f"[MAPPER] Environment -> {self.current_environment}"
+        logger.info(
+            "Environment -> %s",
+            self.current_environment
         )
 
         for action in environment.get(
@@ -411,8 +424,9 @@ class SignalMapper:
                     action
                 )
 
-        print(
-            f"[MAPPER] Environment -> None (exit {self.current_environment})"
+        logger.info(
+            "Environment -> None (exit %s)",
+            self.current_environment
         )
 
         self.current_environment = None
@@ -457,8 +471,9 @@ class SignalMapper:
 
             ):
 
-                print(
-                    f"[MAPPER] Match -> {rule['name']}"
+                logger.info(
+                    "Match -> %s",
+                    rule['name']
                 )
 
                 self._report_resolution(
@@ -496,8 +511,9 @@ class SignalMapper:
 
             ):
 
-                print(
-                    f"[MAPPER] Match -> {rule['name']}"
+                logger.info(
+                    "Match -> %s",
+                    rule['name']
                 )
 
                 # Quick Circle's four sides each select a different mode
@@ -573,9 +589,10 @@ class SignalMapper:
             else action
         )
 
-        print(
-            f"[RESOLVED] {outcome} <- "
-            + " + ".join(descriptions)
+        logger.info(
+            "[RESOLVED] %s <- %s",
+            outcome,
+            " + ".join(descriptions)
         )
 
     def _describe_signal(self, source, signal_data):
@@ -658,8 +675,9 @@ class SignalMapper:
         if not command:
             return
 
-        print(
-            f"[MAPPER] Command -> {command}"
+        logger.info(
+            "Command -> %s",
+            command
         )
 
         self.event_bus.publish(

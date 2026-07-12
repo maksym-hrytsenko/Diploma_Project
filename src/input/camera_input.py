@@ -11,6 +11,10 @@ import threading
 import time
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class CameraInput:
@@ -85,8 +89,8 @@ class CameraInput:
 
         if not self.cap.isOpened():
 
-            print(
-                "[CameraInput] Failed to open camera"
+            logger.error(
+                "Failed to open camera"
             )
 
             return
@@ -114,9 +118,10 @@ class CameraInput:
             cv2.CAP_PROP_FRAME_HEIGHT
         )
 
-        print(
-            f"[CameraInput] Resolution: "
-            f"{int(actual_width)}x{int(actual_height)}"
+        logger.info(
+            "Resolution: %dx%d",
+            int(actual_width),
+            int(actual_height)
         )
 
         self.running = True
@@ -128,7 +133,7 @@ class CameraInput:
 
         self.thread.start()
 
-        print("[CameraInput] Started")
+        logger.info("Started")
 
     def stop(self):
 
@@ -137,9 +142,16 @@ class CameraInput:
 
         self.running = False
 
-        # Give the capture loop a moment to notice running=False before the
-        # capture device is released out from under it.
-        time.sleep(0.1)
+        # Wait for the capture loop to actually exit its while-loop before
+        # releasing the device out from under it — a fixed sleep here would
+        # race against a read() still in flight.
+        if self.thread is not None:
+
+            self.thread.join(
+                timeout=1.0
+            )
+
+            self.thread = None
 
         if self.cap:
 
@@ -147,7 +159,7 @@ class CameraInput:
 
             self.cap = None
 
-        print("[CameraInput] Stopped")
+        logger.info("Stopped")
 
     def _capture_loop(self):
 

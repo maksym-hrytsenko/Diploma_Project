@@ -6,11 +6,13 @@ arriving within a short span can combine), and republishes the active set
 as fusion_signal for SignalMapper to decide on. Never decides an action itself.
 """
 
-import json
-import os
-
 from core.event_bus import EventBus
 from fusion.temporal_sync import TemporalSync
+from config.config_loader import load_fusion_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class MultimodalFusion:
@@ -29,37 +31,24 @@ class MultimodalFusion:
 
         try:
 
-            base_dir = os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
-            )
-
-            config_path = os.path.join(
-                base_dir,
-                "config",
-                "fusion.json"
-            )
-
-            with open(
-                config_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
-                data = json.load(f)
-
-            return data.get(
-                "settings",
-                {}
-            ).get(
-                "signal_timeout",
-                2.0
-            )
+            data = load_fusion_config()
 
         except Exception:
 
+            logger.exception(
+                "Failed to load fusion.json — falling back to a "
+                "2.0s signal timeout"
+            )
+
             return 2.0
+
+        return data.get(
+            "settings",
+            {}
+        ).get(
+            "signal_timeout",
+            2.0
+        )
 
     def start(self):
 

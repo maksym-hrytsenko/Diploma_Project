@@ -1,3 +1,7 @@
 venv/
 __pycache__/
 *.pyc
+.DS_Store
+logs/
+.pytest_cache/
+benchmarks/resource_log_*.csv

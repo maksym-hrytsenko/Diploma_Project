@@ -16,6 +16,10 @@ from PyQt6.QtWidgets import QWidget
 from ui.native_window import configure_overlay_window
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class QuickCommandOverlay(QWidget):
@@ -141,8 +145,8 @@ class QuickCommandOverlay(QWidget):
 
         if self.circle_visible:
 
-            print(
-                "[QUICK CIRCLE] showing overlay"
+            logger.debug(
+                "showing overlay"
             )
 
             self.show()

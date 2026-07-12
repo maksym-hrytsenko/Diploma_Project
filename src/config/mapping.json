@@ -34,7 +34,6 @@
         "PREVIOUS_SLIDE": "previous slide",
         "START_SLIDESHOW": "start presentation",
 
-        "WORK_MODE": "work mode",
         "JOB_SEARCH_MODE": "job search mode",
         "STUDY_MODE": "study mode",
         "MOVIE_MODE": "movie mode",
@@ -147,7 +146,6 @@
             "PREVIOUS_SLIDE",
             "START_SLIDESHOW",
 
-            "WORK_MODE",
             "JOB_SEARCH_MODE",
             "STUDY_MODE",
             "MOVIE_MODE",

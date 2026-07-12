@@ -1,12 +1,8 @@
 """Main application window.
 
-Renders the primary control panel (mode wheel, module toggles, system
-power) on top of the approved reference photo (images/01_main_menu.png),
-as specified in ui_documentation_final_without_functions_dialog.txt. It
-only reflects state — mode changes are decided by SignalMapper and
-reach this window exclusively through EventBus's "mode_changed" event;
-user interaction here publishes UI intent events but never applies a
-mode itself.
+Renders the control panel on top of images/01_main_menu.png. Reflects
+state only — SignalMapper decides modes, this window just displays
+"mode_changed" events and publishes UI intent (see CLAUDE.md).
 """
 
 import os
@@ -45,9 +41,13 @@ from PyQt6.QtWidgets import (
 
 from core.event_bus import EventBus
 from ui.dialogs import SettingsWindow, InfoWindow
+from utils.logger import get_logger
 
 
-# Palette (docs/ui: ui_documentation_final_without_functions_dialog.txt, section 1)
+logger = get_logger(__name__)
+
+
+# Palette — see ui_documentation_final_without_functions_dialog.txt §1
 
 COLOR_BACKGROUND = "#F4F6FB"
 COLOR_TEXT_DARK = "#172A5A"
@@ -59,9 +59,7 @@ COLOR_DISABLED = "#B8BCCB"
 COLOR_ERROR = "#FF5A7A"
 COLOR_ACTIVE_DOT = "#34C778"
 
-# Sampled from the approved reference photo (01_main_menu.png) — the
-# near-white lavender fill used inside every card/chip/circle, so text
-# patches painted on top of the photo blend in seamlessly.
+# Patch fill matching the photo's own panel color
 COLOR_PATCH_BG = "#F2F1FA"
 
 BACKGROUND_IMAGE_PATH = os.path.join(
@@ -73,10 +71,7 @@ BACKGROUND_IMAGE_PATH = os.path.join(
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
 
-# Rounds the actual OS-level window shape to match the reference photo's
-# own rounded border, instead of the frameless window staying a hard
-# rectangle with the rounded photo floating inside it — see
-# _apply_rounded_mask.
+# Real OS-level window rounding, see _apply_rounded_mask
 WINDOW_CORNER_RADIUS = 35
 
 
@@ -113,20 +108,12 @@ def make_label(
     label.setAlignment(align)
     label.setTextFormat(Qt.TextFormat.RichText)
 
-    # Set explicitly (not just via the stylesheet below) so
-    # label.fontMetrics() — used by apply_fitted_text/apply_fitted_two_tone
-    # to size patches to their actual runtime-rendered width — reflects
-    # the real font this label paints with, on whatever platform/system
-    # font is actually installed, rather than a width measured offline on
-    # a different machine.
+    # Real rendered font, for fitted-width calculations below
     label.setFont(make_font(size, bold))
 
     background = f"background-color: {bg};" if bg is not None else "background: transparent;"
 
-    # border: none is explicit, not just a default — Qt style sheets
-    # cascade unset properties from parent to child, so a label nested
-    # inside a bordered patch (see make_patch_label) would otherwise pick
-    # up that border for itself too.
+    # Explicit border:none — stylesheets cascade to children otherwise
     label.setStyleSheet(f"color: {color}; {background} border: none;")
 
     return label
@@ -146,10 +133,8 @@ def apply_fitted_text(
     max_width=None,
     min_size=8
 ):
-    """Set a patch/label pair's text, sizing the box to the text's actual
-    runtime width instead of a width guessed offline — the root cause of
-    text overflowing its frame on a machine with different font metrics.
-    """
+    # Sizes the patch to the text's real rendered width, shrinking font
+    # down to min_size if max_width would otherwise be exceeded.
 
     size = base_size
 
@@ -294,12 +279,8 @@ def make_dim_overlay(parent, x, y, width, height, radius):
 
 
 def render_camera_icon(color, size):
-    """The one baked-in icon the reference photo no longer draws — its
-    camera-preview placeholder area was cleared out to make room for the
-    live feed built in _build_camera_preview, so this is drawn instead of
-    patched, matching the approved line-art style (large, simple, no
-    small details).
-    """
+    # Drawn, not photo-baked — the placeholder area was cleared for the
+    # live feed (see _build_camera_preview).
 
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -432,19 +413,9 @@ class ToggleSwitch(QPushButton):
 
         self.toggled.connect(self._on_toggled)
 
-        # setChecked comes AFTER connecting toggled, not before — a
-        # QPushButton starts unchecked, so setChecked(True) here is itself
-        # a real state change that fires toggled(True) same as a click
-        # would. Doing this earlier (before self.knob existed and before
-        # toggled was connected) silently dropped that first emission:
-        # _apply_style() below still painted the "on" gradient track (it
-        # reads isChecked() directly), but the knob itself never moved off
-        # its construction default (left) — so a switch that starts
-        # checked=True and is never actually clicked shows an "on" track
-        # with the knob stuck on the wrong side, while one the user has
-        # clicked at least once looks correct. Routing the initial state
-        # through the same _on_toggled a real click uses fixes both to
-        # agree from the start.
+        # Must connect before setChecked, so an initial checked=True
+        # routes through _on_toggled (moves the knob) instead of only
+        # updating the track color.
         self.setChecked(checked)
 
         self._apply_style()
@@ -486,10 +457,7 @@ MODE_DISPLAY_NAMES = {
     "cursor": "Cursor"
 }
 
-# The "ui" source's signal names — matching config/mapping.json's "ui"
-# section and config/fusion.json's per-mode "ui" trigger — that make a
-# mode-icon click a real trigger SignalMapper acts on, exactly like a
-# voice phrase or keyboard combo would (see CommandInterpreter._handle_ui).
+# UI-triggered signal per mode, matching config/mapping.json's "ui" section
 MODE_UI_SIGNALS = {
     "flip": "FLIP_MODE",
     "presentation": "PRESENTATION_MODE",
@@ -497,22 +465,17 @@ MODE_UI_SIGNALS = {
     "cursor": "CURSOR_MODE"
 }
 
-# Anchors text-patch labels resize around, calibrated against the
-# approved reference photo (01_main_menu.png) — see the module docstring.
-SYSTEM_STATE_CENTER_X = 1057
+# "SYSTEM ON/OFF" label center — keep equal to btn_system_power's own
+# center (x + width/2, currently 993 + 158/2 = 1072) or it drifts off
+# the hub's actual center.
+SYSTEM_STATE_CENTER_X = 1072
+
+# "Current mode: …" label left edge — not centered on purpose so far;
+# edit this one number to reposition it (apply_fitted_two_tone grows the
+# patch rightward from here as the text changes).
 CURRENT_MODE_ANCHOR_X = 760
 
-# anchor_x/max_right_x per card for apply_fitted_text in
-# _refresh_toggle_states — the "● Active"/"● Disabled" label under each
-# toggle card's title (state_patch_camera/microphone/keyboard, built in
-# _build_bottom_status below; y=745 there). anchor_x is the label's left
-# edge, max_right_x the right edge it must not cross (apply_fitted_text
-# shrinks the font to fit within that span). Moved right from their
-# original position per request — to push these further right, raise
-# both numbers in a pair together (so the available width, and therefore
-# the font size apply_fitted_text picks, doesn't shrink); each card's own
-# right edge is a safe upper bound (camera ends ~318, microphone ~599,
-# keyboard ~874 — see dim_toggle_camera/microphone/keyboard below).
+# Toggle-card "Active"/"Disabled" label: (left edge, right edge) per card
 CARD_STATE_ANCHORS = {
     "camera": (165, 260),
     "microphone": (455, 545),
@@ -521,26 +484,13 @@ CARD_STATE_ANCHORS = {
 
 
 class MainWindow(QWidget):
-    """Main control panel window.
-
-    Uses the approved reference photo (01_main_menu.png) directly as the
-    visual surface — every panel, icon and glow is already baked into it —
-    and overlays only what needs to move or change: transparent click
-    regions, toggle switches, glow highlights and a handful of text
-    patches for values that must update live or that the photo still
-    shows from an older draft (superseded by
-    ui_documentation_final_without_functions_dialog.txt section 10).
-    """
+    """Main control panel — draws over images/01_main_menu.png."""
 
     mode_changed_signal = pyqtSignal(object)
     gesture_debug_signal = pyqtSignal(object)
     face_debug_signal = pyqtSignal(object)
 
-    # Caps how often a camera_frame-driven gesture_debug event repaints
-    # video_label — gesture_debug fires once per processed camera frame
-    # (up to CameraInput's own ~30fps), well past what this preview
-    # needs, and scaling+painting every single one would just burn Qt
-    # main-thread time the rest of the UI also needs.
+    # gesture_debug fires up to ~30fps; repainting every one is wasted work
     VIDEO_MIN_INTERVAL_SECONDS = 1.0 / 24.0
 
     def __init__(self, event_bus: Optional[EventBus] = None):
@@ -555,11 +505,8 @@ class MainWindow(QWidget):
         self.microphone_active = True
         self.keyboard_active = True
 
-        # Kept as instance attributes (rather than a fresh instance per
-        # click) so a second click on the gear/Functions-description
-        # button raises the existing standalone window instead of opening
-        # a duplicate — needed now that SettingsWindow/InfoWindow are
-        # plain non-modal top-levels instead of a modal .exec() dialog.
+        # Reused so a second click on gear/Functions-description raises
+        # the existing window instead of opening a duplicate.
         self._settings_window = None
         self._info_window = None
 
@@ -569,12 +516,7 @@ class MainWindow(QWidget):
         self.setStyleSheet(f"#main_window {{ background-color: {COLOR_BACKGROUND}; }}")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-        # Lets the reference photo's own transparent rounded corners (it's
-        # an RGBA PNG that already fades to alpha 0 right at its corners)
-        # show real desktop through them instead of being flattened to a
-        # solid COLOR_BACKGROUND square — required for _apply_rounded_mask
-        # right below to actually look rounded rather than just clipping a
-        # square-cornered image to a round window.
+        # Needed for _apply_rounded_mask to actually look rounded
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self._apply_rounded_mask()
@@ -583,15 +525,8 @@ class MainWindow(QWidget):
         self.gesture_debug_signal.connect(self._on_gesture_debug)
         self.face_debug_signal.connect(self._on_face_debug)
 
-        # LIVE LAYOUT DEBUG OVERLAY — press D (while this window has focus)
-        # to toggle labeled outlines over every registered button/icon/glow
-        # ring, so their real on-screen position/size can be checked
-        # against the reference photo at a glance instead of guessing from
-        # numbers alone. _register_debug_element calls are sprinkled right
-        # after each element's construction below; see _build_debug_overlay
-        # and keyPressEvent. Works both under main.py's real app and the
-        # standalone hot-reload preview at the bottom of this file — press
-        # D again after every hot-reload to bring the overlay back.
+        # Press D to toggle labeled outlines over every registered
+        # button/icon/glow ring — see _build_debug_overlay/keyPressEvent.
         self._debug_elements = []
         self._debug_overlay_widgets = []
         self._debug_overlay_visible = False
@@ -609,13 +544,7 @@ class MainWindow(QWidget):
         self._build_debug_overlay()
 
     # ---------------------------------
-    # Start / Stop
-    #
-    # Mirrors QuickCommandOverlay's pattern: a read-only
-    # subscription to the real mode_changed event so the wheel
-    # reflects whatever SignalMapper actually decided, without the
-    # UI ever deciding a mode itself (SignalMapper is the only
-    # module allowed to do that — see CLAUDE.md).
+    # Start / Stop — read-only subscriptions, SignalMapper decides modes
     # ---------------------------------
 
     def start(self):
@@ -625,12 +554,7 @@ class MainWindow(QWidget):
             self.event_bus.subscribe("mode_changed", self._handle_mode_changed)
             self.event_bus.subscribe("ui_expand_requested", self._handle_expand_requested)
 
-            # Read-only, same as mode_changed above: GestureRecognizer and
-            # FaceRecognizer already publish these every processed camera
-            # frame (see gesture_debug_view.py / face_debug_view.py, which
-            # read the exact same events for the --debug-gesture/--debug-
-            # face cv2 windows) — this window just draws them instead of
-            # opening a second, redundant subscription path.
+            # Same events the --debug-gesture/--debug-face cv2 windows use
             self.event_bus.subscribe("gesture_debug", self._handle_gesture_debug)
             self.event_bus.subscribe("face_debug", self._handle_face_debug)
 
@@ -661,12 +585,8 @@ class MainWindow(QWidget):
         self._refresh_mode_buttons()
 
     # ---------------------------------
-    # Live camera preview
-    #
-    # gesture_debug/face_debug arrive on CameraInput's capture thread —
-    # marshaled onto the Qt main thread via a signal/slot (same pattern
-    # QuickCommandOverlay uses for mode_changed) before touching any
-    # widget, since Qt widgets may only be touched from their own thread.
+    # Live camera preview — events arrive off the Qt thread, marshaled
+    # via signal/slot before touching any widget.
     # ---------------------------------
 
     def _handle_gesture_debug(self, event):
@@ -710,17 +630,17 @@ class MainWindow(QWidget):
 
         self._refresh_face_status()
 
-    # A single clipped QPainter session — the frame, the tracking overlay
-    # and the detected-command caption are all painted together so the
-    # rounded-square clip applies to every one of them alike. Painting
-    # the overlay/caption in a later, separate QPainter pass (no clip set)
-    # would let them draw straight through the transparent rounded
-    # corners this same clip leaves in the base frame.
+    # One clipped QPainter session so the rounded-corner clip applies to
+    # the frame, landmark points and caption alike.
     def _build_video_frame_pixmap(self, frame, data):
 
         width, height = self.video_area[2], self.video_area[3]
+        source_height, source_width = frame.shape[:2]
+        source_size = (source_width, source_height)
 
-        cropped = self._frame_to_rect_pixmap(frame, width, height)
+        crop_box = self._crop_box(source_width, source_height, width, height)
+
+        cropped = self._frame_to_rect_pixmap(frame, crop_box, width, height)
 
         canvas = QPixmap(width, height)
         canvas.fill(Qt.GlobalColor.transparent)
@@ -737,33 +657,20 @@ class MainWindow(QWidget):
 
         painter.drawPixmap(0, 0, cropped)
 
-        self._paint_hand_landmarks(painter, width, height, data)
-        self._paint_face_landmarks(painter, width, height)
+        self._paint_hand_landmarks(painter, width, height, data, crop_box, source_size)
+        self._paint_face_landmarks(painter, width, height, crop_box, source_size)
         self._paint_gesture_caption(painter, width, height, data)
 
         painter.end()
 
         return canvas
 
-    def _frame_to_rect_pixmap(self, frame, target_width, target_height):
+    # Crop box (x, y, w, h) in SOURCE pixel space matching the target
+    # aspect ratio — shared by the frame crop below and by
+    # _map_normalized_point, so a landmark point and the pixel it should
+    # sit on top of go through the exact same transform.
+    def _crop_box(self, source_width, source_height, target_width, target_height):
 
-        frame = np.ascontiguousarray(frame)
-        source_height, source_width = frame.shape[:2]
-
-        image = QImage(
-            frame.data, source_width, source_height, source_width * 3,
-            QImage.Format.Format_BGR888
-        ).copy()
-
-        # Crop to the target aspect ratio out of the SOURCE resolution
-        # first (integer math on the real width/height, so it lands
-        # exactly on a whole pixel every time), then scale that already-
-        # matching-aspect crop up/down to exactly target_width x
-        # target_height. Scaling first and cropping the scaled result
-        # could round the scaled size to one pixel short of the target,
-        # making the crop offset negative and leaving a sliver of the
-        # frame unpainted — cropping first, on exact source pixels,
-        # can't do that.
         target_aspect = target_width / target_height
         source_aspect = source_width / source_height
 
@@ -780,6 +687,20 @@ class MainWindow(QWidget):
         crop_x = (source_width - crop_width) // 2
         crop_y = (source_height - crop_height) // 2
 
+        return crop_x, crop_y, crop_width, crop_height
+
+    def _frame_to_rect_pixmap(self, frame, crop_box, target_width, target_height):
+
+        frame = np.ascontiguousarray(frame)
+        source_height, source_width = frame.shape[:2]
+
+        image = QImage(
+            frame.data, source_width, source_height, source_width * 3,
+            QImage.Format.Format_BGR888
+        ).copy()
+
+        crop_x, crop_y, crop_width, crop_height = crop_box
+
         cropped_image = image.copy(crop_x, crop_y, crop_width, crop_height)
 
         return QPixmap.fromImage(cropped_image).scaled(
@@ -788,17 +709,50 @@ class MainWindow(QWidget):
             Qt.TransformationMode.SmoothTransformation
         )
 
-    # Every MediaPipe hand landmark point (not just the single tracked
-    # fingertip the old finger/anchor/velocity-vector overlay drew) — the
-    # full set GestureRecognizer already reads off its model result and
-    # now publishes verbatim in "hand_landmarks" (see gesture_recognizer.
-    # py's _publish_debug). None whenever no hand is currently tracked.
-    def _paint_hand_landmarks(self, painter, width, height, data):
+    # Maps a normalized (0-1, relative to the FULL camera frame) point
+    # onto the cropped+scaled preview canvas. Landmarks are normalized to
+    # the original frame, not the cropped preview — skipping this step
+    # (drawing at int(x*width)) is what made hand/face points drift out
+    # of place whenever the crop trims any edge, which it almost always
+    # does (camera aspect ratio != preview panel aspect ratio). Returns
+    # None if the point falls outside the visible crop.
+    def _map_normalized_point(
+        self,
+        x,
+        y,
+        source_width,
+        source_height,
+        crop_box,
+        target_width,
+        target_height
+    ):
+
+        crop_x, crop_y, crop_width, crop_height = crop_box
+
+        cropped_x = x * source_width - crop_x
+        cropped_y = y * source_height - crop_y
+
+        if cropped_x < 0 or cropped_x > crop_width:
+            return None
+
+        if cropped_y < 0 or cropped_y > crop_height:
+            return None
+
+        point_x = int(cropped_x * target_width / crop_width)
+        point_y = int(cropped_y * target_height / crop_height)
+
+        return point_x, point_y
+
+    # Every MediaPipe hand landmark (see gesture_recognizer.py's
+    # _publish_debug "hand_landmarks").
+    def _paint_hand_landmarks(self, painter, width, height, data, crop_box, source_size):
 
         hand_landmarks = data.get("hand_landmarks")
 
         if not hand_landmarks:
             return
+
+        source_width, source_height = source_size
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(COLOR_ACCENT_BLUE))
@@ -807,27 +761,30 @@ class MainWindow(QWidget):
 
         for x, y in hand_landmarks:
 
-            point_x = int(x * width)
-            point_y = int(y * height)
+            mapped = self._map_normalized_point(
+                x, y, source_width, source_height, crop_box, width, height
+            )
+
+            if mapped is None:
+                continue
+
+            point_x, point_y = mapped
 
             painter.drawEllipse(
                 point_x - radius, point_y - radius, radius * 2, radius * 2
             )
 
-    # Every MediaPipe face landmark point, the same idea as
-    # _paint_hand_landmarks but for FaceRecognizer's "face_landmarks" (see
-    # face_recognizer.py's _publish_debug) and in a different color so the
-    # two point clouds stay visually distinct on the same frame. Reads
-    # self._latest_face_landmarks rather than a "data" param, since
-    # face_debug and gesture_debug are two independent events arriving at
-    # their own pace — the most recently received face reading is drawn
-    # on top of whichever camera frame gesture_debug is currently
-    # painting, same pattern _refresh_face_status already uses for
-    # self._latest_face_pitch.
-    def _paint_face_landmarks(self, painter, width, height):
+    # Every MediaPipe face landmark (see face_recognizer.py's
+    # _publish_debug "face_landmarks"). Reads self._latest_face_landmarks
+    # rather than "data" since face_debug/gesture_debug are independent
+    # events — the latest face reading is drawn on whichever frame
+    # gesture_debug is currently painting.
+    def _paint_face_landmarks(self, painter, width, height, crop_box, source_size):
 
         if not self._latest_face_landmarks:
             return
+
+        source_width, source_height = source_size
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(COLOR_GLOW_VIOLET))
@@ -836,15 +793,20 @@ class MainWindow(QWidget):
 
         for x, y in self._latest_face_landmarks:
 
-            point_x = int(x * width)
-            point_y = int(y * height)
+            mapped = self._map_normalized_point(
+                x, y, source_width, source_height, crop_box, width, height
+            )
+
+            if mapped is None:
+                continue
+
+            point_x, point_y = mapped
 
             painter.drawEllipse(
                 point_x - radius, point_y - radius, radius * 2, radius * 2
             )
 
-    # The command the system might capture, labeled directly on the
-    # frame rather than in a separate box below it.
+    # Detected-command caption, painted directly on the frame
     def _paint_gesture_caption(self, painter, width, height, data):
 
         gesture_name = data.get("gesture_name")
@@ -910,12 +872,8 @@ class MainWindow(QWidget):
         if self.event_bus is not None:
             self.event_bus.publish(event_type, data)
 
-    # Gives the frameless window itself a rounded OS-level shape (a hard
-    # clip via setMask, not just painted rounded corners) — otherwise a
-    # frameless QWidget stays a plain rectangle no matter how rounded its
-    # painted content looks, and the reference photo's own rounded border
-    # would just float inside a square window. WINDOW_WIDTH/HEIGHT are
-    # fixed (see setFixedSize above), so this only needs to run once.
+    # Real OS-level rounded window shape (hard clip), not just painted
+    # rounded corners on a square window.
     def _apply_rounded_mask(self):
 
         path = QPainterPath()
@@ -931,23 +889,15 @@ class MainWindow(QWidget):
     # ---------------------------------
 
     def _register_debug_element(self, name, widget):
-        """Called right after building any button/toggle/glow ring that
-        has an on-screen position worth checking against the reference
-        photo. Purely bookkeeping — appends to a list _build_debug_overlay
-        reads once, after every element for this window exists.
-        """
+        # Bookkeeping only — _build_debug_overlay reads this list once
+        # every element for this window exists.
 
         self._debug_elements.append((name, widget))
 
     def _build_debug_overlay(self):
-        """Builds (hidden) one labeled outline per registered element,
-        exactly on top of that element's own geometry — see
-        _register_debug_element call sites throughout _build_header/
-        _build_control_wheel/_build_bottom_status for what gets covered.
-        Toggled on/off as a whole by keyPressEvent (key "D"). Every piece
-        here is WA_TransparentForMouseEvents so the overlay never blocks
-        the real button underneath — it is purely a visual/printed aid.
-        """
+        # One hidden labeled outline per registered element, exact same
+        # geometry. WA_TransparentForMouseEvents so it never blocks
+        # clicks — purely visual/printed.
 
         for name, widget in self._debug_elements:
 
@@ -972,8 +922,7 @@ class MainWindow(QWidget):
             )
             label.adjustSize()
 
-            # Sits just above the outline, unless that would run off the
-            # window's top edge — drop it just inside the box instead.
+            # Sits above the outline, or just inside it near the top edge
             label_y = geometry.y() - label.height() - 1
 
             if label_y < 0:
@@ -998,7 +947,11 @@ class MainWindow(QWidget):
 
         state = "ON" if self._debug_overlay_visible else "off"
 
-        print(f"[layout-debug] overlay {state} — {len(self._debug_elements)} elements")
+        logger.debug(
+            "[layout-debug] overlay %s — %d elements",
+            state,
+            len(self._debug_elements)
+        )
 
         if self._debug_overlay_visible:
 
@@ -1006,9 +959,13 @@ class MainWindow(QWidget):
 
                 geometry = widget.geometry()
 
-                print(
-                    f"  {name}: x={geometry.x()} y={geometry.y()} "
-                    f"w={geometry.width()} h={geometry.height()}"
+                logger.debug(
+                    "  %s: x=%d y=%d w=%d h=%d",
+                    name,
+                    geometry.x(),
+                    geometry.y(),
+                    geometry.width(),
+                    geometry.height()
                 )
 
     def keyPressEvent(self, event):
@@ -1050,25 +1007,21 @@ class MainWindow(QWidget):
         self.header_drag_area = DraggableFrame(self)
         self.header_drag_area.setGeometry(24, 18, 1090, 78)
 
-        # BUTTON: header minimize (window) — args after object_name are
-        # x, y, width, height, radius. Edit those 5 numbers to reposition/
-        # resize this button.
+        # Window minimize
         self.btn_window_minimize = make_transparent_button(
             self, "btn_window_minimize", 1198, 39, 52, 47, 13
         )
         self.btn_window_minimize.clicked.connect(self.showMinimized)
         self._register_debug_element("btn_window_minimize", self.btn_window_minimize)
 
-        # BUTTON: header settings (opens Settings dialog) — x, y, width,
-        # height, radius.
+        # Opens SettingsWindow
         self.btn_window_settings = make_transparent_button(
             self, "btn_window_settings", 1268, 39, 52, 47, 13
         )
         self.btn_window_settings.clicked.connect(self._on_settings_clicked)
         self._register_debug_element("btn_window_settings", self.btn_window_settings)
 
-        # BUTTON: header close (quits the whole app) — x, y, width,
-        # height, radius.
+        # Quits the app
         self.btn_window_close = make_transparent_button(
             self, "btn_window_close", 1337, 39, 53, 47, 13
         )
@@ -1080,16 +1033,9 @@ class MainWindow(QWidget):
     # ---------------------------------
 
     def _build_camera_preview(self):
+        # Fills panel_camera_preview; the photo's own placeholder content
+        # here was cleared for the live feed.
 
-        # Fills the entire panel_camera_preview rounded rectangle (inset
-        # by a few px so this border sits just inside the reference
-        # photo's own matching border instead of doubling up on top of
-        # it) — the photo's own placeholder content in this area was
-        # cleared out to make room for this (see render_camera_icon's
-        # docstring). The detected-command caption paints directly onto
-        # the live frame itself (see _build_video_frame_pixmap). No
-        # separate "Camera: Active/Disabled" chip here any more — that
-        # state is already shown on the Camera toggle card below.
         rect_x, rect_y = 24, 132
         rect_width, rect_height = 679, 500
 
@@ -1108,8 +1054,7 @@ class MainWindow(QWidget):
 
         icon_size = 92
 
-        # Vertically centers the icon/title/hint block (92 + 8 + 26 + 8
-        # + 22 = 156px tall) within rect_height.
+        # Vertically centers the icon/title/hint block
         block_y = rect_y + (rect_height - 156) // 2
 
         self.icon_camera_placeholder = QLabel(self)
@@ -1149,18 +1094,9 @@ class MainWindow(QWidget):
 
     def _build_control_wheel(self):
 
-        # GLOW RINGS: the visual indicator that a mode is currently
-        # active — a soft violet ring drawn behind/around that mode's
-        # icon (see make_glow_ring above; hidden by default, shown by
-        # _refresh_mode_buttons for whichever name matches self.active_mode
-        # via mode_glow_rings below). Args are x, y, width, height —
-        # keep width == height so it stays a circle, and each one should
-        # stay centered on its matching wheel button
-        # (btn_mode_flip/btn_presentation/btn_call_mode/btn_cursor_mode,
-        # built further down) — i.e. same center point, this ring just a
-        # few px larger all around than that button's own 96x96.
-        # TODO: reposition/resize here if a ring stops lining up with its
-        # icon.
+        # Glow rings: shown behind a mode icon when it's active (see
+        # _refresh_mode_buttons/mode_glow_rings). Keep width==height and
+        # centered on the matching wheel button below.
         self.glow_mode_flip = make_glow_ring(self, 1014, 128, 116, 116)
         self.glow_presentation = make_glow_ring(self, 817, 321, 116, 116)
         self.glow_call_mode = make_glow_ring(self, 1210, 320, 116, 116)
@@ -1178,21 +1114,12 @@ class MainWindow(QWidget):
             "cursor": self.glow_cursor
         }
 
-        # SYSTEM-OFF GREY CIRCLE: shown over the hub instead of the glow
-        # when system_on is False (see _refresh_system_power). Its x/y/w/h
-        # must match btn_system_power's own 4 numbers right below exactly
-        # (same circle, same center) — they drifted apart in an earlier
-        # edit (978,305,158,158 vs the button's 993,298,158,160), which is
-        # why the grey circle looked off-center from the actual hub. Edit
-        # both together from now on: whatever you set btn_system_power's
-        # x/y/w/h to, copy the same 4 numbers here.
+        # Grey "system off" circle — keep x/y/w/h identical to
+        # btn_system_power below (same circle), or it drifts off-center.
         self.system_dim_overlay = make_dim_overlay(self, 993, 298, 158, 160, 79)
         self._register_debug_element("system_dim_overlay", self.system_dim_overlay)
 
-        # BUTTON: central System ON/OFF (control wheel hub) — x, y, width,
-        # height, radius. Keep width == height so it stays a circle, and
-        # radius == width / 2. See system_dim_overlay right above — keep
-        # its x/y/w/h identical to this button's.
+        # System ON/OFF hub button
         self.btn_system_power = make_transparent_button(
             self, "btn_system_power", 993, 298, 158, 160, 79
         )
@@ -1214,47 +1141,32 @@ class MainWindow(QWidget):
             align=Qt.AlignmentFlag.AlignCenter
         )
 
-        # ICON SIZE, all four wheel-mode buttons below: the icon graphic
-        # itself is baked into the reference photo's pixels (there is no
-        # code-side icon image to resize) — what you CAN resize here is
-        # the circular click-region/highlight-boundary drawn around it,
-        # which is what visually reads as "how big the icon is". For each
-        # button below, the 3rd/4th numbers (currently 98, 98) are that
-        # circle's width/height — keep them equal so it stays a circle,
-        # and the 5th number (radius, currently 49) equal to half of
-        # them. The matching glow ring in mode_glow_rings above (e.g.
-        # glow_mode_flip for btn_mode_flip) is a SEPARATE element sized
-        # independently — if you resize a button here, widen its glow
-        # ring by roughly the same amount so the glow still reads as a
-        # ring around the (new) button size instead of matching the old
-        # one.
-        #
-        # BUTTON: wheel mode — Flip/Mode (top icon) — x, y, width, height,
-        # radius.
+        # Icon graphic is baked into the photo; width/height/radius here
+        # only control the click/highlight circle around it. Widen the
+        # matching glow ring above by the same amount if you resize one.
+
+        # Flip/Mode (top icon)
         self.btn_mode_flip = make_transparent_button(
             self, "btn_mode_flip", 1022, 138, 98, 98, 49
         )
         self.btn_mode_flip.clicked.connect(lambda: self._on_mode_clicked("flip"))
         self._register_debug_element("btn_mode_flip", self.btn_mode_flip)
 
-        # BUTTON: wheel mode — Presentation (left icon) — x, y, width,
-        # height, radius.
+        # Presentation (left icon)
         self.btn_presentation = make_transparent_button(
             self, "btn_presentation", 827, 329, 98, 98, 49
         )
         self.btn_presentation.clicked.connect(lambda: self._on_mode_clicked("presentation"))
         self._register_debug_element("btn_presentation", self.btn_presentation)
 
-        # BUTTON: wheel mode — Call Mode (right icon) — x, y, width,
-        # height, radius.
+        # Call Mode (right icon)
         self.btn_call_mode = make_transparent_button(
             self, "btn_call_mode", 1220, 329, 98, 98, 49
         )
         self.btn_call_mode.clicked.connect(lambda: self._on_mode_clicked("call"))
         self._register_debug_element("btn_call_mode", self.btn_call_mode)
 
-        # BUTTON: wheel mode — Cursor (bottom icon) — x, y, width, height,
-        # radius.
+        # Cursor (bottom icon)
         self.btn_cursor_mode = make_transparent_button(
             self, "btn_cursor_mode", 1022, 521, 98, 98, 49
         )
@@ -1268,29 +1180,11 @@ class MainWindow(QWidget):
             "cursor": self.btn_cursor_mode
         }
 
-        # The wheel's four icon labels ("Mode" / "Presentation" /
-        # "Call Mode" / "Cursor") used to be covered with blank patches
-        # here, because the reference photo baked in stale draft text
-        # ("Gesture" / "Voice" / "Control") at those spots. The current
-        # photo (images/01_main_menu.png) no longer has any text there at
-        # all, so nothing needs covering any more — those patches were
-        # removed rather than left in as now-pointless blank rectangles.
-        # MODE_DISPLAY_NAMES is still the single source of truth for a
-        # mode's display name, used by the "Current mode: …" line below
-        # and by InfoWindow.
-
+        # "Current mode: …" — see CURRENT_MODE_ANCHOR_X above to reposition
         self.current_mode_patch = make_patch_label(self, 760, 574, 320, 20)
         self.label_current_mode = make_label(
             self.current_mode_patch, "", 0, 0, 320, 20, COLOR_TEXT_DARK, size=13
         )
-
-        # Blank cover only, per request — the reference photo bakes in an
-        # "Active modules: …" line right under the current-mode text (with
-        # the old draft module names "Gesture"/"Voice"), and removing the
-        # patch entirely would leave that stale photo text exposed instead
-        # of actually removing it. No label is attached here on purpose:
-        # nothing is drawn back on top.
-        make_patch_label(self, 760, 597, 285, 18)
 
     # ---------------------------------
     # Bottom status panel
@@ -1302,15 +1196,8 @@ class MainWindow(QWidget):
         self.dim_toggle_microphone = make_dim_overlay(self, 344, 678, 255, 153, 25)
         self.dim_toggle_keyboard = make_dim_overlay(self, 624, 678, 250, 153, 25)
 
-        # These three patch/label pairs are the "● Active" / "● Disabled"
-        # text under each toggle card's title. The x/width given here only
-        # matter before the very first _refresh_toggle_states() call at
-        # the end of __init__ — every refresh after that (including the
-        # first one) repositions/resizes the patch via apply_fitted_text
-        # using CARD_STATE_ANCHORS above, so CARD_STATE_ANCHORS is the
-        # actual place to edit left/right position. The y below (745) is
-        # the one thing apply_fitted_text does NOT touch — move it here if
-        # the label needs to shift up/down instead of left/right.
+        # "● Active"/"● Disabled" per card — position via CARD_STATE_ANCHORS
+        # above (x) and y below (not touched by apply_fitted_text).
         self.state_patch_camera = make_patch_label(self, 140, 745, 100, 22, radius=8)
         self.label_state_camera = make_label(
             self.state_patch_camera, "", 0, 0, 100, 22, COLOR_ACTIVE_DOT, size=12, bold=True
@@ -1326,41 +1213,35 @@ class MainWindow(QWidget):
             self.state_patch_keyboard, "", 0, 0, 100, 22, COLOR_ACTIVE_DOT, size=12, bold=True
         )
 
-        # BUTTON: Camera toggle switch (bottom-left card) — x, y, width,
-        # height (ToggleSwitch has no separate radius arg — it is always
-        # a full pill, i.e. radius = height / 2).
+        # Camera toggle switch
         self.switch_camera = ToggleSwitch(
             self, "switch_camera", 230, 775, 52, 28, self.camera_active
         )
         self.switch_camera.toggled.connect(self._on_camera_toggled)
         self._register_debug_element("switch_camera", self.switch_camera)
 
-        # BUTTON: Microphone toggle switch (bottom-middle card) — x, y,
-        # width, height.
+        # Microphone toggle switch
         self.switch_microphone = ToggleSwitch(
             self, "switch_microphone", 513, 775, 52, 28, self.microphone_active
         )
         self.switch_microphone.toggled.connect(self._on_microphone_toggled)
         self._register_debug_element("switch_microphone", self.switch_microphone)
 
-        # BUTTON: Keyboard toggle switch (bottom-right card) — x, y,
-        # width, height.
+        # Keyboard toggle switch
         self.switch_keyboard = ToggleSwitch(
             self, "switch_keyboard", 791, 775, 52, 28, self.keyboard_active
         )
         self.switch_keyboard.toggled.connect(self._on_keyboard_toggled)
         self._register_debug_element("switch_keyboard", self.switch_keyboard)
 
-        # BUTTON: "Functions description" (opens Functions dialog) —
-        # x, y, width, height, radius.
+        # Opens InfoWindow
         self.btn_functions = make_transparent_button(
             self, "btn_functions", 902, 716, 234, 73, 18
         )
         self.btn_functions.clicked.connect(self._on_functions_clicked)
         self._register_debug_element("btn_functions", self.btn_functions)
 
-        # BUTTON: "Minimize to bar" (hides MainWindow, shows the floating
-        # status bar) — x, y, width, height, radius.
+        # Hides MainWindow, shows FloatingStatusBar
         self.btn_minimize_to_bar = make_transparent_button(
             self, "btn_minimize_to_bar", 1158, 715, 232, 75, 18
         )
@@ -1372,6 +1253,23 @@ class MainWindow(QWidget):
     # ---------------------------------
 
     def _on_system_power_clicked(self):
+
+        turning_off = self.system_on
+
+        if turning_off and self.active_mode is not None:
+
+            # Exit the active mode BEFORE the system actually goes off —
+            # SignalMapper's system-off gate blocks everything, including
+            # an EXIT_MODE request, once ui_system_toggle(False) below
+            # has been processed, so this has to go out first.
+            if self.event_bus is None:
+
+                self.active_mode = None
+                self._refresh_mode_buttons()
+
+            else:
+
+                self._publish_ui_event("ui_signal", {"signal": "EXIT_MODE"})
 
         self.system_on = not self.system_on
 
@@ -1402,15 +1300,25 @@ class MainWindow(QWidget):
     # Modes (only one active at a time)
     # ---------------------------------
 
-    # Sends a real request through the same pipeline a voice phrase or
-    # keyboard combo would use (CommandInterpreter -> MultimodalFusion ->
-    # SignalMapper) rather than switching self.active_mode directly —
-    # SignalMapper is still the only module that decides the mode
-    # (CLAUDE.md); this only asks. The click's visible effect (glow ring,
-    # current-mode label, QuickCommandOverlay, etc.) only happens once
-    # the resulting mode_changed event comes back — see
-    # _on_mode_changed_from_bus.
+    # Asks via the real pipeline (CommandInterpreter -> MultimodalFusion
+    # -> SignalMapper) instead of setting active_mode directly —
+    # SignalMapper alone decides (CLAUDE.md). Visible effect only happens
+    # once mode_changed comes back, see _on_mode_changed_from_bus.
     def _on_mode_clicked(self, mode_name):
+
+        if not self.system_on:
+
+            # Clicking a mode while the hub shows OFF turns it back on
+            # first (published, so SignalMapper's gate lifts before the
+            # mode request below reaches it), instead of the click just
+            # silently doing nothing — keeps the hub and the wheel from
+            # ever disagreeing (a mode active while the hub still shows
+            # OFF).
+            self.system_on = True
+
+            self._refresh_system_power()
+
+            self._publish_ui_event("ui_system_toggle", {"active": True})
 
         if self.active_mode == mode_name:
 
@@ -1422,14 +1330,9 @@ class MainWindow(QWidget):
 
         if self.event_bus is None:
 
-            # No backend to round-trip through — this only happens in the
-            # standalone hot-reload preview at the bottom of this file
-            # (constructed with no event_bus), where SignalMapper never
-            # runs and _on_mode_changed_from_bus would otherwise never
-            # fire. Simulate the same end state locally purely so glow
-            # rings / "Current mode" are actually visible while checking
-            # wheel-button layout live — see _on_mode_changed_from_bus for
-            # the real (event_bus-driven) path this mirrors.
+            # Standalone hot-reload preview only (no SignalMapper running)
+            # — simulate locally so glow rings are visible while checking
+            # layout. See _on_mode_changed_from_bus for the real path.
             self.active_mode = None if signal == "EXIT_MODE" else mode_name
 
             self._refresh_mode_buttons()
@@ -1536,18 +1439,12 @@ class MainWindow(QWidget):
                 max_width=max_right_x - anchor_x
             )
 
-
     # ---------------------------------
     # Functions description / minimize / settings
     #
-    # The bottom-panel "Functions description" button opens InfoWindow
-    # (descriptions only) and the header gear icon opens SettingsWindow
-    # (configurable values only) — two separate standalone windows, not
-    # one merged dialog (see ui/dialogs.py's module docstring). Both are
-    # plain non-modal top-levels with no parent, so each gets its own
-    # native macOS title bar and close button instead of appearing as a
-    # sheet attached to this window; a single instance is kept and raised
-    # rather than reopened, so repeat clicks don't spawn duplicates.
+    # btn_functions opens InfoWindow, btn_window_settings opens
+    # SettingsWindow — separate standalone (non-modal, no parent) windows,
+    # reused rather than reopened on repeat clicks.
     # ---------------------------------
 
     def _on_functions_clicked(self):
@@ -1576,10 +1473,8 @@ class MainWindow(QWidget):
         self._settings_window.raise_()
         self._settings_window.activateWindow()
 
-    # Closing the main window is a full quit, not just hiding this
-    # widget — "ui_quit_requested" is the same event FloatingStatusBar's
-    # own close (X) button publishes, and main.py's loop reacts to it by
-    # stopping every backend module (see main.py's shutdown_requested).
+    # Full app quit, not just hiding — same event FloatingStatusBar's
+    # close button publishes; main.py stops every backend module on it.
     def _on_close_clicked(self):
 
         self._publish_ui_event("ui_quit_requested", {})
@@ -1589,13 +1484,10 @@ class MainWindow(QWidget):
 
 if __name__ == "__main__":
 
-    # Hot-reload dev preview — only runs when this file is executed
-    # directly (`python ui/main_window.py`), never when main.py imports
-    # MainWindow normally. Leave the file running, edit any BUTTON
-    # comment's numbers (or anything else in this file), hit save: this
-    # polls the file's mtime, re-execs it fresh from disk, swaps in the
-    # rebuilt MainWindow class, and reopens the window at the same
-    # screen position — no manual restart, no retyping the run command.
+    # Hot-reload dev preview (`python ui/main_window.py` only — never
+    # runs when main.py imports MainWindow normally). Edit + save this
+    # file: polls mtime, re-execs from disk, rebuilds the window at the
+    # same screen position.
     import importlib.util
 
     from PyQt6.QtCore import QTimer
@@ -1612,12 +1504,9 @@ if __name__ == "__main__":
     }
 
     def _load_main_window_class():
+        # Re-reads the file fresh by path — it's loaded as "__main__"
+        # right now, so there's no normal module to importlib.reload.
 
-        # spec_from_file_location + exec_module re-reads and re-runs the
-        # file straight from disk by path, rather than relying on
-        # importlib.reload(sys.modules[...]) — this file is loaded as
-        # "__main__" right now, not under its normal "ui.main_window"
-        # name, so there is no regular module object to reload here.
         spec = importlib.util.spec_from_file_location(
             "main_window_live_reload",
             THIS_FILE
@@ -1641,11 +1530,11 @@ if __name__ == "__main__":
 
         except Exception as error:
 
-            # A syntax error or typo mid-edit should not kill the dev
-            # preview — keep showing the last good window and try again
-            # on the next save.
-            print(
-                f"[hot-reload] edit not applied yet, still showing the last good window: {error}"
+            # Syntax error mid-edit — keep the last good window
+            logger.warning(
+                "[hot-reload] edit not applied yet, still showing "
+                "the last good window: %s",
+                error
             )
 
             return
@@ -1664,8 +1553,11 @@ if __name__ == "__main__":
 
         state["window"] = new_window
 
-        print("[hot-reload] window rebuilt — click a wheel icon to preview its glow "
-              "ring, press D to toggle the layout debug overlay")
+        logger.info(
+            "[hot-reload] window rebuilt — click a wheel icon to "
+            "preview its glow ring, press D to toggle the layout "
+            "debug overlay"
+        )
 
     def _check_for_edits():
 

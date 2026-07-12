@@ -12,8 +12,11 @@ the same way voice's pre-mapped intent_detected is: validated, not
 looked up in a mapping table.
 """
 
-import json
-import os
+from config.config_loader import load_mapping_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class CommandInterpreter:
@@ -94,69 +97,46 @@ class CommandInterpreter:
 
         try:
 
-            base_dir = os.path.dirname(
-                os.path.dirname(
-                    os.path.abspath(__file__)
-                )
-            )
-
-            config_path = os.path.join(
-                base_dir,
-                "config",
-                "mapping.json"
-            )
-
-            with open(
-                config_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
-                data = json.load(f)
-
-            self.keyboard_mapping = data.get(
-                "keyboard",
-                {}
-            )
-
-            self.voice_mapping = data.get(
-                "voice",
-                {}
-            )
-
-            self.gesture_mapping = data.get(
-                "gesture",
-                {}
-            )
-
-            self.face_mapping = data.get(
-                "face",
-                {}
-            )
-
-            self.ui_mapping = data.get(
-                "ui",
-                {}
-            )
-
-            self.valid_signals = data.get(
-                "valid_signals",
-                {}
-            )
+            data = load_mapping_config()
 
         except Exception:
 
-            self.keyboard_mapping = {}
+            logger.exception(
+                "Failed to load mapping.json — falling back to empty "
+                "mappings"
+            )
 
-            self.voice_mapping = {}
+            data = {}
 
-            self.gesture_mapping = {}
+        self.keyboard_mapping = data.get(
+            "keyboard",
+            {}
+        )
 
-            self.face_mapping = {}
+        self.voice_mapping = data.get(
+            "voice",
+            {}
+        )
 
-            self.ui_mapping = {}
+        self.gesture_mapping = data.get(
+            "gesture",
+            {}
+        )
 
-            self.valid_signals = {}
+        self.face_mapping = data.get(
+            "face",
+            {}
+        )
+
+        self.ui_mapping = data.get(
+            "ui",
+            {}
+        )
+
+        self.valid_signals = data.get(
+            "valid_signals",
+            {}
+        )
 
     def _handle_keyboard(self, event):
 

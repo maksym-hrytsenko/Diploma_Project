@@ -13,6 +13,10 @@ cursor in Cursor mode, this overlay dot in every other case, no mode
 included. So seeing the dot with no mode selected is expected, not a bug:
 it is confirmation that a position is being tracked and is one hand-raise
 away from being usable, in whichever mode gets entered next.
+
+ActionExecutor never holds a reference to this class directly — it only
+publishes pointer_overlay_update on the shared EventBus, keeping the
+UI layer reachable exclusively through EventBus like every other module.
 """
 
 from PyQt6.QtCore import (
@@ -42,9 +46,11 @@ class PointerOverlay(QWidget):
     # cross-thread-safe way to reach a QWidget from here.
     position_updated = pyqtSignal(float, float)
 
-    def __init__(self):
+    def __init__(self, event_bus):
 
         super().__init__()
+
+        self.event_bus = event_bus
 
         config = load_system_config().get(
             "ui",
@@ -114,6 +120,38 @@ class PointerOverlay(QWidget):
 
         self.hide_timer.timeout.connect(
             self.hide
+        )
+
+    def start(self):
+
+        self.event_bus.subscribe(
+            "pointer_overlay_update",
+            self._handle_update_event
+        )
+
+    def stop(self):
+
+        self.event_bus.unsubscribe(
+            "pointer_overlay_update",
+            self._handle_update_event
+        )
+
+    def _handle_update_event(self, event):
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        x = data.get("x")
+        y = data.get("y")
+
+        if x is None or y is None:
+            return
+
+        self.update_position(
+            x,
+            y
         )
 
     # Presenting is normally done with a projector/external display as a

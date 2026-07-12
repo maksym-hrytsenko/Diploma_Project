@@ -2,6 +2,12 @@
 QuickCommandOverlay) and the app's own Dock/activation policy.
 """
 
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
+
+
 # Qt's WindowStaysOnTopHint/Tool flags only control ordering within the
 # Space a window was created on; they say nothing to AppKit about which
 # Spaces it belongs to. CanJoinAllSpaces + FullScreenAuxiliary make the
@@ -73,10 +79,10 @@ def configure_overlay_window(widget):
             False
         )
 
-    except Exception as e:
+    except Exception:
 
-        print(
-            f"[NATIVE WINDOW ERROR] {e}"
+        logger.exception(
+            "Native window configuration failed"
         )
 
 
@@ -112,8 +118,8 @@ def configure_accessory_app():
             NSApplicationActivationPolicyAccessory
         )
 
-    except Exception as e:
+    except Exception:
 
-        print(
-            f"[NATIVE WINDOW ERROR] {e}"
+        logger.exception(
+            "Native window configuration failed"
         )

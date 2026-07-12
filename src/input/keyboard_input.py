@@ -11,6 +11,10 @@ import queue
 import time
 
 from core.event_bus import EventBus
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class KeyboardInput:
@@ -37,13 +41,13 @@ class KeyboardInput:
             on_release=self._on_release
         )
         self.listener.start()
-        print("[KeyboardInput] Started")
+        logger.info("Started")
 
     def stop(self):
         if self.listener:
             self.listener.stop()
             self.listener = None
-            print("[KeyboardInput] Stopped")
+            logger.info("Stopped")
 
     def poll(self):
 

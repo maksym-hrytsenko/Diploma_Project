@@ -10,9 +10,12 @@ import pyautogui
 
 from core.event_bus import EventBus
 from execution.os_controller import OSController
-from ui.pointer_overlay import PointerOverlay
 
 from config.config_loader import load_system_config
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class ActionExecutor:
@@ -27,8 +30,6 @@ class ActionExecutor:
         )
 
         self.os_controller = OSController()
-
-        self.pointer_overlay = PointerOverlay()
 
         self.command_table = self._build_command_table()
 
@@ -99,6 +100,13 @@ class ActionExecutor:
             "OPEN_SETTINGS": controller.open_settings,
             "OPEN_TV": controller.open_tv,
             "OPEN_NEWS": controller.open_news,
+            "OPEN_NETFLIX": controller.open_netflix,
+
+            "OPEN_JOB_SEARCH_WINDOWS": controller.open_job_search_windows,
+            "OPEN_STUDY_WINDOWS": controller.open_study_windows,
+            "OPEN_NEWS_TABS": controller.open_news_tabs,
+
+            "RUN_CINEMA_MODE": controller.run_cinema_mode,
 
             "TOGGLE_MIC": controller.toggle_mic,
             "TOGGLE_CAMERA": controller.toggle_camera,
@@ -219,14 +227,16 @@ class ActionExecutor:
 
         if handler is None:
 
-            print(
-                f"[EXECUTOR] Unknown command: {command}"
+            logger.warning(
+                "Unknown command: %s",
+                command
             )
 
             return
 
-        print(
-            f"[EXECUTOR] {command}"
+        logger.info(
+            "%s",
+            command
         )
 
         handler()
@@ -262,20 +272,19 @@ class ActionExecutor:
                 y
             )
 
-        else:
+        elif self.active_mode is None or self.active_mode == "presentation":
 
-            # By design, not scoped to any particular mode (Presentation
-            # included) — every mode other than Cursor gets the visual
-            # laser-pointer dot instead of real cursor control, and that
-            # includes active_mode being None (no mode selected at all).
-            # `Pointing_Up` always publishes pointer_position regardless
-            # of mode; this is the one place that decides what a tracked
-            # position actually DOES, and "show the dot" is simply
-            # whatever isn't "drive the real cursor". See pointer_overlay.
-            # py's module docstring.
-            self.pointer_overlay.update_position(
-                x,
-                y
+            # Laser-pointer dot: standby (no mode) or Presentation (its
+            # own pointer math already computed upstream in
+            # GestureRecognizer, still ends up as a dot here). Every other
+            # mode — Flip, Call — has no pointer behavior of its own, so
+            # the position is simply dropped.
+            self.event_bus.publish(
+                "pointer_overlay_update",
+                {
+                    "x": x,
+                    "y": y
+                }
             )
 
     def _move_real_cursor_to(self, normalized_x, normalized_y):
@@ -377,7 +386,7 @@ class ActionExecutor:
 
         if event_type == "fusion_signal":
 
-            print("\n========== SIGNAL MAPPER INPUT ==========")
+            lines = ["========== SIGNAL MAPPER INPUT =========="]
 
             signals = data.get(
                 "signals",
@@ -386,27 +395,31 @@ class ActionExecutor:
 
             if not signals:
 
-                print("No active signals")
+                lines.append("No active signals")
 
             else:
 
                 for source, value in signals.items():
 
-                    print(
+                    lines.append(
                         f"{source.upper():10} : {value['signal']}"
                     )
 
-            print("=========================================")
+            lines.append("=========================================")
+
+            logger.debug(
+                "\n".join(lines)
+            )
 
         elif event_type == "command_event":
 
-            print("========== SIGNAL MAPPER OUTPUT ==========")
+            lines = ["========== SIGNAL MAPPER OUTPUT =========="]
 
-            print(
+            lines.append(
                 f"COMMAND    : {data.get('command')}"
             )
 
-            print(
+            lines.append(
                 f"SOURCE     : {data.get('source')}"
             )
 
@@ -416,7 +429,7 @@ class ActionExecutor:
 
             if mode:
 
-                print(
+                lines.append(
                     f"MODE       : {mode}"
                 )
 
@@ -426,8 +439,12 @@ class ActionExecutor:
 
             if environment:
 
-                print(
+                lines.append(
                     f"ENVIRONMENT: {environment}"
                 )
 
-            print("==========================================\n")
+            lines.append("==========================================")
+
+            logger.debug(
+                "\n".join(lines)
+            )

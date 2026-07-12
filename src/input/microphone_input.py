@@ -13,6 +13,10 @@ import sounddevice as sd
 
 from config.config_loader import load_system_config
 from core.event_bus import EventBus
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class MicrophoneInput:
@@ -55,6 +59,8 @@ class MicrophoneInput:
 
         self.stream = None
 
+        self.thread = None
+
         # None means: use the OS default input device
         self.device = device
 
@@ -67,8 +73,9 @@ class MicrophoneInput:
     ):
 
         if status:
-            print(
-                f"[MicrophoneInput] Stream status: {status}"
+            logger.warning(
+                "Stream status: %s",
+                status
             )
 
         self.audio_queue.put(
@@ -84,8 +91,9 @@ class MicrophoneInput:
             "input"
         )
 
-        print(
-            f"[MicrophoneInput] Using input device: {device_info['name']}"
+        logger.info(
+            "Using input device: %s",
+            device_info['name']
         )
 
         self.stream = sd.RawInputStream(
@@ -105,13 +113,15 @@ class MicrophoneInput:
 
         self.stream.start()
 
-        threading.Thread(
+        self.thread = threading.Thread(
             target=self._process_audio,
             daemon=True
-        ).start()
+        )
 
-        print(
-            "[MicrophoneInput] Started"
+        self.thread.start()
+
+        logger.info(
+            "Started"
         )
 
     def stop(self):
@@ -124,8 +134,20 @@ class MicrophoneInput:
 
             self.stream.close()
 
-        print(
-            "[MicrophoneInput] Stopped"
+            self.stream = None
+
+        # Wait for _process_audio's while-loop to actually exit before
+        # returning, rather than assuming it noticed running=False.
+        if self.thread is not None:
+
+            self.thread.join(
+                timeout=1.0
+            )
+
+            self.thread = None
+
+        logger.info(
+            "Stopped"
         )
 
     def _process_audio(self):

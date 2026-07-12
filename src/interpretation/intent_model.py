@@ -9,7 +9,10 @@ into an internal command.
 
 import time
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    TimeoutError as FutureTimeoutError
+)
 
 from interpretation.nlu_fallback_worker import (
     semantic_match_task,
@@ -20,6 +23,11 @@ from config.config_loader import (
     load_mapping_config,
     load_system_config
 )
+
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class IntentModel:
@@ -94,6 +102,14 @@ class IntentModel:
         self.llm_model_id = nlu_fallback.get(
             "llm_model",
             "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        )
+
+        # Upper bound on how long a semantic/LLM worker call may block the
+        # caller (the speech pipeline's own callback chain) — a cold model
+        # load or a hung worker process must not freeze the app forever.
+        self.nlu_worker_timeout_seconds = nlu_fallback.get(
+            "worker_timeout_seconds",
+            15
         )
 
         # Lazily created. Semantic matching and LLM inference run in a
@@ -252,9 +268,9 @@ class IntentModel:
 
             if self.debug:
 
-                print(
-                    f"[wake word] ignored \"{cleaned_text}\" "
-                    f"(no active session)"
+                logger.debug(
+                    "[wake word] ignored \"%s\" (no active session)",
+                    cleaned_text
                 )
 
             return None
@@ -328,11 +344,11 @@ class IntentModel:
 
         if self.debug:
 
-            print(
-                f"[wake word] \"{self.wake_word}\" "
-                f"detected, session started "
-                f"({self.silence_timeout_seconds}s "
-                f"silence timeout)"
+            logger.debug(
+                "[wake word] \"%s\" detected, session started "
+                "(%ss silence timeout)",
+                self.wake_word,
+                self.silence_timeout_seconds
             )
 
     def _renew_session(self):
@@ -376,8 +392,9 @@ class IntentModel:
         # Always on, not gated behind --debug-voice — this is the
         # outcome-level "did it understand me" signal, not the noisier
         # raw partial/final transcript stream.
-        print(
-            f"[RESOLVED] not understood: \"{cleaned_text}\""
+        logger.info(
+            "[RESOLVED] not understood: \"%s\"",
+            cleaned_text
         )
 
     def _get_nlu_executor(self):
@@ -404,7 +421,20 @@ class IntentModel:
             text
         )
 
-        return future.result()
+        try:
+
+            return future.result(
+                timeout=self.nlu_worker_timeout_seconds
+            )
+
+        except FutureTimeoutError:
+
+            logger.warning(
+                "Semantic match worker timed out after %ss",
+                self.nlu_worker_timeout_seconds
+            )
+
+            return None
 
     def _match_llm(
         self,
@@ -420,7 +450,20 @@ class IntentModel:
             text
         )
 
-        return future.result()
+        try:
+
+            return future.result(
+                timeout=self.nlu_worker_timeout_seconds
+            )
+
+        except FutureTimeoutError:
+
+            logger.warning(
+                "LLM fallback worker timed out after %ss",
+                self.nlu_worker_timeout_seconds
+            )
+
+            return None
 
     def _normalize(self, text):
 

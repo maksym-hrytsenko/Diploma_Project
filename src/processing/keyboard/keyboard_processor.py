@@ -20,6 +20,18 @@ class KeyboardProcessor:
         # currently held.
         self.currently_held_combo = None
 
+        # Keys that must be recognized on their own, no matter what else is
+        # physically held, and are therefore never folded into the combo
+        # string above. Esc is meant to back out of anything at any time
+        # (see SignalMapper._update_mode); if it were joined into
+        # current_keys like every other key, pressing it while e.g. Alt is
+        # still held for the face layer (§9.1) would produce "alt+esc" —
+        # a combo nothing in mapping.json recognizes — so it would be
+        # silently dropped instead of exiting the mode.
+        self.priority_keys = {
+            "esc"
+        }
+
         self.modifier_order = [
             "ctrl",
             "alt",
@@ -63,6 +75,15 @@ class KeyboardProcessor:
 
         key = key.lower()
 
+        if key in self.priority_keys:
+
+            self._handle_priority_key(
+                key,
+                action
+            )
+
+            return
+
         if action == "press":
 
             self.current_keys.add(key)
@@ -76,6 +97,31 @@ class KeyboardProcessor:
             return
 
         self._update_combo()
+
+    # Published straight from the raw press/release, ahead of and
+    # independent from combo tracking, so a priority key's signal can never
+    # be swallowed by whatever unrelated keys happen to already be down.
+    def _handle_priority_key(self, key, action):
+
+        if action == "press":
+
+            self.event_bus.publish(
+                "keyboard_signal",
+                {
+                    "signal": key,
+                    "event": "down"
+                }
+            )
+
+        elif action == "release":
+
+            self.event_bus.publish(
+                "keyboard_signal",
+                {
+                    "signal": key,
+                    "event": "up"
+                }
+            )
 
     def _update_combo(self):
 

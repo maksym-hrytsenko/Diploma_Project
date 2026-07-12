@@ -22,7 +22,7 @@ The system tracks two separate, orthogonal pieces of state at once:
   gestures from colliding with each other (a swipe means something
   different in Flip mode than a thumbs-up means in Call mode). They
   carry no OS side effects of their own.
-- **Environment** (`work` / `study` / `movie` / `news` / none) — a
+- **Environment** (`job_search` / `study` / `movie` / `news` / none) — a
   longer-lived task backdrop. Entering one runs a real sequence of OS
   actions (opening apps, toggling Do Not Disturb, music); leaving it (by
   entering a different environment) undoes them.
@@ -438,16 +438,7 @@ Entered by voice, each runs a real sequence of actions; switching directly
 to a different environment runs the old one's `exit_actions` before the
 new one's `enter_actions`.
 
-### 3.1 Work — `"work mode"`
-
-| On enter | On exit |
-|---|---|
-| `ENABLE_DO_NOT_DISTURB` | `DISABLE_DO_NOT_DISTURB` |
-| `OPEN_SLACK` | — |
-| `OPEN_MAIL` | — |
-| `OPEN_CALENDAR` | — |
-
-### 3.2 Job Search — `"job search mode"`
+### 3.1 Job Search — `"job search mode"`
 
 | On enter | On exit |
 |---|---|
@@ -457,9 +448,9 @@ new one's `enter_actions`.
 `OPEN_JOB_SEARCH_WINDOWS` opens the `job_search` entry of
 `os_controller.window_groups` (`config/system.json`) — three Chrome
 windows: job-board searches, and two thesis-work windows (ChatGPT +
-Overleaf each). See §3.5 for how window groups are opened.
+Overleaf each). See §3.4 for how window groups are opened.
 
-### 3.3 Study — `"study mode"`
+### 3.2 Study — `"study mode"`
 
 | On enter | On exit |
 |---|---|
@@ -470,7 +461,7 @@ Overleaf each). See §3.5 for how window groups are opened.
 `os_controller.window_groups` — three Chrome windows: ChatGPT threads,
 Overleaf + PlantUML, and research (Google Scholar/Images + IEEE Xplore).
 
-### 3.4 Movie — `"movie mode"`
+### 3.3 Movie — `"movie mode"`
 
 | On enter | On exit |
 |---|---|
@@ -480,7 +471,7 @@ Overleaf + PlantUML, and research (Google Scholar/Images + IEEE Xplore).
 | `OPEN_NETFLIX` (opens `netflix.com` in the browser) | — |
 | `RUN_CINEMA_MODE` (runs the user-authored **"Turn on cinema mode"** Shortcut, which drives the Magic Home smart lights) | — |
 
-### 3.5 News — `"news mode"`
+### 3.4 News — `"news mode"`
 
 | On enter | On exit |
 |---|---|
@@ -973,7 +964,7 @@ whichever thread published it.
 - `PLAY_FOCUS_MUSIC`/`PAUSE_FOCUS_MUSIC` (resumes/pauses whatever
   Spotify was last on) remain wired into the command table but are no
   longer used by any environment — Study mode now opens Chrome window
-  groups instead (§3.3). Spotify must still be installed if a rule is
+  groups instead (§3.2). Spotify must still be installed if a rule is
   later added that calls them.
 - **VS Code's `code` CLI** must be on `PATH` for `OPEN_VSCODE`.
 - Third-party apps (Chrome, Slack, Discord, Telegram, Notion) must be
