@@ -7,7 +7,6 @@ can't cover what was said.
 """
 
 import json
-import os
 
 from concurrent.futures import ProcessPoolExecutor
 
@@ -30,27 +29,8 @@ from processing.speech.open_vocab_worker import (
 
 from config.config_loader import (
     load_mapping_config,
-    load_system_config
-)
-
-
-# Anchored to this file's own location, not the process cwd, so the
-# default model path resolves the same way regardless of where the app
-# was launched from — consistent with config_loader's resolution rule.
-_PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.dirname(
-                os.path.abspath(__file__)
-            )
-        )
-    )
-)
-
-_DEFAULT_VOSK_MODEL_PATH = os.path.join(
-    _PROJECT_ROOT,
-    "models",
-    "vosk-model-small-en-us-0.15"
+    load_system_config,
+    resolve_model_path
 )
 
 
@@ -78,8 +58,12 @@ class VoskSpeechModel:
                 {}
             ).get(
                 "vosk_model_path",
-                _DEFAULT_VOSK_MODEL_PATH
+                "models/vosk-model-small-en-us-0.15"
             )
+
+        model_path = resolve_model_path(
+            model_path
+        )
 
         self.model = Model(
             model_path

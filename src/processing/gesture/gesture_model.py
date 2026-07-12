@@ -14,7 +14,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from config.config_loader import load_system_config
+from config.config_loader import load_system_config, resolve_model_path
 
 
 class GestureModel:
@@ -35,6 +35,10 @@ class GestureModel:
                 "model_path",
                 "models/gesture_recognizer.task"
             )
+
+        model_path = resolve_model_path(
+            model_path
+        )
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
@@ -137,6 +141,10 @@ class OffHandModel:
                 "off_hand_model_path",
                 "models/hand_landmarker.task"
             )
+
+        model_path = resolve_model_path(
+            model_path
+        )
 
         base_options = python.BaseOptions(
             model_asset_path=model_path

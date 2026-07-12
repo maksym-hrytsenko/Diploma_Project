@@ -43,6 +43,7 @@ from ui.native_window import configure_accessory_app
 
 from config.config_loader import load_system_config
 from utils.logger import get_logger
+from utils.permissions import ensure_macos_permissions
 
 
 logger = get_logger(__name__)
@@ -64,6 +65,12 @@ def main() -> None:
     # the thread that owns it — this must run before PointerOverlay is
     # constructed below.
     qt_app = QApplication(sys.argv)
+
+    # Must run before any object that touches camera/microphone/synthetic
+    # input is constructed below — a denied-but-unprompted permission fails
+    # silently (camera never opens, synthetic input never lands) rather
+    # than with a catchable error.
+    ensure_macos_permissions()
 
     loop_sleep_seconds = load_system_config().get(
         "app",

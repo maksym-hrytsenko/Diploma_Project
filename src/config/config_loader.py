@@ -7,6 +7,7 @@ mapping, and the multimodal fusion rules respectively.
 
 import json
 import os
+import sys
 
 
 # Resolved from this file's own location, not the process cwd, so every
@@ -15,7 +16,49 @@ _CONFIG_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
 
+# Repo root when running "python src/main.py" (dev mode) — src/config ->
+# src -> repo root.
+_DEV_REPO_ROOT = os.path.dirname(
+    os.path.dirname(_CONFIG_DIR)
+)
+
 _cache = {}
+
+
+def _resource_base_dir() -> str:
+    """Base directory model/data paths (e.g. "models/...") resolve against.
+
+    sys._MEIPASS is PyInstaller's own bundled-resource root, set in both
+    --onedir and --onefile builds; the repo root otherwise. Never the
+    process cwd, which is not guaranteed to be the app's own directory once
+    launched from Finder/LaunchServices instead of a terminal.
+    """
+
+    if hasattr(sys, "_MEIPASS"):
+        return sys._MEIPASS
+
+    return _DEV_REPO_ROOT
+
+
+def resolve_model_path(relative_path: str) -> str:
+    """Resolve a "models/..." style config path against _resource_base_dir().
+
+    Args:
+        relative_path: Path from config/defaults, e.g. "models/foo.task".
+            Passed through unchanged if already absolute.
+
+    Returns:
+        An absolute path valid both when run from a terminal and when
+        frozen inside a packaged app.
+    """
+
+    if os.path.isabs(relative_path):
+        return relative_path
+
+    return os.path.join(
+        _resource_base_dir(),
+        relative_path
+    )
 
 
 def load_config(filename: str, force_reload: bool = False) -> dict:
