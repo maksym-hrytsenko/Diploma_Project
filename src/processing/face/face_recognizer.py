@@ -227,7 +227,10 @@ class FaceRecognizer:
             pitch,
             yaw,
             roll,
-            blendshapes
+            blendshapes,
+            face_landmarks=[
+                (point.x, point.y) for point in result.face_landmarks[0]
+            ]
         )
 
     # Landmark index of each eye's OUTER corner in MediaPipe's 468/478-point
@@ -540,7 +543,8 @@ class FaceRecognizer:
         pitch,
         yaw,
         roll,
-        blendshapes
+        blendshapes,
+        face_landmarks=None
     ):
 
         self.event_bus.publish(
@@ -551,6 +555,14 @@ class FaceRecognizer:
                 "pitch": pitch,
                 "yaw": yaw,
                 "roll": roll,
+
+                # Full set of MediaPipe face landmarks (normalized 0-1,
+                # same convention as pitch/yaw/roll's own source data) —
+                # None whenever the face is lost (the other _publish_debug
+                # call site, line ~179, doesn't pass this). Consumed by
+                # MainWindow's camera preview to draw every point the face
+                # is tracked by, separately from the hand's own points.
+                "face_landmarks": face_landmarks,
 
                 "tilt_zone": self.tilt_zone,
                 "tilt_enter_degrees": self.TILT_ENTER_DEGREES,

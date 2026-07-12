@@ -3,44 +3,34 @@
   "wake_word_silence_timeout_seconds": 2,
   "vad_enabled": true,
   "mode": "offline",
-
   "nlu_fallback": {
-
     "enabled": true,
-
     "semantic_threshold": 0.72,
     "llm_confidence": 0.6,
     "min_fallback_audio_seconds": 0.6,
-
     "llm_model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
     "open_vocab_whisper_model": "mlx-community/whisper-base.en-mlx"
   },
-
   "app": {
     "loop_sleep_seconds": 0.01
   },
-
   "audio": {
     "sample_rate": 16000,
     "channels": 1,
     "blocksize": 8000
   },
-
   "camera": {
     "index": 0,
     "width": 1280,
     "height": 720
   },
-
   "speech": {
     "vosk_model_path": "models/vosk-model-small-en-us-0.15",
-
     "open_vocab": {
       "language": "en",
       "condition_on_previous_text": false
     }
   },
-
   "gesture_model": {
     "model_path": "models/gesture_recognizer.task",
     "off_hand_model_path": "models/hand_landmarker.task",
@@ -48,73 +38,95 @@
     "min_hand_presence_confidence": 0.5,
     "min_tracking_confidence": 0.5
   },
-
   "gesture": {
     "confidence_threshold": 0.7,
     "confirm_frames": 4,
     "hand_lost_frames": 5,
     "freeze_duration": 0.3,
-
     "velocity_threshold": 1.8,
     "min_frame_distance": 0.015,
-    "vertical_cone_degrees": 25,
+    "vertical_cone_degrees": 25.0,
     "motion_cooldown": 0.5,
-
     "presentation_fist": {
       "velocity_threshold": 0.5,
       "min_frame_distance": 0.0075,
-      "vertical_cone_degrees": 25,
+      "vertical_cone_degrees": 25.0,
       "motion_cooldown": 0.5
     },
-
     "pinch_distance_threshold": 0.06,
     "drag_activation_seconds": 0.15,
     "drag_activation_distance": 0.03,
     "double_pinch_window": 0.3,
-
     "call_toggle_hold_seconds": 1.5,
-
     "precision_scale": 0.5,
     "active_zone_margin": 0.1,
     "presentation_pointer_box_hands": 4.0,
     "same_hand_distance": 0.15,
     "finger_extension_margin": 1.05
   },
-
   "execution": {
     "zoom_step_threshold": 0.05,
     "mirror_cursor_x": true
   },
-
   "os_controller": {
-
     "flip_scroll": {
       "pixels": 500,
       "ticks": 18,
       "tick_delay": 0.014
     },
-
     "hotkeys": {
-      "zoom_in": ["command", "="],
-      "zoom_out": ["command", "-"],
-      "flip_next": ["ctrl", "right"],
-      "flip_previous": ["ctrl", "left"],
-      "start_slideshow": ["f5"],
-      "next_slide": ["right"],
-      "previous_slide": ["left"],
-      "toggle_mic": ["command", "shift", "m"],
-      "toggle_camera": ["command", "shift", "o"],
-      "toggle_background_blur": ["command", "shift", "p"],
-      "take_screenshot": ["command", "shift", "3"]
+      "zoom_in": [
+        "command",
+        "="
+      ],
+      "zoom_out": [
+        "command",
+        "-"
+      ],
+      "flip_next": [
+        "ctrl",
+        "right"
+      ],
+      "flip_previous": [
+        "ctrl",
+        "left"
+      ],
+      "start_slideshow": [
+        "f5"
+      ],
+      "next_slide": [
+        "right"
+      ],
+      "previous_slide": [
+        "left"
+      ],
+      "toggle_mic": [
+        "command",
+        "shift",
+        "m"
+      ],
+      "toggle_camera": [
+        "command",
+        "shift",
+        "o"
+      ],
+      "toggle_background_blur": [
+        "command",
+        "shift",
+        "p"
+      ],
+      "take_screenshot": [
+        "command",
+        "shift",
+        "3"
+      ]
     },
-
     "urls": {
       "browser": "https://google.com",
       "chatgpt": "https://chatgpt.com",
       "github": "https://github.com",
       "netflix": "https://www.netflix.com"
     },
-
     "apps": {
       "terminal": "Terminal",
       "safari": "Safari",
@@ -129,13 +141,11 @@
       "photos": "Photos",
       "settings": "System Settings"
     },
-
     "shortcuts": {
       "enable_dnd": "Enable Do Not Disturb",
       "disable_dnd": "Disable Do Not Disturb",
       "cinema_mode": "Turn on cinema mode"
     },
-
     "window_groups": {
       "job_search": [
         [
@@ -156,7 +166,6 @@
           "https://www.overleaf.com/project/6996d093a4acb967467aadf4"
         ]
       ],
-
       "study": [
         [
           "https://chatgpt.com/g/g-p-699337a99ea0819193ade9bb1573840b/c/69bb0d8f-1344-832f-b758-fed0c7fee2ee",
@@ -176,7 +185,6 @@
           "https://ieeexplore.ieee.org/Xplore/dynhome.jsp?tag=1"
         ]
       ],
-
       "news": [
         [
           "https://www.bbc.com/news/world",
@@ -186,16 +194,18 @@
       ]
     }
   },
-
   "ui": {
-
     "pointer_overlay": {
       "hide_after_ms": 200,
       "dot_radius": 10,
-      "dot_color": [255, 0, 0, 220],
+      "dot_color": [
+        255,
+        0,
+        0,
+        220
+      ],
       "mirror_x": true
     },
-
     "quick_circle": {
       "display_size": 280
     }

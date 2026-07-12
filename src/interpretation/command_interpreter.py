@@ -1,10 +1,15 @@
 """Validation/normalization stage of the interpretation layer.
 
-Receives keyboard_signal, intent_detected, gesture_signal and face_signal,
-checks each against config/mapping.json's valid_signals and per-modality
-mappings, and republishes matches as normalized_signal. Performs no
-multimodal logic and no voice phrase mapping — that already happened in
-IntentModel.
+Receives keyboard_signal, intent_detected, gesture_signal, face_signal and
+ui_signal, checks each against config/mapping.json's valid_signals and
+per-modality mappings, and republishes matches as normalized_signal.
+Performs no multimodal logic and no voice phrase mapping — that already
+happened in IntentModel.
+
+ui_signal is MainWindow's mode-icon clicks — the UI already knows the
+final internal command name (e.g. "PRESENTATION_MODE"), so it is handled
+the same way voice's pre-mapped intent_detected is: validated, not
+looked up in a mapping table.
 """
 
 import json
@@ -24,6 +29,8 @@ class CommandInterpreter:
         self.gesture_mapping = {}
 
         self.face_mapping = {}
+
+        self.ui_mapping = {}
 
         self.valid_signals = {}
 
@@ -51,6 +58,11 @@ class CommandInterpreter:
             self._handle_face
         )
 
+        self.event_bus.subscribe(
+            "ui_signal",
+            self._handle_ui
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(
@@ -71,6 +83,11 @@ class CommandInterpreter:
         self.event_bus.unsubscribe(
             "face_signal",
             self._handle_face
+        )
+
+        self.event_bus.unsubscribe(
+            "ui_signal",
+            self._handle_ui
         )
 
     def _load_mapping(self):
@@ -117,6 +134,11 @@ class CommandInterpreter:
                 {}
             )
 
+            self.ui_mapping = data.get(
+                "ui",
+                {}
+            )
+
             self.valid_signals = data.get(
                 "valid_signals",
                 {}
@@ -131,6 +153,8 @@ class CommandInterpreter:
             self.gesture_mapping = {}
 
             self.face_mapping = {}
+
+            self.ui_mapping = {}
 
             self.valid_signals = {}
 
@@ -307,6 +331,49 @@ class CommandInterpreter:
             {
 
                 "source": "face",
+
+                "signal": mapped_signal,
+
+                "confidence": 1.0
+
+            }
+
+        )
+
+    def _handle_ui(self, event):
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        signal = data.get(
+            "signal"
+        )
+
+        if signal is None:
+            return
+
+        if signal not in self.valid_signals.get(
+            "ui",
+            []
+        ):
+            return
+
+        mapped_signal = self.ui_mapping.get(
+            signal
+        )
+
+        if mapped_signal is None:
+            return
+
+        self.event_bus.publish(
+
+            "normalized_signal",
+
+            {
+
+                "source": "ui",
 
                 "signal": mapped_signal,
 

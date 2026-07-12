@@ -777,7 +777,10 @@ class GestureRecognizer:
             frame,
             (index_tip.x, index_tip.y),
             gesture_name,
-            confidence
+            confidence,
+            hand_landmarks=[
+                (point.x, point.y) for point in result.hand_landmarks[0]
+            ]
         )
 
     def _find_off_hand(self, frame, primary_landmarks):
@@ -2037,7 +2040,8 @@ class GestureRecognizer:
         frame,
         finger_position,
         gesture_name,
-        confidence
+        confidence,
+        hand_landmarks=None
     ):
         """Publish a gesture_debug snapshot for the calibration view."""
 
@@ -2059,6 +2063,14 @@ class GestureRecognizer:
                 "frame": frame,
                 "finger": finger_position,
                 "anchor": anchor,
+                # Full set of MediaPipe hand landmarks (normalized 0-1,
+                # same convention as "finger"/"anchor" above) behind this
+                # frame's gesture reading — None whenever the hand is lost
+                # (see _handle_hand_lost, the other _publish_debug caller,
+                # which doesn't pass this). Consumed by MainWindow's
+                # camera preview to draw every point the hand is tracked
+                # by, not just the single index-fingertip point above.
+                "hand_landmarks": hand_landmarks,
                 "tracking_active": self.tracking_active,
                 "gesture_name": gesture_name,
                 "confidence": confidence,

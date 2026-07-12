@@ -264,6 +264,15 @@ class ActionExecutor:
 
         else:
 
+            # By design, not scoped to any particular mode (Presentation
+            # included) — every mode other than Cursor gets the visual
+            # laser-pointer dot instead of real cursor control, and that
+            # includes active_mode being None (no mode selected at all).
+            # `Pointing_Up` always publishes pointer_position regardless
+            # of mode; this is the one place that decides what a tracked
+            # position actually DOES, and "show the dot" is simply
+            # whatever isn't "drive the real cursor". See pointer_overlay.
+            # py's module docstring.
             self.pointer_overlay.update_position(
                 x,
                 y

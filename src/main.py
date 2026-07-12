@@ -156,9 +156,11 @@ def main() -> None:
         event_bus
     )
 
-    # Set from FloatingStatusBar's close (X) button, via the
+    # Set from MainWindow's header close (X) button, via the
     # "ui_quit_requested" event — the only way to stop the whole pipeline
-    # from the UI without going through a terminal Ctrl-C.
+    # from the UI without going through a terminal Ctrl-C. FloatingStatusBar
+    # has no close button of its own (only the expand button) — quitting
+    # always goes through MainWindow.
     shutdown_requested = threading.Event()
 
     def _handle_quit_requested(event):

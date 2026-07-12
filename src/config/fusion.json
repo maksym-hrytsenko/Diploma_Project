@@ -11,7 +11,8 @@
 
             "triggers": [
                 { "source": "voice", "signal": "PRESENTATION_MODE" },
-                { "source": "keyboard", "signal": "PRESENTATION_MODE_KEY" }
+                { "source": "keyboard", "signal": "PRESENTATION_MODE_KEY" },
+                { "source": "ui", "signal": "PRESENTATION_MODE" }
             ]
         },
 
@@ -20,7 +21,8 @@
 
             "triggers": [
                 { "source": "voice", "signal": "FLIP_MODE" },
-                { "source": "keyboard", "signal": "FLIP_MODE_KEY" }
+                { "source": "keyboard", "signal": "FLIP_MODE_KEY" },
+                { "source": "ui", "signal": "FLIP_MODE" }
             ]
         },
 
@@ -29,7 +31,8 @@
 
             "triggers": [
                 { "source": "voice", "signal": "CURSOR_MODE" },
-                { "source": "keyboard", "signal": "CURSOR_MODE_KEY" }
+                { "source": "keyboard", "signal": "CURSOR_MODE_KEY" },
+                { "source": "ui", "signal": "CURSOR_MODE" }
             ]
         },
 
@@ -38,7 +41,8 @@
 
             "triggers": [
                 { "source": "voice", "signal": "CALL_MODE" },
-                { "source": "keyboard", "signal": "CALL_MODE_KEY" }
+                { "source": "keyboard", "signal": "CALL_MODE_KEY" },
+                { "source": "ui", "signal": "CALL_MODE" }
             ]
         },
 

@@ -1,8 +1,18 @@
-"""Click-through laser-pointer overlay for Presentation mode.
+"""Click-through laser-pointer overlay, active outside Cursor mode.
 
 A frameless, always-on-top, input-transparent QWidget that draws a dot at
 the fingertip position published as pointer_position, on whichever screen
 isn't the presenter's primary display.
+
+By design, this is not scoped to Presentation mode specifically — it is
+the default, mode-agnostic visual for wherever `Pointing_Up` is tracking,
+including with no mode active at all. `Pointing_Up` always publishes
+pointer_position (see GestureRecognizer._update_pointer); ActionExecutor.
+_handle_pointer is what decides where that position goes — the real OS
+cursor in Cursor mode, this overlay dot in every other case, no mode
+included. So seeing the dot with no mode selected is expected, not a bug:
+it is confirmation that a position is being tracked and is one hand-raise
+away from being usable, in whichever mode gets entered next.
 """
 
 from PyQt6.QtCore import (

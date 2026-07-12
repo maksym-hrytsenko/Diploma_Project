@@ -220,19 +220,27 @@ class SignalMapper:
             "gesture"
         )
 
-        # Three independent ways to back out of whichever mode is active.
-        # Voice "exit mode" and Esc work identically from any mode at any
-        # time. Closing the fist only backs out of Quick Circle
-        # specifically — every other mode is voice/keyboard-entered and
-        # persistent, so the hand shape closing has no bearing on whether
-        # it should stay active (e.g. closing the fist mid-swipe in Flip
-        # mode must not exit Flip mode).
+        ui = signals.get(
+            "ui"
+        )
+
+        # Four independent ways to back out of whichever mode is active.
+        # Voice "exit mode", Esc and the UI's own active-mode-icon-clicked-
+        # again all work identically from any mode at any time. Closing
+        # the fist only backs out of Quick Circle specifically — every
+        # other mode is voice/keyboard/UI-entered and persistent, so the
+        # hand shape closing has no bearing on whether it should stay
+        # active (e.g. closing the fist mid-swipe in Flip mode must not
+        # exit Flip mode).
         exit_requested = (
             voice is not None
             and voice.get("signal") == "EXIT_MODE"
         ) or (
             keyboard is not None
             and keyboard.get("signal") == "ESCAPE_KEY"
+        ) or (
+            ui is not None
+            and ui.get("signal") == "EXIT_MODE"
         ) or (
             gesture is not None
             and gesture.get("signal") == "HAND_SESSION_END"

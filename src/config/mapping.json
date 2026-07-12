@@ -100,6 +100,16 @@
         "CONFIRM": "CONFIRM"
     },
 
+    "ui": {
+
+        "EXIT_MODE": "EXIT_MODE",
+
+        "PRESENTATION_MODE": "PRESENTATION_MODE",
+        "FLIP_MODE": "FLIP_MODE",
+        "CURSOR_MODE": "CURSOR_MODE",
+        "CALL_MODE": "CALL_MODE"
+    },
+
     "valid_signals": {
 
         "keyboard": [
@@ -201,6 +211,16 @@
             "DOUBLE_EYEBROWS_UP",
 
             "CONFIRM"
+        ],
+
+        "ui": [
+
+            "EXIT_MODE",
+
+            "PRESENTATION_MODE",
+            "FLIP_MODE",
+            "CURSOR_MODE",
+            "CALL_MODE"
         ]
     }
 }
