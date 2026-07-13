@@ -24,6 +24,8 @@ demand.
 
 import json
 import os
+import subprocess
+import sys
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
@@ -37,6 +39,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QGridLayout,
     QLineEdit,
+    QTextEdit,
     QSpinBox,
     QDoubleSpinBox,
     QGraphicsDropShadowEffect,
@@ -373,7 +376,90 @@ MODE_INFO = (
             ("Double pinch", "Right-click"),
             ("Off-hand pinch + move", "Precision mode (slower cursor)")
         )
+    },
+    {
+        "name": "Quick Command Circle",
+        "entry": "Raise an open palm and hold",
+        "description": (
+            "A radial mode picker that opens right over your hand — swipe "
+            "in a direction to jump straight into another mode instead of "
+            "saying its name or reaching for the keyboard."
+        ),
+        "gestures": (
+            ("Swipe left", "Enter Presentation mode"),
+            ("Swipe right", "Enter Call mode"),
+            ("Swipe up", "Enter Flip mode"),
+            ("Swipe down", "Enter Cursor mode"),
+            ("Close the fist", "Cancel and close the circle")
+        )
     }
+)
+
+# Environments are independent of modes (you can be in an environment and a
+# mode at the same time) and, unlike modes, have no Esc/"exit mode"/wheel-
+# icon exit of their own — see ENVIRONMENT_EXIT_NOTE below.
+ENVIRONMENT_INFO = (
+    {
+        "name": "Job Search",
+        "entry": 'Voice "job search mode"',
+        "description": (
+            "Sets up a job-hunting session: enables Do Not Disturb and opens "
+            "the browser windows/tabs configured for it in Settings."
+        ),
+        "effects": (
+            ("On enter", "Enable Do Not Disturb · open Job Search browser windows"),
+            ("On exit", "Disable Do Not Disturb")
+        )
+    },
+    {
+        "name": "Study",
+        "entry": 'Voice "study mode"',
+        "description": (
+            "Sets up a study session: enables Do Not Disturb and opens the "
+            "browser windows/tabs configured for it in Settings."
+        ),
+        "effects": (
+            ("On enter", "Enable Do Not Disturb · open Study browser windows"),
+            ("On exit", "Disable Do Not Disturb")
+        )
+    },
+    {
+        "name": "Movie",
+        "entry": 'Voice "movie mode"',
+        "description": (
+            "Sets up a movie night: enables Do Not Disturb, keeps the "
+            "display awake, opens the TV app and Netflix, and runs the "
+            "\"cinema mode\" Shortcuts automation (e.g. dimming smart lights, "
+            "if one is set up)."
+        ),
+        "effects": (
+            (
+                "On enter",
+                "Enable Do Not Disturb · prevent display sleep · open TV app "
+                "+ Netflix · run cinema-mode Shortcut"
+            ),
+            ("On exit", "Disable Do Not Disturb · allow display sleep again")
+        )
+    },
+    {
+        "name": "News",
+        "entry": 'Voice "news mode"',
+        "description": (
+            "Opens the browser tabs configured for it in Settings — no Do "
+            "Not Disturb, no other side effects."
+        ),
+        "effects": (
+            ("On enter", "Open News browser tabs"),
+            ("On exit", "— (nothing to undo)")
+        )
+    }
+)
+
+ENVIRONMENT_EXIT_NOTE = (
+    "Environments don't have their own exit phrase — saying an environment's "
+    "own name again does nothing once it's already active. The only way to "
+    "leave one is to say a different environment's name, which undoes the "
+    "current one's \"On exit\" effects first."
 )
 
 GENERAL_EXIT = 'Say "exit mode", or click the active mode\'s icon again.'
@@ -609,8 +695,119 @@ SETTING_GROUPS = (
                 "of the screen."
             )
         )
+    ),
+    (
+        "Apps",
+        (
+            (
+                "Terminal", ("os_controller", "apps", "terminal"), "text", "Terminal",
+                'App name opened by "open terminal".'
+            ),
+            (
+                "Safari", ("os_controller", "apps", "safari"), "text", "Safari",
+                'App name opened by "open safari".'
+            ),
+            (
+                "Chrome", ("os_controller", "apps", "chrome"), "text", "Google Chrome",
+                'App name opened by "open chrome", and used for every Work '
+                "Environment's browser windows/tabs below."
+            ),
+            (
+                "Spotify", ("os_controller", "apps", "spotify"), "text", "Spotify",
+                'App name opened by "open spotify", and used by the '
+                "focus-music play/pause actions."
+            ),
+            (
+                "Slack", ("os_controller", "apps", "slack"), "text", "Slack",
+                'App name opened by "open slack".'
+            ),
+            (
+                "Discord", ("os_controller", "apps", "discord"), "text", "Discord",
+                'App name opened by "open discord".'
+            ),
+            (
+                "Mail", ("os_controller", "apps", "mail"), "text", "Mail",
+                'App name opened by "open mail".'
+            ),
+            (
+                "Calendar", ("os_controller", "apps", "calendar"), "text", "Calendar",
+                'App name opened by "open calendar".'
+            ),
+            (
+                "Notes", ("os_controller", "apps", "notes"), "text", "Notes",
+                'App name opened by "open notes".'
+            ),
+            (
+                "Telegram", ("os_controller", "apps", "telegram"), "text", "Telegram",
+                'App name opened by "open telegram".'
+            ),
+            (
+                "Finder", ("os_controller", "apps", "finder"), "text", "Finder",
+                'App name opened by "open finder".'
+            ),
+            (
+                "Notion", ("os_controller", "apps", "notion"), "text", "Notion",
+                'App name opened by "open notion".'
+            ),
+            (
+                "Photos", ("os_controller", "apps", "photos"), "text", "Photos",
+                'App name opened by "open photos".'
+            ),
+            (
+                "Preview", ("os_controller", "apps", "preview"), "text", "Preview",
+                'App name opened by "open preview".'
+            ),
+            (
+                "System Settings", ("os_controller", "apps", "settings"), "text", "System Settings",
+                'App name opened by "open settings".'
+            ),
+            (
+                "TV", ("os_controller", "apps", "tv"), "text", "TV",
+                'App name opened when entering the Movie environment '
+                '("movie mode").'
+            ),
+            (
+                "News app", ("os_controller", "apps", "news"), "text", "News",
+                'App name for the "open news app" action — not currently '
+                "reachable by any voice/gesture command. Not the same as "
+                "the News environment's browser tabs below."
+            )
+        )
     )
 )
+
+# (config key, card label) for os_controller.window_groups — each one a
+# list of browser-window tab-groups, edited as plain text in SettingsWindow
+# rather than through the generic SETTING_GROUPS scalar-field mechanism
+# above, since a tab-group list doesn't fit a single (path, value) pair.
+WINDOW_GROUP_LABELS = (
+    ("job_search", "Job Search"),
+    ("study", "Study"),
+    ("news", "News")
+)
+
+
+# Relaunches the app so a just-saved config/system.json actually takes
+# effect, without the user having to quit and reopen it by hand — the app
+# only ever reads its config files once, at startup (see config_loader.py
+# and every module that calls load_system_config() in __init__).
+def restart_application():
+
+    if getattr(sys, "frozen", False):
+
+        # sys.executable is .../GestureVoiceControl.app/Contents/MacOS/
+        # GestureVoiceControl — walk back up to the .app bundle itself so
+        # this goes through LaunchServices like a normal Finder double-
+        # click, instead of exec'ing the raw Mach-O binary directly.
+        app_bundle = os.path.abspath(
+            os.path.join(os.path.dirname(sys.executable), "..", "..")
+        )
+
+        subprocess.Popen(["open", "-n", app_bundle])
+
+    else:
+
+        subprocess.Popen([sys.executable] + sys.argv)
 
 
 # ---------------------------------
@@ -630,13 +827,16 @@ class SettingsWindow(QWidget):
     instead of a modal sheet glued under MainWindow's own title bar.
     """
 
-    def __init__(self):
+    def __init__(self, event_bus=None):
 
         super().__init__()
 
         styled_window(self, "Settings", 640, 720)
 
+        self.event_bus = event_bus
+
         self._fields = []
+        self._window_group_fields = {}
 
         config = load_system_config()
 
@@ -647,9 +847,11 @@ class SettingsWindow(QWidget):
         layout.addWidget(make_title_label("Settings", self))
 
         subtitle = QLabel(
-            "Every tunable value behind gesture recognition and input — tap "
-            "the (i) next to a field to see what it controls. Saved to "
-            "config/system.json and takes effect on next launch.",
+            "Every tunable value behind gesture recognition and input, plus "
+            "every app and Work Environment — tap the (i) next to a field "
+            'to see what it controls. "Save && Restart" writes '
+            "config/system.json and relaunches the app so the change "
+            "actually takes effect.",
             self
         )
         subtitle.setWordWrap(True)
@@ -675,6 +877,8 @@ class SettingsWindow(QWidget):
         for group_name, fields in SETTING_GROUPS:
             content_layout.addWidget(self._make_settings_card(group_name, fields, config))
 
+        content_layout.addWidget(self._make_window_groups_card(config))
+
         content_layout.addStretch(1)
         scroll.setWidget(content)
         panel_layout.addWidget(scroll)
@@ -694,7 +898,7 @@ class SettingsWindow(QWidget):
         cancel_button.clicked.connect(self.close)
         buttons_row.addWidget(cancel_button)
 
-        save_button = make_action_button(self, "Save", filled=True, width=110)
+        save_button = make_action_button(self, "Save && Restart", filled=True, width=160)
         save_button.clicked.connect(self._on_save_clicked)
         buttons_row.addWidget(save_button)
 
@@ -747,6 +951,68 @@ class SettingsWindow(QWidget):
 
         return card
 
+    # Each window group is a list of browser-window tab-groups: the first
+    # URL of every line-group opens a new window, the rest join it as
+    # tabs (see OSController.open_window_group). Edited as plain text —
+    # one URL per line, a blank line starts a new window — rather than a
+    # dynamic add/remove-row UI, since this is config only the developer
+    # (not an end user) is expected to edit.
+    def _make_window_groups_card(self, config):
+
+        card, card_layout = make_card()
+        card_layout.addWidget(make_card_title("Work Environments", card))
+
+        description = QLabel(
+            "One browser tab URL per line. A blank line starts a new "
+            "browser window — its first URL opens the window, the rest "
+            'join it as tabs. Opened by voice ("job search mode" / "study '
+            'mode" / "news mode").',
+            card
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet(f"color: {COLOR_TEXT_DARK}; background: transparent; border: none;")
+        card_layout.addWidget(description)
+
+        window_groups = get_nested(config, ("os_controller", "window_groups"), {})
+
+        for group_key, group_label in WINDOW_GROUP_LABELS:
+
+            card_layout.addWidget(make_section_label(group_label.upper(), card))
+
+            text_edit = QTextEdit(card)
+            text_edit.setPlainText(
+                self._window_group_to_text(window_groups.get(group_key, []))
+            )
+            text_edit.setFixedHeight(90)
+            text_edit.setStyleSheet(
+                f"background-color: {COLOR_PANEL}; color: {COLOR_TEXT_DARK};"
+                f" border: 1px solid rgba(139, 61, 255, 90); border-radius: 8px; padding: 4px 8px;"
+            )
+            card_layout.addWidget(text_edit)
+
+            self._window_group_fields[group_key] = text_edit
+
+        return card
+
+    def _window_group_to_text(self, tab_groups):
+
+        return "\n\n".join(
+            "\n".join(urls) for urls in tab_groups
+        )
+
+    def _text_to_window_group(self, text):
+
+        tab_groups = []
+
+        for block in text.strip().split("\n\n"):
+
+            urls = [line.strip() for line in block.splitlines() if line.strip()]
+
+            if urls:
+                tab_groups.append(urls)
+
+        return tab_groups
+
     def _on_reset_clicked(self):
 
         for _, field, default_value in self._fields:
@@ -774,6 +1040,14 @@ class SettingsWindow(QWidget):
 
                 set_nested(config, path, value)
 
+            for group_key, text_edit in self._window_group_fields.items():
+
+                set_nested(
+                    config,
+                    ("os_controller", "window_groups", group_key),
+                    self._text_to_window_group(text_edit.toPlainText())
+                )
+
             with open(SYSTEM_CONFIG_PATH, "w", encoding="utf-8") as config_file:
                 json.dump(config, config_file, indent=2)
                 config_file.write("\n")
@@ -783,9 +1057,15 @@ class SettingsWindow(QWidget):
             show_message(self, "Settings", f"Could not save settings: {error}", warning=True)
             return
 
-        show_message(self, "Settings", "Saved. Restart the app for changes to take effect.")
-
         self.close()
+
+        restart_application()
+
+        # Mirrors the normal window-close quit path (MainWindow's header X
+        # button) so the pipeline shuts down cleanly — camera/mic released,
+        # etc. — instead of the process being killed mid-restart.
+        if self.event_bus is not None:
+            self.event_bus.publish("ui_quit_requested", {})
 
 
 # ---------------------------------
@@ -811,8 +1091,8 @@ class InfoWindow(QWidget):
         layout.addWidget(make_title_label("Functions & Gestures", self))
 
         subtitle = QLabel(
-            "Every mode, its gestures, and its voice/keyboard triggers — "
-            "grouped together.",
+            "Every mode and environment, its gestures, and every voice/"
+            "keyboard way to switch into it — grouped together.",
             self
         )
         subtitle.setWordWrap(True)
@@ -837,8 +1117,22 @@ class InfoWindow(QWidget):
 
         content_layout.addWidget(self._make_general_card())
 
+        content_layout.addWidget(make_section_label("MODES", content))
+
         for section in MODE_INFO:
             content_layout.addWidget(self._make_mode_card(section))
+
+        content_layout.addWidget(make_section_label("ENVIRONMENTS", content))
+
+        environments_note = QLabel(ENVIRONMENT_EXIT_NOTE, content)
+        environments_note.setWordWrap(True)
+        environments_note.setStyleSheet(
+            f"color: {COLOR_TEXT_SECONDARY}; background: transparent; border: none; font-size: 11px;"
+        )
+        content_layout.addWidget(environments_note)
+
+        for section in ENVIRONMENT_INFO:
+            content_layout.addWidget(self._make_environment_card(section))
 
         content_layout.addStretch(1)
         scroll.setWidget(content)
@@ -884,6 +1178,28 @@ class InfoWindow(QWidget):
 
         for trigger_text, action_text in section["gestures"]:
             card_layout.addWidget(self._make_gesture_row(trigger_text, action_text, card))
+
+        return card
+
+    def _make_environment_card(self, section):
+
+        card, card_layout = make_card()
+        card_layout.addWidget(make_card_title(section["name"], card))
+
+        entry = QLabel(f"Enter: {section['entry']}", card)
+        entry.setWordWrap(True)
+        entry.setStyleSheet(
+            f"color: {COLOR_TEXT_SECONDARY}; background: transparent; border: none; font-size: 11px;"
+        )
+        card_layout.addWidget(entry)
+
+        description = QLabel(section["description"], card)
+        description.setWordWrap(True)
+        description.setStyleSheet(f"color: {COLOR_TEXT_DARK}; background: transparent; border: none;")
+        card_layout.addWidget(description)
+
+        for label_text, value_text in section["effects"]:
+            card_layout.addWidget(self._make_gesture_row(label_text, value_text, card))
 
         return card
 

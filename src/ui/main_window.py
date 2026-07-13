@@ -582,6 +582,19 @@ class MainWindow(QWidget):
 
         self.active_mode = mode
 
+        # FaceRecognizer stops publishing face_debug the instant a mode
+        # becomes active (see its active_mode guard in _handle_frame), so
+        # without this the last-known dots/pitch from before mode entry
+        # would otherwise hang on screen until the mode exits and a fresh
+        # face_debug event arrives.
+        if mode is not None:
+
+            self._latest_face_pitch = None
+            self._latest_face_landmarks = None
+
+            if self.camera_active and self.video_label.isVisible():
+                self._refresh_face_status()
+
         self._refresh_mode_buttons()
 
     # ---------------------------------
@@ -1467,7 +1480,7 @@ class MainWindow(QWidget):
     def _on_settings_clicked(self):
 
         if self._settings_window is None:
-            self._settings_window = SettingsWindow()
+            self._settings_window = SettingsWindow(self.event_bus)
 
         self._settings_window.show()
         self._settings_window.raise_()
