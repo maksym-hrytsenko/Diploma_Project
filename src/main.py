@@ -6,6 +6,7 @@ in dependency order, and drives the Qt event loop alongside the system's own
 polling loop.
 """
 
+import multiprocessing
 import sys
 import threading
 import time
@@ -312,5 +313,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+
+    # Required before anything else runs whenever multiprocessing (here:
+    # VoskSpeechModel's open-vocab ProcessPoolExecutor) might use the
+    # 'spawn' start method — the default on macOS since Python 3.8. In a
+    # packaged .app, sys.executable IS the app itself, so a spawned worker
+    # process re-launches the whole app from scratch unless freeze_support()
+    # intercepts it first and hands it off to the multiprocessing bootstrap
+    # instead of falling through to main(). No-op when not frozen and not a
+    # spawned worker, so `python src/main.py` is unaffected.
+    multiprocessing.freeze_support()
 
     main()
