@@ -10,3 +10,7 @@ benchmarks/resource_log_*.csv
 packaging/build/
 packaging/dist/
 packaging/output/
+
+# Overleaf thesis export — Overleaf is the source of truth, not this repo's history
+docs/thesis/
+docs/*.zip
