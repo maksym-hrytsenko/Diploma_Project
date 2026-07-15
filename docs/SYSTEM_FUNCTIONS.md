@@ -1143,10 +1143,12 @@ overlay — see §9.2) and manually verify:
   together — confirm the frontmost app zooms in/out with no keyboard
   involved.
 - **Call mode**: enter it, confirm Teams is running and in a call, then
-  thumbs-up/thumbs-down/peace-sign/OK-sign in turn — confirm each Teams
-  meeting control actually fires. Confirm doing an actual thumbs-up
-  gesture in Flip or Presentation mode does nothing (gated at the
-  source, §2.4).
+  hold up one/two/three/four fingers in turn (thumb excluded from the
+  count, held continuously for ~1.5s) — confirm each toggles
+  mic/camera/call-audio/background-blur respectively. Confirm the same
+  finger count does not toggle a second time without the hand leaving
+  and re-entering the frame first, and that doing the same gesture in
+  Flip or Presentation mode does nothing (gated at the source, §2.4).
 - **Modes**: confirm Presentation/Flip/Cursor/Call are mutually
   exclusive and switching between them doesn't require going through
   "exit mode" first; confirm the Quick Command Circle only opens from

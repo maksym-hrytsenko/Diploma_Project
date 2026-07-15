@@ -34,7 +34,6 @@ class SignalMapper:
         ("gesture", "HAND_SESSION_END"): "vector",
         ("gesture", "PINCH"): "vector",
         ("gesture", "DOUBLE_PINCH"): "vector",
-        ("gesture", "OK_SIGN"): "vector",
 
         ("gesture", "ONE_FINGER"): "vector",
         ("gesture", "TWO_FINGERS"): "vector",

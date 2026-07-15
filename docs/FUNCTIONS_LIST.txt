@@ -90,23 +90,31 @@ VOICE -- GLOBAL, ALWAYS ACTIVE
 
 MODE: CALL (Microsoft Teams) -- "call mode" or ctrl+shift+w
 -------------------------------------------------------------
-One hand, static gestures -- each fires a real Teams keyboard shortcut.
-Requires Teams to actually be the app you're calling through; these are
-Teams for Mac's own shortcuts, not a system-wide mute API.
+One hand, held up with a given number of extended fingers (thumb doesn't
+count toward the total), each held continuously for at least 1.5s before
+it fires. Each is a single toggle -- firing it while already in the
+target state flips it back rather than no-op'ing. Once a toggle fires,
+that same finger count is "locked" until the hand fully leaves the
+camera frame and reappears, so it can't accidentally fire twice in a
+row.
 
-    Thumb_Up (thumbs up)   -> unmute microphone   (Cmd+Shift+M)
-    Thumb_Down (thumbs down) -> mute microphone    (Cmd+Shift+M, same
-                                 key -- Teams' mute is a toggle, so this
-                                 is honestly identical to Thumb_Up; see
-                                 SYSTEM_FUNCTIONS.md)
-    Victory (peace sign)   -> toggle camera on/off (Cmd+Shift+O)
-    OK-sign (thumb+index touching, other 3 fingers don't matter)
-                            -> raise/lower hand     (Cmd+Shift+K)
+    ONE_FINGER    -> toggle microphone      (Cmd+Shift+M, Teams' own
+                                              shortcut)
+    TWO_FINGERS   -> toggle camera          (Cmd+Shift+O, Teams' own
+                                              shortcut)
+    THREE_FINGERS -> toggle call audio      (mutes/unmutes the Mac's
+                                              system-wide output instead
+                                              -- Teams exposes no
+                                              shortcut for muting just
+                                              the call's own incoming
+                                              audio)
+    FOUR_FINGERS  -> toggle background blur (Cmd+Shift+P, Teams' own
+                                              shortcut)
 
-NOTE: MediaPipe's bundled model has no real "OK" gesture category
-(verified against the model file directly) -- OK-sign here is computed
-from thumb/index landmark distance, the same geometry PINCH already
-uses in Cursor mode, just scoped to Call mode instead.
+NOTE: MediaPipe's bundled classifier has no "N fingers raised" category,
+so the finger count is computed directly from hand-landmark geometry
+(distance of each non-thumb fingertip from the wrist), not from the
+classifier's own gesture output.
 
 
 MODE: CURSOR -- "cursor mode" or ctrl+shift+c
@@ -193,9 +201,10 @@ dragging the content itself, not turning an old-style scroll wheel.
 Closed_Fist -> Open_Palm (fist closes, then opens)
     -> if no other mode is active: opens the Quick Command Circle
 
-Thumb_Up / Thumb_Down / Victory / OK-sign
+ONE_FINGER / TWO_FINGERS / THREE_FINGERS / FOUR_FINGERS
     -> only detected/published while in Call mode -- see that section
-       above. Doing an actual thumbs-up in any other mode is ignored.
+       above. Showing the same finger count in any other mode is
+       ignored.
 
 
 QUICK COMMAND CIRCLE (gesture-only: close fist, then open palm)

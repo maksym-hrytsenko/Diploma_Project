@@ -4,7 +4,7 @@ Consumes camera_frame events, runs MediaPipe hand/gesture models on each
 frame, and publishes gesture_signal, pointer_position, pinch_drag and
 pinch_zoom events over the EventBus for downstream fusion/mapping. Stays
 mode-agnostic overall, but reads the active mode from SignalMapper's
-mode_changed event for a handful of mode-gated checks (PINCH, OK-sign,
+mode_changed event for a handful of mode-gated checks (PINCH,
 the finger-count toggles, off-hand precision/zoom).
 """
 
@@ -33,7 +33,7 @@ class GestureRecognizer:
 
     # The four Call-mode gestures that toggle persistent state (mic,
     # camera, call audio, background blur) rather than firing a
-    # momentary one-shot action like OK_SIGN. Shared by the mode gate,
+    # momentary one-shot action. Shared by the mode gate,
     # the hold-to-confirm requirement, and the per-gesture lock in
     # _publish_static_gesture — see call_toggle_hold_seconds and
     # locked_toggle_gestures in __init__. Produced by
@@ -330,9 +330,7 @@ class GestureRecognizer:
 
         # Distance (normalized coordinates) between thumb tip and
         # index tip below which the two fingers count as "touching" —
-        # a pinch. Also reused as-is by Call mode's OK-sign check
-        # (same geometry, different meaning — the two never run in
-        # the same mode).
+        # a pinch.
         self.pinch_distance_threshold = config.get(
             "pinch_distance_threshold",
             0.06
@@ -371,41 +369,6 @@ class GestureRecognizer:
             0.3
         )
 
-        # MediaPipe's bundled gesture classifier has no "OK" category
-        # (confirmed against labels.txt — only None/Closed_Fist/
-        # Open_Palm/Pointing_Up/Thumb_Down/Thumb_Up/Victory/ILoveYou
-        # exist), so this is computed the same way PINCH is — directly
-        # from thumb/index landmark distance. Edge-triggered: fires
-        # once when the fingers first touch, not again until they
-        # separate.
-        self.ok_touching = False
-
-        # Once touching, the fingers must separate past this WIDER
-        # distance — not just back past pinch_distance_threshold —
-        # before being considered released. OK-sign has no
-        # confirm_frames debounce (there's no classifier category to
-        # debounce), so without this hysteresis gap, landmark jitter
-        # at a single threshold would flicker touching/not-touching
-        # frame to frame and re-fire OK_SIGN in an unbroken burst
-        # instead of once per deliberate touch-and-release.
-        self.ok_sign_release_distance = (
-            self.pinch_distance_threshold
-            * config.get(
-                "ok_sign_release_multiplier",
-                1.6
-            )
-        )
-
-        # Hard floor between two OK_SIGN firings, regardless of finger
-        # state — a safety net under the hysteresis above for jitter
-        # that plays out slower than a single-frame flicker.
-        self.ok_sign_cooldown = config.get(
-            "ok_sign_cooldown",
-            0.6
-        )
-
-        self.last_ok_sign_time = 0
-
         # Each of the four finger-count gestures sends a single
         # OS-level toggle keystroke (see OSController.toggle_mic/
         # toggle_camera/toggle_call_audio/toggle_background_blur)
@@ -427,8 +390,7 @@ class GestureRecognizer:
         # crossed confirm_frames — before it is trusted enough to fire.
         # These toggle mic/camera/call-audio/background-blur state, so
         # a fast or incidental gesture shouldn't be enough to flip
-        # them. OK_SIGN is a momentary, repeatable notification, not a
-        # toggle, so it is not held to this standard.
+        # them.
         self.call_toggle_hold_seconds = config.get(
             "call_toggle_hold_seconds",
             1.5
@@ -459,7 +421,7 @@ class GestureRecognizer:
 
         # Mirrored from SignalMapper's "mode_changed" event. A
         # deliberate, narrow exception to this class otherwise staying
-        # mode-agnostic: a handful of checks below (PINCH, OK-sign,
+        # mode-agnostic: a handful of checks below (PINCH,
         # the finger-count toggles, off-hand precision/zoom) only mean
         # something in one specific mode each, and are gated at the
         # source so a pose passing through during an unrelated mode
@@ -526,8 +488,6 @@ class GestureRecognizer:
             self.zoom_previous_distance = None
 
         if self.active_mode != "call":
-
-            self.ok_touching = False
 
             self.locked_toggle_gestures = set()
 
@@ -746,14 +706,6 @@ class GestureRecognizer:
                 self.is_dragging = False
 
                 self.pending_single_pinch = False
-
-        # OK-sign (raise hand) only means anything in Call
-        # mode.
-        if self.active_mode == "call":
-
-            self._check_ok_sign(
-                result
-            )
 
         # Wrist-based fist swipe (slide navigation) only means
         # anything in Presentation mode.
@@ -1398,7 +1350,7 @@ class GestureRecognizer:
     def _pinch_distance(self, hand_landmarks):
         """Thumb-tip-to-index-tip distance.
 
-        The one piece of geometry PINCH, OK-sign, off-hand-pinch and
+        The one piece of geometry PINCH, off-hand-pinch and
         zoom all share, each just comparing or tracking it
         differently.
         """
@@ -1589,55 +1541,6 @@ class GestureRecognizer:
             }
         )
 
-    def _check_ok_sign(self, result):
-        """Edge-triggered OK-sign detector for Call mode's raise-hand
-        notification (see ok_touching / ok_sign_release_distance).
-        """
-
-        hand_landmarks = (
-            result.hand_landmarks[0]
-        )
-
-        distance = self._pinch_distance(
-            hand_landmarks
-        )
-
-        # Already touching: only the WIDER release distance can re-arm,
-        # not a return past the (narrower) touch threshold — see
-        # ok_sign_release_distance for why.
-        if self.ok_touching:
-
-            if distance > self.ok_sign_release_distance:
-                self.ok_touching = False
-
-            return
-
-        if distance >= self.pinch_distance_threshold:
-            return
-
-        current_time = time.time()
-
-        if (
-            current_time - self.last_ok_sign_time
-            < self.ok_sign_cooldown
-        ):
-            return
-
-        self.ok_touching = True
-        self.last_ok_sign_time = current_time
-
-        logger.debug(
-            "OK_SIGN"
-        )
-
-        self.event_bus.publish(
-            "gesture_signal",
-            {
-                "signal": "OK_SIGN",
-                "source": "gesture"
-            }
-        )
-
     def _count_extended_fingers(self, hand_landmarks):
         """Count extended non-thumb fingers via landmark geometry.
 
@@ -1681,7 +1584,7 @@ class GestureRecognizer:
 
         Mirrors _read_gesture's (name, confidence) shape, but sourced
         from landmark geometry rather than MediaPipe's classifier —
-        the same relationship OK_SIGN has to PINCH's classifier-free
+        the same relationship PINCH has to its own classifier-free
         thumb/index check. Confidence is fixed at 1.0 rather than left
         as None: this is a direct geometric read, and
         _publish_static_gesture's hold-to-confirm/lock pipeline only
