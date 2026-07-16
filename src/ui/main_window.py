@@ -457,6 +457,34 @@ MODE_DISPLAY_NAMES = {
     "cursor": "Cursor"
 }
 
+# Momentary gesture_signal names (swipe direction / fist-swipe / pinch)
+# have no held pose of their own to read a live state from — shown for
+# this long after gesture_debug's "last_signal_time", via "last_signal",
+# instead of nothing. Longer than GestureRecognizer's own visual anchor
+# freeze (freeze_duration, default 0.3s) so the caption stays legible
+# even though it isn't tied to that same timer.
+GESTURE_SIGNAL_FLASH_SECONDS = 0.6
+
+# HAND_LEFT/RIGHT/UP/DOWN mean different things in each mode that reads
+# them — matched against gesture_debug's "last_signal", not "gesture_name"
+# (a swipe direction is never a MediaPipe category).
+FLIP_MODE_SIGNAL_CAPTIONS = {
+    "HAND_UP": "Scroll down",
+    "HAND_DOWN": "Scroll up",
+    "HAND_RIGHT": "Flip previous",
+    "HAND_LEFT": "Flip next"
+}
+
+PRESENTATION_MODE_SIGNAL_CAPTIONS = {
+    "HAND_RIGHT": "Next slide",
+    "HAND_LEFT": "Previous slide"
+}
+
+PINCH_SIGNAL_CAPTIONS = {
+    "PINCH": "Click",
+    "DOUBLE_PINCH": "Right-click"
+}
+
 # Call mode's finger-count toggles have no MediaPipe gesture category of
 # their own (see GestureRecognizer.FINGER_COUNT_GESTURES) — matched here
 # against gesture_debug's "active_gesture_signal", not "gesture_name".
@@ -599,18 +627,22 @@ class MainWindow(QWidget):
 
         self.active_mode = mode
 
-        # FaceRecognizer stops publishing face_debug the instant a mode
-        # becomes active (see its active_mode guard in _handle_frame), so
-        # without this the last-known dots/pitch from before mode entry
-        # would otherwise hang on screen until the mode exits and a fresh
-        # face_debug event arrives.
-        if mode is not None:
+        # FaceRecognizer only publishes face_debug while idle (suppressed
+        # the instant a mode becomes active — see its active_mode guard in
+        # _handle_frame), so on EITHER transition — entering a mode, or
+        # returning to idle — the last-known dots/pitch it last delivered
+        # would otherwise hang on screen until fresh data arrives. Idle ->
+        # mode: no more face_debug events will come until the mode ends,
+        # so nothing would ever clear this on its own. Mode -> idle:
+        # FaceRecognizer does resume publishing, but only once a face is
+        # next confidently detected — if the face isn't in frame at that
+        # exact moment, the stale mode-entry-time dots would otherwise
+        # keep showing indefinitely instead of a fresh "no face" reading.
+        self._latest_face_pitch = None
+        self._latest_face_landmarks = None
 
-            self._latest_face_pitch = None
-            self._latest_face_landmarks = None
-
-            if self.camera_active and self.video_label.isVisible():
-                self._refresh_face_status()
+        if self.camera_active and self.video_label.isVisible():
+            self._refresh_face_status()
 
         self._refresh_mode_buttons()
 
@@ -643,10 +675,32 @@ class MainWindow(QWidget):
 
     def _handle_gesture_debug(self, event):
 
-        if time.time() - self._last_video_update < self.VIDEO_MIN_INTERVAL_SECONDS:
+        data = event.get("data", {})
+
+        # The frame-rate throttle below exists purely to cap repaint work,
+        # not to decide WHAT gets shown — but applied blindly, it could
+        # swallow the one event that matters most: the very frame the
+        # hand disappears on. hand_landmarks is only ever non-empty while
+        # a hand is actually tracked (see GestureRecognizer._handle_frame/
+        # _handle_hand_lost) — if the PREVIOUS frame painted had a hand
+        # and this one doesn't, that transition always gets through
+        # immediately, so the landmark dots clear the instant the hand
+        # leaves frame instead of potentially waiting up to one throttle
+        # window (worse under a mode's heavier per-frame processing —
+        # Cursor mode's off-hand model, zoom/precision math — which
+        # already eats into how much of that window is headroom).
+        hand_lost_transition = (
+            not data.get("hand_landmarks")
+            and self._hand_landmarks_present
+        )
+
+        if (
+            not hand_lost_transition
+            and time.time() - self._last_video_update < self.VIDEO_MIN_INTERVAL_SECONDS
+        ):
             return
 
-        self.gesture_debug_signal.emit(event.get("data", {}))
+        self.gesture_debug_signal.emit(data)
 
     def _handle_face_debug(self, event):
 
@@ -668,6 +722,8 @@ class MainWindow(QWidget):
             return
 
         self._last_video_update = time.time()
+
+        self._hand_landmarks_present = bool(data.get("hand_landmarks"))
 
         pixmap = self._build_video_frame_pixmap(frame, data)
 
@@ -879,10 +935,35 @@ class MainWindow(QWidget):
         active_gesture_signal = data.get("active_gesture_signal")
         is_pinching = data.get("is_pinching", False)
         is_dragging = data.get("is_dragging", False)
+        off_hand_pinching = data.get("off_hand_pinching", False)
 
         mode = self.active_mode
 
+        # A swipe/fist-swipe/pinch is a one-frame event with no held pose
+        # to read a live state from (unlike is_pinching/is_dragging/
+        # tracking_active, which stay true for as long as the pose is
+        # held) — shown for GESTURE_SIGNAL_FLASH_SECONDS after it fires
+        # instead of never at all. None outside that window, so it falls
+        # through to whatever live state applies below.
+        recent_signal = None
+
+        last_signal = data.get("last_signal")
+        last_signal_time = data.get("last_signal_time")
+
+        if (
+            last_signal is not None
+            and last_signal_time is not None
+            and time.time() - last_signal_time < GESTURE_SIGNAL_FLASH_SECONDS
+        ):
+            recent_signal = last_signal
+
         if mode == "cursor":
+
+            if recent_signal in PINCH_SIGNAL_CAPTIONS:
+                return PINCH_SIGNAL_CAPTIONS[recent_signal], False
+
+            if off_hand_pinching:
+                return "Zoom", False
 
             if is_dragging:
                 return "Scroll", False
@@ -895,6 +976,9 @@ class MainWindow(QWidget):
 
         elif mode == "flip":
 
+            if recent_signal in FLIP_MODE_SIGNAL_CAPTIONS:
+                return FLIP_MODE_SIGNAL_CAPTIONS[recent_signal], False
+
             if tracking_active:
                 return "Swipe to scroll or flip", False
 
@@ -902,6 +986,9 @@ class MainWindow(QWidget):
                 return "Ready to swipe", True
 
         elif mode == "presentation":
+
+            if recent_signal in PRESENTATION_MODE_SIGNAL_CAPTIONS:
+                return PRESENTATION_MODE_SIGNAL_CAPTIONS[recent_signal], False
 
             if gesture_name == "Pointing_Up":
                 return "Laser pointer", True
@@ -1004,6 +1091,7 @@ class MainWindow(QWidget):
 
         self._latest_face_pitch = None
         self._latest_face_landmarks = None
+        self._hand_landmarks_present = False
 
     def _publish_ui_event(self, event_type, data):
 
@@ -1225,6 +1313,12 @@ class MainWindow(QWidget):
         self._latest_face_pitch = None
         self._latest_face_landmarks = None
         self._last_video_update = 0.0
+
+        # Whether the most recently PAINTED frame had a tracked hand — see
+        # _handle_gesture_debug's hand_lost_transition check, which uses
+        # this (not the throttled video_label state) to let a hand's
+        # disappearance always bypass the repaint throttle.
+        self._hand_landmarks_present = False
 
     # ---------------------------------
     # Try Mode — top-left corner of panel_control_wheel (the white square

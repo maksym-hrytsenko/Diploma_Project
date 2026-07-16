@@ -231,12 +231,30 @@ class GestureRecognizer:
 
         self.last_signal = None
 
+        # Wall-clock time.time() self.last_signal was last set — by any of
+        # _fire_motion (swipe), _check_fist_motion (Presentation's wrist
+        # swipe) or _fire_pinch_signal (PINCH/DOUBLE_PINCH), all of which
+        # are momentary, one-frame events with no held pose of their own
+        # to read a live state from. MainWindow's camera-preview caption
+        # uses this to show what fired for a short window afterward,
+        # instead of nothing (a swipe/click has no continuously-true
+        # state to check the way is_pinching/is_dragging/tracking_active
+        # do).
+        self.last_signal_time = 0.0
+
         # Mirrors _handle_frame's local confirm_input — the actual
         # per-mode-meaningful gesture reading (Call mode's finger count,
         # everywhere else the same as the raw gesture_name) — see its own
         # comment in _handle_frame. Read by _publish_debug for the
         # camera-preview caption.
         self.active_gesture_signal = None
+
+        # Mirrors _handle_frame's local off_hand_pinching — Cursor mode's
+        # zoom-engaged flag (see _check_zoom/_update_pointer). Read by
+        # _publish_debug for the camera-preview caption, same reason as
+        # active_gesture_signal above: zoom has no MediaPipe category or
+        # other already-published field of its own to read from.
+        self.off_hand_pinching = False
 
         # Minimum speed (per second, normalized coordinates)
         # for a frame-to-frame movement to count as a
@@ -689,6 +707,10 @@ class GestureRecognizer:
             )
 
             off_hand_pinching = False
+
+        # Mirrored for _publish_debug — see off_hand_pinching's own
+        # comment in __init__.
+        self.off_hand_pinching = off_hand_pinching
 
         # Zoom (off-hand pinch) and PINCH (click / drag-to-scroll) only
         # mean anything in Cursor mode, and are mutually exclusive on
@@ -1145,6 +1167,7 @@ class GestureRecognizer:
         self.last_motion_time = current_time
 
         self.last_signal = signal
+        self.last_signal_time = current_time
 
         self.anchor_x = current_x
         self.anchor_y = current_y
@@ -1356,6 +1379,12 @@ class GestureRecognizer:
                     current_time
                 )
 
+                # See last_signal_time's own comment in __init__ — this
+                # detector doesn't route through _fire_motion, so it needs
+                # its own copy of the same bookkeeping.
+                self.last_signal = signal
+                self.last_signal_time = current_time
+
         self.presentation_fist_previous_x = current_x
         self.presentation_fist_previous_y = current_y
 
@@ -1554,6 +1583,12 @@ class GestureRecognizer:
                 "source": "gesture"
             }
         )
+
+        # See last_signal_time's own comment in __init__ — PINCH/
+        # DOUBLE_PINCH are momentary too, same reasoning as the swipe
+        # detectors.
+        self.last_signal = signal
+        self.last_signal_time = time.time()
 
     def _count_extended_fingers(self, hand_landmarks):
         """Count extended non-thumb fingers via landmark geometry.
@@ -2012,8 +2047,10 @@ class GestureRecognizer:
                 "active_gesture_signal": self.active_gesture_signal,
                 "is_pinching": self.is_pinching,
                 "is_dragging": self.is_dragging,
+                "off_hand_pinching": self.off_hand_pinching,
                 "last_gesture": self.last_gesture,
                 "last_signal": self.last_signal,
+                "last_signal_time": self.last_signal_time,
                 "velocity_x": self.velocity_x,
                 "velocity_y": self.velocity_y,
                 "vertical_cone_degrees": (
