@@ -317,24 +317,33 @@ class ActionExecutor:
         if x is None or y is None:
             return
 
-        if self.active_mode == "cursor" and not self.try_mode_active:
+        if self.active_mode == "cursor":
 
-            self._move_real_cursor_to(
-                x,
-                y
-            )
+            # Try Mode: no real cursor movement (see try_mode_active
+            # above) AND no laser-dot substitute either — PointerOverlay
+            # draws on the PRIMARY screen whenever there's no second
+            # display connected (its own fallback, see
+            # _select_presentation_screen), i.e. the same screen the real
+            # cursor already lives on. A same-color, same-position moving
+            # dot there reads as "the cursor is moving" even though it
+            # isn't — precisely the confusion Try Mode must not cause.
+            # The camera preview's "Detected: Cursor control" caption is
+            # the only Try Mode feedback for this gesture, on purpose.
+            if not self.try_mode_active:
+
+                self._move_real_cursor_to(
+                    x,
+                    y
+                )
 
         elif (
             self.active_mode is None
             or self.active_mode == "presentation"
-            or (self.active_mode == "cursor" and self.try_mode_active)
         ):
 
-            # Laser-pointer dot: standby (no mode), Presentation (its own
-            # pointer math already computed upstream in GestureRecognizer,
-            # still ends up as a dot here), or Cursor mode while Try Mode
-            # is active (shows where the real cursor WOULD go, without
-            # actually moving it — see try_mode_active above). Every other
+            # Laser-pointer dot: standby (no mode) or Presentation (its
+            # own pointer math already computed upstream in
+            # GestureRecognizer, still ends up as a dot here). Every other
             # mode — Flip, Call — has no pointer behavior of its own, so
             # the position is simply dropped.
             self.event_bus.publish(

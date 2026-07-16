@@ -362,6 +362,38 @@ class TestTryMode:
         )
         pipeline.assert_not_called("zoom_in")
 
+    # Regression: Cursor mode + Try Mode used to fall back to the
+    # laser-pointer overlay dot instead of the real cursor — reasonable in
+    # isolation, but PointerOverlay draws on the PRIMARY screen whenever no
+    # second display is connected, the same screen (and same normalized
+    # position) the real cursor would have moved to, so a same-looking dot
+    # moving there reads as "the cursor is moving" even in Try Mode. Cursor
+    # mode's Pointing_Up must produce NEITHER real movement NOR the overlay
+    # dot — only the camera preview's own caption.
+    def test_cursor_mode_pointer_produces_no_overlay_dot_either(self, pipeline):
+
+        overlay_events = []
+
+        pipeline.event_bus.subscribe(
+            "pointer_overlay_update",
+            lambda event: overlay_events.append(event)
+        )
+
+        pipeline.voice("CURSOR_MODE")
+        pipeline.voice("TRY_MODE")
+
+        pipeline.stream(
+            "pointer_position",
+            {"x": 0.5, "y": 0.5, "source": "gesture"}
+        )
+
+        pipeline.assert_not_called("move_cursor_to")
+
+        assert overlay_events == [], (
+            f"expected no pointer_overlay_update while Try Mode is active "
+            f"in Cursor mode, got: {overlay_events}"
+        )
+
     # Try Mode is independent of current_mode — it must stay on while the
     # user switches between the exclusive modes, to demonstrate them.
     def test_coexists_with_regular_mode(self, pipeline):
