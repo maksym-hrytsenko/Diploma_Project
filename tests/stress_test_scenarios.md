@@ -155,6 +155,75 @@ mode entered) for at least 30 minutes.
   whether that gap actually causes a practical problem over a realistic
   session length, not to test a recovery mechanism that doesn't exist.
 
+## 11. Boundary timing: gesture confirmation debounce
+
+`confirm_frames` requires a gesture to hold for 4 consecutive frames
+before it is trusted (see `gesture_recognizer.py`).
+
+- Hold a static gesture (e.g. `Closed_Fist`) for just 2-3 frames, then
+  relax — confirm it is treated as noise and does **not** start/end a
+  tracking session.
+- Hold it for clearly more than 4 frames — confirm it is trusted
+  reliably, not intermittently.
+
+## 12. Boundary timing: double-pinch window
+
+The double-pinch window is 0.3 s (`double_pinch_window`).
+
+- In Cursor mode, do two quick pinches with a gap noticeably *under*
+  0.3 s between them — confirm a single `DOUBLE_PINCH` (right-click).
+- Do two quick pinches with a gap noticeably *over* 0.3 s — confirm two
+  separate `PINCH` clicks instead, not a right-click.
+- Do two pinches with the gap as close to exactly 0.3 s as you can
+  manage by feel — confirm the system lands on one behavior or the
+  other consistently rather than behaving unpredictably run to run.
+
+## 13. Boundary timing: Call-mode toggle hold
+
+The hold requirement is 1.5 s (`call_toggle_hold_seconds`).
+
+- Hold a finger-count gesture for clearly *under* 1.5 s and release —
+  confirm nothing toggles.
+- Hold for clearly *over* 1.5 s — confirm it toggles reliably.
+- Change the finger count partway through the hold (e.g. show two
+  fingers, then three, before either reaches 1.5 s) — confirm the hold
+  timer restarts for the new count rather than crediting time already
+  spent on the old one, and that neither toggle fires from a hold that
+  was never sustained at a single count for the full 1.5 s.
+
+## 14. Rapid switching between an environment and a mode
+
+- With Work environment active, rapidly enter and exit Flip mode
+  several times in a row (voice/keyboard/UI, mixed) — confirm the
+  environment's state (DND, open apps) is never touched by any of the
+  mode transitions, and the final state is: Work still active, no mode
+  active.
+- With a mode active, rapidly trigger environment switches (e.g. Work
+  → Study → Movie in quick succession) — confirm the active mode is
+  undisturbed throughout and the final environment is the last one
+  requested, with that environment's own `enter_actions` having fully
+  run (not interrupted mid-sequence by the next request).
+
+## 15. Call-mode toggle when the target app isn't running
+
+- Enter Call mode without Microsoft Teams running at all, then trigger
+  one of the finger-count toggles (e.g. two fingers for camera).
+- Confirm the system does not crash and prints its normal
+  `[EXECUTOR] TOGGLE_CAMERA`-style line — the keystroke is sent
+  regardless of whether Teams is the frontmost/running app, so this is
+  expected to silently do nothing useful, not to error out.
+
+## 16. Voice recognition load during active gesture tracking
+
+- Enter Flip mode and perform a continuous, ongoing swipe-tracking
+  session (fist held open, hand moving) while simultaneously speaking
+  a voice command with the activation word.
+- Confirm the voice command is still recognized correctly (no dropped
+  audio, no missed activation word) despite the camera-processing loop
+  running concurrently, and that the gesture tracking itself does not
+  stutter or drop frames noticeably while speech recognition is
+  active.
+
 ## How to test
 
 1. Run `python src/main.py` (scenario 9 specifically requires the packaged
