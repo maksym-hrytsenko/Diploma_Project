@@ -457,6 +457,16 @@ MODE_DISPLAY_NAMES = {
     "cursor": "Cursor"
 }
 
+# Call mode's finger-count toggles have no MediaPipe gesture category of
+# their own (see GestureRecognizer.FINGER_COUNT_GESTURES) — matched here
+# against gesture_debug's "active_gesture_signal", not "gesture_name".
+CALL_MODE_GESTURE_CAPTIONS = {
+    "ONE_FINGER": "Toggle microphone",
+    "TWO_FINGERS": "Toggle camera",
+    "THREE_FINGERS": "Toggle call audio",
+    "FOUR_FINGERS": "Toggle background blur"
+}
+
 # UI-triggered signal per mode, matching config/mapping.json's "ui" section
 MODE_UI_SIGNALS = {
     "flip": "FLIP_MODE",
@@ -848,18 +858,104 @@ class MainWindow(QWidget):
                 point_x - radius, point_y - radius, radius * 2, radius * 2
             )
 
+    # Mode-aware, human-readable description of what the camera currently
+    # sees, for the "Detected: ..." caption below — e.g. Cursor mode's
+    # Pointing_Up reads as "Cursor control", a held pinch as "Click",
+    # rather than the raw MediaPipe category name a viewer would otherwise
+    # have to already know the meaning of. Falls back to the raw
+    # gesture_name (Call mode excepted — see below) for poses the active
+    # mode gives no specific meaning to.
+    #
+    # Returns (text, show_confidence) — show_confidence is False for
+    # readings not directly tied to gesture_debug's own "confidence"
+    # value (pinch/drag, Call mode's finger count — neither has a
+    # MediaPipe classifier score of its own, see GestureRecognizer's
+    # active_gesture_signal/is_pinching/is_dragging), so an unrelated
+    # percentage is never shown next to them.
+    def _describe_gesture(self, data):
+
+        gesture_name = data.get("gesture_name")
+        tracking_active = data.get("tracking_active", False)
+        active_gesture_signal = data.get("active_gesture_signal")
+        is_pinching = data.get("is_pinching", False)
+        is_dragging = data.get("is_dragging", False)
+
+        mode = self.active_mode
+
+        if mode == "cursor":
+
+            if is_dragging:
+                return "Scroll", False
+
+            if is_pinching:
+                return "Click", False
+
+            if gesture_name == "Pointing_Up":
+                return "Cursor control", True
+
+        elif mode == "flip":
+
+            if tracking_active:
+                return "Swipe to scroll or flip", False
+
+            if gesture_name == "Closed_Fist":
+                return "Ready to swipe", True
+
+        elif mode == "presentation":
+
+            if gesture_name == "Pointing_Up":
+                return "Laser pointer", True
+
+            if gesture_name == "Closed_Fist":
+                return "Ready to change slide", True
+
+        elif mode == "call":
+
+            call_caption = CALL_MODE_GESTURE_CAPTIONS.get(
+                active_gesture_signal
+            )
+
+            if call_caption:
+                return call_caption, False
+
+            return "Hold 1-4 fingers up to toggle mic/camera/audio/blur", False
+
+        elif mode == "quick_circle":
+
+            if gesture_name == "Closed_Fist":
+                return "Close menu", True
+
+            return "Swipe to pick a mode", False
+
+        elif mode is None:
+
+            if gesture_name == "Pointing_Up":
+                return "Laser pointer", True
+
+            if tracking_active:
+                return "Quick menu — swipe to select", False
+
+            if gesture_name == "Closed_Fist":
+                return "Ready to open quick menu", True
+
+        if gesture_name:
+            return gesture_name.replace("_", " "), True
+
+        return None, False
+
     # Detected-command caption, painted directly on the frame
     def _paint_gesture_caption(self, painter, width, height, data):
 
-        gesture_name = data.get("gesture_name")
-        confidence = data.get("confidence")
+        description, show_confidence = self._describe_gesture(data)
 
-        if gesture_name:
+        confidence = data.get("confidence") if show_confidence else None
+
+        if description:
 
             confidence_text = (
                 f" · {confidence * 100:.0f}%" if confidence is not None else ""
             )
-            caption_text = f"Detected: {gesture_name}{confidence_text}"
+            caption_text = f"Detected: {description}{confidence_text}"
 
         else:
 
@@ -1144,7 +1240,7 @@ class MainWindow(QWidget):
 
     def _build_try_mode_toggle(self):
 
-        panel_x, panel_y = 800, 128
+        panel_x, panel_y = 760, 128
 
         inset = 14
 

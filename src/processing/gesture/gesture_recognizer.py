@@ -231,6 +231,13 @@ class GestureRecognizer:
 
         self.last_signal = None
 
+        # Mirrors _handle_frame's local confirm_input — the actual
+        # per-mode-meaningful gesture reading (Call mode's finger count,
+        # everywhere else the same as the raw gesture_name) — see its own
+        # comment in _handle_frame. Read by _publish_debug for the
+        # camera-preview caption.
+        self.active_gesture_signal = None
+
         # Minimum speed (per second, normalized coordinates)
         # for a frame-to-frame movement to count as a
         # deliberate swipe. This is the PRIMARY signal —
@@ -600,6 +607,13 @@ class GestureRecognizer:
                     result
                 )
             )
+
+        # Mirrors confirm_input for _publish_debug below — MainWindow's
+        # camera-preview caption uses this (not the raw gesture_name) to
+        # describe Call mode's finger-count gestures, since those have no
+        # MediaPipe category of their own (see FINGER_COUNT_GESTURES) and
+        # so never show up in gesture_name at all.
+        self.active_gesture_signal = confirm_input
 
         # Only a gesture held for confirm_frames straight frames is
         # trusted for session start/end — the raw, possibly noisy
@@ -1986,6 +2000,18 @@ class GestureRecognizer:
                 "tracking_active": self.tracking_active,
                 "gesture_name": gesture_name,
                 "confidence": confidence,
+                # The actual per-mode gesture reading behind
+                # gesture_name/is_pinching/is_dragging — see
+                # active_gesture_signal's own comment in _handle_frame and
+                # __init__. Together these are what MainWindow's camera
+                # preview caption uses to describe what's currently
+                # recognized in plain language, per the active mode
+                # (e.g. Cursor mode's Pointing_Up -> "Cursor control",
+                # a held pinch -> "Click"), not just the raw MediaPipe
+                # category name.
+                "active_gesture_signal": self.active_gesture_signal,
+                "is_pinching": self.is_pinching,
+                "is_dragging": self.is_dragging,
                 "last_gesture": self.last_gesture,
                 "last_signal": self.last_signal,
                 "velocity_x": self.velocity_x,
