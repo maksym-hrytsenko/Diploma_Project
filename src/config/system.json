@@ -1,7 +1,10 @@
 {
   "wake_word": "jack",
-  "wake_word_silence_timeout_seconds": 2,
+  "wake_word_silence_timeout_seconds": 6,
   "vad_enabled": true,
+  "vad_threshold": 0.65,
+  "vad_min_speech_duration_ms": 300,
+  "vad_silence_hangover_ms": 900,
   "mode": "offline",
   "nlu_fallback": {
     "enabled": true,

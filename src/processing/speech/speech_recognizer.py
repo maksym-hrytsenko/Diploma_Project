@@ -32,8 +32,13 @@ class SpeechRecognizer:
 
         self.last_partial_text = None
 
-        self.vosk_model = (
-            VoskSpeechModel()
+        # Passed to VoskSpeechModel so an async Whisper fallback result
+        # (arriving later, from a background thread — see
+        # VoskSpeechModel._start_fallback_transcribe) is handled by the
+        # exact same logging/publishing path as a synchronous result,
+        # instead of duplicating it.
+        self.vosk_model = VoskSpeechModel(
+            on_fallback_ready=self._handle_final_result
         )
 
     def start(self):
@@ -61,24 +66,47 @@ class SpeechRecognizer:
         if data is None:
             return
 
+        # EventBus stamps every event with the wall-clock time it was
+        # published (core/event_bus.py) — that's this chunk's own capture
+        # time, which VoskSpeechModel uses (together with Silero VAD's
+        # in-buffer offset) to estimate when real speech began, for manual
+        # latency testing. Not used for recognition itself.
+        chunk_timestamp = event.get(
+            "timestamp"
+        )
+
         result = self.vosk_model.process_audio(
-            data
+            data,
+            chunk_timestamp
         )
 
         if result is None:
             return
 
-        # Partial recognition is ignored, but still shown in debug mode —
-        # useful for spotting whether a phrase is getting cut short before
-        # it reaches command handling. Vosk repeats the same partial
-        # hypothesis many times while waiting for more audio, so only
-        # print on actual changes to avoid flooding the terminal.
+        # Partial recognition is never matched against commands, but a
+        # non-empty partial means Vosk is still actively hearing speech
+        # right now — published as voice_activity purely so IntentModel
+        # can keep an already-open session's silence deadline pushed
+        # forward while the person is still mid-sentence. Without this,
+        # the deadline only ever advanced when a chunk FINALIZED, which
+        # (confirmed against a real test session) can trail the person's
+        # actual speech by several seconds on a longer phrase — Vosk's own
+        # endpoint detection needs to hear the rest of the sentence before
+        # it decides where the previous one ended, so a fixed timeout
+        # measured from finalization time was effectively also counting
+        # against how long Vosk itself takes to catch up, not just real
+        # silence. See tests/MANUAL_TEST_SCENARIOS.md §4.6.
         if not result.get(
             "is_final",
             False
         ):
 
             partial_text = result.get("text")
+
+            self.event_bus.publish(
+                "voice_activity",
+                {}
+            )
 
             if (
                 self.debug
@@ -94,6 +122,16 @@ class SpeechRecognizer:
 
             return
 
+        self._handle_final_result(result)
+
+    # Shared by the synchronous path above (a grammar-only or already-
+    # awaited result) and VoskSpeechModel's async Whisper callback, which
+    # invokes this same method later, from a different thread, once a
+    # fallback transcription finishes — see VoskSpeechModel.__init__'s
+    # on_fallback_ready. Either way, a final result is handled identically
+    # from here on.
+    def _handle_final_result(self, result):
+
         self.last_partial_text = None
 
         text = result.get(
@@ -105,25 +143,40 @@ class SpeechRecognizer:
             False
         )
 
-        if self.debug:
+        speech_onset_estimate = result.get(
+            "speech_onset_estimate"
+        )
 
-            source = (
-                "open-vocab"
-                if result.get("open_vocab")
-                else "grammar"
-            )
+        source = (
+            "open-vocab"
+            if result.get("open_vocab")
+            else "grammar"
+        )
 
-            logger.debug(
-                "[voice final] \"%s\" (%s, wake_word_heard=%s)",
-                text,
-                source,
-                wake_word_heard
+        # Always logged at INFO (not gated behind --debug-voice, and not
+        # at DEBUG level — the root logger is configured at INFO, see
+        # utils/logger.py, so a DEBUG call here would never reach the log
+        # file at all) so a manual test session's log always has a
+        # speech_onset value to diff against SignalMapper's "[RESOLVED]"
+        # line for that same command — see
+        # tests/MANUAL_TEST_SCENARIOS.md §4.6.
+        logger.info(
+            "[voice final] \"%s\" (%s, wake_word_heard=%s, speech_onset=%s)",
+            text,
+            source,
+            wake_word_heard,
+            (
+                f"{speech_onset_estimate:.3f}"
+                if speech_onset_estimate is not None
+                else "unknown"
             )
+        )
 
         self.event_bus.publish(
             "text_ready",
             {
                 "text": text,
-                "wake_word_heard": wake_word_heard
+                "wake_word_heard": wake_word_heard,
+                "speech_onset_estimate": speech_onset_estimate
             }
         )

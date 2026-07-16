@@ -41,10 +41,12 @@ from ui.main_window import MainWindow
 from ui.floating_status_bar import FloatingStatusBar
 from ui.pointer_overlay import PointerOverlay
 from ui.native_window import configure_accessory_app
+from ui.welcome_window import WelcomeWindow
 
 from config.config_loader import load_system_config
 from utils.logger import get_logger
 from utils.permissions import ensure_macos_permissions
+from utils.app_state import has_shown_onboarding
 
 
 logger = get_logger(__name__)
@@ -199,6 +201,20 @@ def main() -> None:
     main_window.start()
 
     main_window.show()
+
+    # First launch ever (no marker file yet, see utils/app_state.py) —
+    # a short plain-language introduction before the full reference
+    # (InfoWindow, one click away from here or from MainWindow's own
+    # "Functions description" button at any later time). Kept as a local
+    # variable so it isn't garbage-collected before the user closes it —
+    # same reason every other top-level window here is a local of main().
+    welcome_window = None
+
+    if not has_shown_onboarding():
+
+        welcome_window = WelcomeWindow()
+
+        welcome_window.show()
 
     floating_status_bar.start()
 

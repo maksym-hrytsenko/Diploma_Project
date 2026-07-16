@@ -487,6 +487,7 @@ class MainWindow(QWidget):
     """Main control panel — draws over images/01_main_menu.png."""
 
     mode_changed_signal = pyqtSignal(object)
+    try_mode_changed_signal = pyqtSignal(bool)
     gesture_debug_signal = pyqtSignal(object)
     face_debug_signal = pyqtSignal(object)
 
@@ -501,6 +502,7 @@ class MainWindow(QWidget):
 
         self.system_on = True
         self.active_mode = None
+        self.try_mode_active = False
         self.camera_active = True
         self.microphone_active = True
         self.keyboard_active = True
@@ -522,6 +524,7 @@ class MainWindow(QWidget):
         self._apply_rounded_mask()
 
         self.mode_changed_signal.connect(self._on_mode_changed_from_bus)
+        self.try_mode_changed_signal.connect(self._on_try_mode_changed_from_bus)
         self.gesture_debug_signal.connect(self._on_gesture_debug)
         self.face_debug_signal.connect(self._on_face_debug)
 
@@ -534,11 +537,13 @@ class MainWindow(QWidget):
         self._build_background()
         self._build_header()
         self._build_camera_preview()
+        self._build_try_mode_toggle()
         self._build_control_wheel()
         self._build_bottom_status()
 
         self._refresh_system_power()
         self._refresh_mode_buttons()
+        self._refresh_try_mode_state()
         self._refresh_toggle_states()
 
         self._build_debug_overlay()
@@ -552,6 +557,7 @@ class MainWindow(QWidget):
         if self.event_bus is not None:
 
             self.event_bus.subscribe("mode_changed", self._handle_mode_changed)
+            self.event_bus.subscribe("try_mode_changed", self._handle_try_mode_changed)
             self.event_bus.subscribe("ui_expand_requested", self._handle_expand_requested)
 
             # Same events the --debug-gesture/--debug-face cv2 windows use
@@ -563,6 +569,7 @@ class MainWindow(QWidget):
         if self.event_bus is not None:
 
             self.event_bus.unsubscribe("mode_changed", self._handle_mode_changed)
+            self.event_bus.unsubscribe("try_mode_changed", self._handle_try_mode_changed)
             self.event_bus.unsubscribe("ui_expand_requested", self._handle_expand_requested)
             self.event_bus.unsubscribe("gesture_debug", self._handle_gesture_debug)
             self.event_bus.unsubscribe("face_debug", self._handle_face_debug)
@@ -596,6 +603,28 @@ class MainWindow(QWidget):
                 self._refresh_face_status()
 
         self._refresh_mode_buttons()
+
+    def _handle_try_mode_changed(self, event):
+
+        active = event.get("data", {}).get("active", False)
+
+        self.try_mode_changed_signal.emit(active)
+
+    def _on_try_mode_changed_from_bus(self, active):
+
+        self.try_mode_active = active
+
+        # Reconciles the switch's knob with SignalMapper's own decision —
+        # voice/keyboard can flip Try Mode independently of this window,
+        # and the system-off/turn-back-on detour in _on_try_mode_toggled
+        # means a click doesn't always land where the knob first jumped to.
+        # blockSignals so setChecked doesn't itself re-trigger the click
+        # handler and publish a second, unwanted toggle.
+        self.switch_try_mode.blockSignals(True)
+        self.switch_try_mode.setChecked(active)
+        self.switch_try_mode.blockSignals(False)
+
+        self._refresh_try_mode_state()
 
     # ---------------------------------
     # Live camera preview — events arrive off the Qt thread, marshaled
@@ -1100,6 +1129,86 @@ class MainWindow(QWidget):
         self._latest_face_pitch = None
         self._latest_face_landmarks = None
         self._last_video_update = 0.0
+
+    # ---------------------------------
+    # Try Mode — top-left corner of panel_control_wheel (the white square
+    # the mode wheel sits on: x=800,y=128 per
+    # ui_documentation_final_without_functions_dialog.txt §"panel_control_
+    # wheel" — empty space there, well clear of glow_mode_flip at
+    # x=1014,y=128). Independent of camera_active/microphone_active/
+    # keyboard_active (those gate which INPUTS are read) and of
+    # active_mode (which of the four exclusive modes is on) — this one
+    # gates whether ActionExecutor is allowed to touch the OS at all, see
+    # action_executor.py's try_mode_active.
+    # ---------------------------------
+
+    def _build_try_mode_toggle(self):
+
+        panel_x, panel_y = 800, 128
+
+        inset = 14
+
+        switch_width, switch_height = 52, 28
+
+        switch_x = panel_x + inset
+        switch_y = panel_y + inset
+
+        self.switch_try_mode = ToggleSwitch(
+            self, "switch_try_mode", switch_x, switch_y,
+            switch_width, switch_height, False
+        )
+        self.switch_try_mode.toggled.connect(self._on_try_mode_toggled)
+        self._register_debug_element("switch_try_mode", self.switch_try_mode)
+
+        label_width = 110
+        label_x = switch_x + switch_width + 8
+
+        self.try_mode_patch = make_patch_label(
+            self, label_x, switch_y - 1, label_width, switch_height + 2, radius=10
+        )
+        self.label_try_mode = make_label(
+            self.try_mode_patch, "", 0, 0, label_width, switch_height + 2,
+            COLOR_TEXT_SECONDARY, size=11, bold=True, align=Qt.AlignmentFlag.AlignCenter
+        )
+
+    def _on_try_mode_toggled(self, checked):
+
+        if not self.system_on:
+
+            # Same detour as _on_mode_clicked: clicking while the hub
+            # shows OFF turns it back on first (published, so
+            # SignalMapper's gate lifts before the TRY_MODE signal below
+            # reaches it), instead of the click silently doing nothing.
+            self.system_on = True
+
+            self._refresh_system_power()
+
+            self._publish_ui_event("ui_system_toggle", {"active": True})
+
+        if self.event_bus is None:
+
+            # Standalone hot-reload preview only (no SignalMapper running)
+            # — simulate locally, same fallback as _on_mode_clicked.
+            self.try_mode_active = checked
+
+            self._refresh_try_mode_state()
+            return
+
+        # Not applied locally here — SignalMapper decides (it's also
+        # reachable by voice/keyboard, and needs to agree with whatever
+        # they last set); the switch's knob and label only become final
+        # once _on_try_mode_changed_from_bus echoes the real state back.
+        self._publish_ui_event("ui_signal", {"signal": "TRY_MODE"})
+
+    def _refresh_try_mode_state(self):
+
+        color = COLOR_ACCENT_PURPLE if self.try_mode_active else COLOR_TEXT_SECONDARY
+        text = "● Try Mode ON" if self.try_mode_active else "Try mode"
+
+        self.label_try_mode.setText(text)
+        self.label_try_mode.setStyleSheet(
+            f"color: {color}; background: transparent; border: none;"
+        )
 
     # ---------------------------------
     # Circular control wheel

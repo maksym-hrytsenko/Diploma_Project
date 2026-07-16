@@ -125,6 +125,7 @@ HIGHLIGHT_COLOR = "#FFC93C"
 class FloatingStatusBar(QWidget):
 
     mode_changed_signal = pyqtSignal(object)
+    try_mode_changed_signal = pyqtSignal(bool)
     camera_toggle_signal = pyqtSignal(bool)
     microphone_toggle_signal = pyqtSignal(bool)
     keyboard_toggle_signal = pyqtSignal(bool)
@@ -142,6 +143,7 @@ class FloatingStatusBar(QWidget):
         self.microphone_active = True
         self.keyboard_active = True
         self.active_mode = None
+        self.try_mode_active = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -152,6 +154,7 @@ class FloatingStatusBar(QWidget):
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
         self.mode_changed_signal.connect(self._on_mode_changed_from_bus)
+        self.try_mode_changed_signal.connect(self._on_try_mode_changed_from_bus)
         self.camera_toggle_signal.connect(self._on_camera_toggled_from_bus)
         self.microphone_toggle_signal.connect(self._on_microphone_toggled_from_bus)
         self.keyboard_toggle_signal.connect(self._on_keyboard_toggled_from_bus)
@@ -186,6 +189,7 @@ class FloatingStatusBar(QWidget):
             # on/off intent) already decided — it never decides anything
             # itself.
             self.event_bus.subscribe("mode_changed", self._handle_mode_changed)
+            self.event_bus.subscribe("try_mode_changed", self._handle_try_mode_changed)
             self.event_bus.subscribe("ui_camera_toggle", self._handle_camera_toggle)
             self.event_bus.subscribe("ui_microphone_toggle", self._handle_microphone_toggle)
             self.event_bus.subscribe("ui_keyboard_toggle", self._handle_keyboard_toggle)
@@ -200,6 +204,7 @@ class FloatingStatusBar(QWidget):
             )
 
             self.event_bus.unsubscribe("mode_changed", self._handle_mode_changed)
+            self.event_bus.unsubscribe("try_mode_changed", self._handle_try_mode_changed)
             self.event_bus.unsubscribe("ui_camera_toggle", self._handle_camera_toggle)
             self.event_bus.unsubscribe("ui_microphone_toggle", self._handle_microphone_toggle)
             self.event_bus.unsubscribe("ui_keyboard_toggle", self._handle_keyboard_toggle)
@@ -232,9 +237,18 @@ class FloatingStatusBar(QWidget):
 
         self.keyboard_toggle_signal.emit(bool(event.get("data", {}).get("active", True)))
 
+    def _handle_try_mode_changed(self, event):
+
+        self.try_mode_changed_signal.emit(bool(event.get("data", {}).get("active", False)))
+
     def _on_mode_changed_from_bus(self, mode):
 
         self.active_mode = mode
+        self._refresh_state()
+
+    def _on_try_mode_changed_from_bus(self, active):
+
+        self.try_mode_active = active
         self._refresh_state()
 
     def _on_camera_toggled_from_bus(self, active):
@@ -283,7 +297,15 @@ class FloatingStatusBar(QWidget):
         ]
         inputs_label = ", ".join(active_inputs) if active_inputs else "None"
 
-        self.setToolTip(f"Active input: {inputs_label}\nMode: {mode_label}")
+        # No spare pixel-measured icon slot to safely add a new chip to
+        # (see this file's own docstring on how fragile ICON_CENTERS is
+        # without being able to render and re-measure it) — the tooltip
+        # is the low-risk way to still surface Try Mode's state here.
+        try_mode_label = "\nTry Mode: ON" if self.try_mode_active else ""
+
+        self.setToolTip(
+            f"Active input: {inputs_label}\nMode: {mode_label}{try_mode_label}"
+        )
 
     # ---------------------------------
     # Layout

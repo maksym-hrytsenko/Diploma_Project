@@ -12,9 +12,9 @@ Target platform: **macOS only**.
 
 ---
 
-## 1. Two independent state axes
+## 1. Three independent state axes
 
-The system tracks two separate, orthogonal pieces of state at once:
+The system tracks three separate, orthogonal pieces of state at once:
 
 - **Mode** (`presentation` / `flip` / `cursor` / `call` /
   `quick_circle` / none) — an ephemeral context that decides what the
@@ -26,15 +26,20 @@ The system tracks two separate, orthogonal pieces of state at once:
   longer-lived task backdrop. Entering one runs a real sequence of OS
   actions (opening apps, toggling Do Not Disturb, music); leaving it (by
   entering a different environment) undoes them.
+- **Try Mode** (on / off, see §2.6) — an independent on/off flag, not a
+  mode itself. While on, nothing above ever produces a real OS side
+  effect — it only decides whether decided commands actually execute.
 
 You can be in a mode and an environment at the same time — e.g. `study`
 environment (Safari + Preview open, focus music playing) while also
-switching briefly into `cursor` mode to click something.
+switching briefly into `cursor` mode to click something. Try Mode can be
+on at the same time as any mode and/or environment, precisely so
+switching between them can be demonstrated without side effects.
 
-Saying **"exit mode"**, or pressing **Esc**, only leaves the active
-**mode** — both work identically, from any mode, at any time. Environments are
-only left by entering a different environment — there is no dedicated
-"leave environment" phrase.
+Saying **"exit mode"**, or pressing **Esc**, leaves the active **mode**
+and turns **Try Mode** off if it's on — both work identically, from any
+mode, at any time. Environments are only left by entering a different
+environment — there is no dedicated "leave environment" phrase.
 
 ---
 
@@ -49,8 +54,6 @@ away from the keyboard):
 | Trigger | Action |
 |---|---|
 | voice "start presentation" | `START_SLIDESHOW` |
-| Right arrow key (bare, no modifier) | `NEXT_SLIDE` |
-| Left arrow key (bare, no modifier) | `PREVIOUS_SLIDE` |
 | voice "next slide" | `NEXT_SLIDE` |
 | voice "previous slide" | `PREVIOUS_SLIDE` |
 | Closed fist, wrist moved right | `NEXT_SLIDE` |
@@ -81,10 +84,17 @@ the same thing a real presentation clicker does, so it works with
 PowerPoint, Keynote, Google Slides, and PDF viewers without any
 per-app integration.
 
-**Note on bare arrow keys**: while in Presentation mode, plain Right/Left
-arrow presses are captured system-wide (the same way a physical
-clicker's key presses would be) but only produce an action while this
-mode is active — outside it they're silently ignored.
+**Note on the physical arrow keys**: pressing the real Right/Left arrow
+keys is *not* mapped to `NEXT_SLIDE`/`PREVIOUS_SLIDE` in this mode, on
+purpose. Every presentation app already treats Right/Left as its own
+native "next/previous slide" shortcut, and this system's own keyboard
+listener does not (and cannot, via `pynput`) suppress the physical
+keypress from also reaching the focused app — mapping it here as well
+used to fire the real key press AND this app's own synthetic one for
+every press, skipping a slide. Voice and the closed-fist wrist gesture
+above are the two hands-free ways this system adds; the physical arrow
+keys keep working exactly as they always do in the focused presentation
+app, with no help (and no interference) from this system.
 
 ### 2.2 Flip — `"flip mode"` or `ctrl+shift+f`
 
@@ -430,6 +440,33 @@ The circle itself is `src/ui/quick_command_overlay.py` — a click-through
 PyQt6 overlay that shows/hides purely by listening to the same
 `mode_changed` event `ActionExecutor` uses, no coupling between the two.
 
+### 2.6 Try Mode — voice `"try mode"`, `ctrl+shift+t`, or the switch next to the camera preview
+
+Not one of the five modes above — an independent on/off flag that can be
+active **at the same time as** Presentation/Flip/Cursor/Call/Quick Circle,
+so switching between them can be demonstrated safely. While Try Mode is
+on:
+
+- `ActionExecutor` skips every real OS side effect — no key presses, no
+  clicks, no cursor movement, no app/URL launches, nothing. It logs what
+  it *would* have run instead (`[TRY MODE] would execute: ...`).
+- Everything upstream of that keeps working exactly as normal: mode
+  switching, gesture/voice/keyboard recognition, the camera preview's
+  live "Detected: ..." caption, the laser-pointer dot (Cursor mode's
+  pointer stream still draws the dot where the real cursor would go,
+  it just doesn't move the actual mouse).
+
+| Trigger | Effect |
+|---|---|
+| voice "try mode" | Toggles Try Mode on/off |
+| `ctrl+shift+t` | Toggles Try Mode on/off |
+| Switch next to the camera preview (top-right corner) | Toggles Try Mode on/off |
+| voice "exit mode" / Esc / clicking the active mode's icon | Turns Try Mode off too, in addition to leaving whichever regular mode is active (either, both, or neither may be true at that moment) |
+
+Turning Try Mode on while the System ON/OFF hub shows OFF turns the
+system back on first, the same detour clicking a mode icon already uses
+— see `MainWindow._on_try_mode_toggled`.
+
 ---
 
 ## 3. Environments
@@ -650,21 +687,23 @@ recognized by the model but still unused anywhere in this system.
 | `ctrl+shift+f` | Enter Flip mode |
 | `ctrl+shift+c` | Enter Cursor mode |
 | `ctrl+shift+w` | Enter Call mode |
+| `ctrl+shift+t` | Toggle Try Mode (§2.6) — independent of the four mode combos above, can be pressed at any time |
 | `alt` (bare) | Activates the face-gesture layer (§9) — works in any mode, or no mode at all |
 | `ctrl` (bare) | Volume-down variant of the face-gesture layer (§9.1) — `ctrl` + `EYEBROWS_UP` only, nothing else is bound to bare `ctrl` |
-| Right arrow (bare) | Next slide, Presentation mode only |
-| Left arrow (bare) | Previous slide, Presentation mode only |
-| Esc (bare) | Exit whichever mode is active, from any mode, at any time |
+| Esc (bare) | Exit whichever mode is active, from any mode, at any time — also turns Try Mode off if it's on (§2.6) |
+
+Right/Left arrow are deliberately **not** bound to anything here anymore
+— see the "Note on the physical arrow keys" in §2.1.
 
 All four mode-entry combos share the `ctrl+shift` base, distinguished by
 a third key that's the first letter of the mode name (**p**resentation,
 **f**lip, **c**ursor, **w** — Call mode kept the `w` slot inherited from
-the Window Management mode it replaced, see §11) — a single, consistent,
-memorable pattern rather than four unrelated combos. `mapping.json`'s
-`keyboard` and `valid_signals.keyboard` must always list the exact same
-combo strings — a mismatch between the two silently drops every press of
-the affected combo with no error (this happened once during development
-and is why every keyboard combo is worth double-checking after an edit).
+the Window Management mode it replaced, see §11; **t**ry Mode reuses the
+same pattern). `mapping.json`'s `keyboard` and `valid_signals.keyboard`
+must always list the exact same combo strings — a mismatch between the
+two silently drops every press of the affected combo with no error (this
+happened once during development and is why every keyboard combo is
+worth double-checking after an edit).
 
 `src/processing/keyboard/keyboard_processor.py` builds any modifier
 combination (and bare single-key presses) dynamically — only combos
@@ -1127,8 +1166,11 @@ overlay — see §9.2) and manually verify:
   "start", "stop" — confirm each fires and that "pause"/"reset"/"stop"
   all just toggle play/pause (§5's documented single-toggle-key
   limitation), they do not restart the track.
-- **Keyboard**: hold each mode-entry combo; press bare Right/Left arrows
-  only while in Presentation mode.
+- **Keyboard**: hold each mode-entry combo, including `ctrl+shift+t` for
+  Try Mode. Confirm bare Right/Left arrows do **not** produce a
+  `NEXT_SLIDE`/`PREVIOUS_SLIDE` `[EXECUTOR]` line even while in
+  Presentation mode (see §2.1's note) — they should only visibly move the
+  slide once, via whichever presentation app is focused, not twice.
 - **Gestures**: use `--debug-gesture` to calibrate `pinch_distance_
   threshold` against your hand/camera distance; verify a quick pinch
   clicks (after the ~0.3s double-pinch window passes) and a
@@ -1161,6 +1203,15 @@ overlay — see §9.2) and manually verify:
 - **"exit mode" scope**: enter an environment, then a mode, say "exit
   mode", confirm only the mode cleared and the environment's apps/DND
   state are untouched.
+- **Try Mode** (§2.6): turn it on via voice, `ctrl+shift+t`, and the
+  switch next to the camera preview in turn — confirm each updates the
+  switch and the "● TRY MODE" indicator the same way. With it on, enter
+  each mode in turn and trigger a command from each (a slide change, a
+  scroll, an app-opening voice command, a Cursor-mode pinch) — confirm
+  none of them produce any real effect on the computer, but `[TRY MODE]
+  would execute: ...` prints for each and the camera preview's
+  "Detected: ..." caption keeps updating live. Confirm "exit mode"/Esc
+  turns Try Mode off too.
 - **Face layer**: hold `alt` and tilt your head right/left — confirm
   next/previous track fires (and note which physical direction actually
   maps to which, per the unverified-labeling caveat in §9 — this was

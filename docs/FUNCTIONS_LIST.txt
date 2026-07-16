@@ -40,10 +40,28 @@ VOICE -- MODES (gesture-scoping, no side effects)
 "flip mode"           -> enters Flip mode         (or ctrl+shift+f)
 "cursor mode"          -> enters Cursor mode       (or ctrl+shift+c)
 "call mode"             -> enters Call mode         (or ctrl+shift+w)
-"exit mode" (or press ESC) -> leaves whichever mode is active
+"exit mode" (or press ESC) -> leaves whichever mode is active,
+    AND turns Try Mode off too if it's on (see TRY MODE below)
 (Quick Command Circle has no voice/keyboard trigger -- gesture only,
  see GESTURES section below. It doubles as a quick way to pick any of
  the four modes above without remembering its phrase/combo.)
+
+
+TRY MODE -- voice "try mode", ctrl+shift+t, or the switch next to the
+            camera preview
+------------------------------------------------------------------------
+Not a mode -- an independent on/off flag that can be active AT THE SAME
+TIME as any of the 5 modes above, so switching between them can be
+demonstrated safely:
+    - no real action is ever performed on the computer while it's on
+      (no key presses, no clicks, no cursor movement, no app/URL
+      launches -- ActionExecutor logs what it WOULD have run instead)
+    - everything else keeps working as normal: mode switching, gesture/
+      voice/keyboard recognition, the camera preview's live
+      "Detected: ..." caption
+Toggled on/off the same way each time (voice phrase / key combo /
+switch); "exit mode"/Esc also turns it off, on top of leaving whichever
+regular mode is active.
 
 REMOVED: Window Management mode (maximize/minimize/snap-left/snap-
 right) no longer exists -- replaced entirely by Call mode. The
@@ -225,15 +243,26 @@ ctrl+shift+p           -> enters Presentation mode
 ctrl+shift+f           -> enters Flip mode
 ctrl+shift+c           -> enters Cursor mode
 ctrl+shift+w           -> enters Call mode
-right arrow (no other keys held)  -> next slide (Presentation mode only)
-left arrow (no other keys held)   -> previous slide (Presentation mode only)
-esc                    -> exits whichever mode is active (any mode, any time)
+ctrl+shift+t           -> toggles Try Mode on/off (independent of the
+                           four mode combos above, see TRY MODE above)
+esc                    -> exits whichever mode is active (any mode, any
+                           time) AND turns Try Mode off too if it's on
 alt+shift (held)       -> activates the face-gesture layer below (works
                            in ANY mode or no mode at all)
 
 (All four mode combos share ctrl+shift, distinguished by a third key
 that's the first letter of the mode: p/f/c/w -- "w" now stands for
-Call mode, reusing the old Window Management slot as-is.)
+Call mode, reusing the old Window Management slot as-is; Try Mode reuses
+the same pattern with "t".)
+
+NOTE: right/left arrow keys are deliberately NOT bound to anything here,
+even in Presentation mode -- every presentation app already treats them
+as its own native next/previous-slide shortcut, and this app's keyboard
+listener can't suppress the physical key press from also reaching that
+app. Mapping them here too used to fire both the real key press and this
+app's own synthetic one for every press, skipping a slide. Voice
+("next slide"/"previous slide") and the closed-fist wrist gesture are
+the two ways this system actually adds for Presentation mode.
 
 Holding a key down and releasing it are tracked as two separate
 moments -- while a key combo is held, other gesture/voice actions can

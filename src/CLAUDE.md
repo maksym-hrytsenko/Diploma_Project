@@ -254,6 +254,21 @@ command_event
 
 Only SignalMapper decides whether a command should be executed.
 
+### Try Mode
+
+An independent on/off flag (`SignalMapper.try_mode_active`), not a fifth
+entry in `modes` — it must stay on while the user switches between the
+exclusive modes (`current_mode` only ever holds one at a time) to
+demonstrate them safely. Toggled by voice/keyboard/UI triggers declared
+in `config/fusion.json`'s own `try_mode.triggers` list, edge-triggered
+the same way `_check_rules` is (gated on `triggering_source`, not just
+signal presence) so a held keyboard combo can't flip it back and forth.
+"exit mode"/Esc/UI-exit turn it off too, independently of whether a
+regular mode is currently active. Published as `try_mode_changed` —
+SignalMapper still decides and publishes `command_event` exactly as
+normal while it's on; ActionExecutor is what actually skips the OS side
+effect (see below).
+
 ---
 
 ## ActionExecutor
@@ -270,7 +285,13 @@ Calls:
 OSController
 ```
 
-ActionExecutor must NOT contain decision logic.
+ActionExecutor must NOT contain decision logic — with one exception:
+while Try Mode is on (`try_mode_active`, mirrored from SignalMapper's
+`try_mode_changed`), it skips the OSController call for every command and
+every continuous stream (pointer/pinch-drag/pinch-zoom) instead of
+calling it. This is a dry-run gate, not a WHICH-command decision — it
+doesn't change what SignalMapper decided, only whether the OS actually
+feels it.
 
 ---
 

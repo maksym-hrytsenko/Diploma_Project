@@ -7,12 +7,11 @@ publishes intent_detected. The only module allowed to turn a spoken phrase
 into an internal command.
 """
 
+import functools
+import threading
 import time
 
-from concurrent.futures import (
-    ProcessPoolExecutor,
-    TimeoutError as FutureTimeoutError
-)
+from concurrent.futures import ProcessPoolExecutor
 
 from interpretation.nlu_fallback_worker import (
     semantic_match_task,
@@ -75,9 +74,26 @@ class IntentModel:
         # session is considered gone silent — a rolling "still talking"
         # window, not a fixed deadline from the wake word itself, since
         # every new utterance pushes it forward by silence_timeout_seconds.
+        #
+        # This only matters BETWEEN separate utterances now (e.g. "jack"
+        # ... pause ... "open browser" as two utterances completing one
+        # command) — a single utterance's own internal pauses no longer
+        # depend on this at all, VoskSpeechModel's own VAD-hangover check
+        # (system.json's vad_silence_hangover_ms, much shorter) decides
+        # when ONE spoken phrase is over before text_ready is even
+        # published. See speech_model.py's module docstring.
         self.session_deadline = None
 
         self.pending_command_text = ""
+
+        # Bumped every time a fresh (or newly-concatenated) piece of text
+        # is about to be sent for semantic/LLM matching. Semantic/LLM
+        # results now arrive asynchronously (see _start_nlu_fallback), so
+        # by the time one comes back a LATER fragment may already have
+        # superseded it — each async callback checks its own captured
+        # token against the current value here and discards itself if a
+        # newer attempt has since started, instead of acting on stale text.
+        self.session_token = 0
 
         nlu_fallback = self.system.get(
             "nlu_fallback",
@@ -127,11 +143,21 @@ class IntentModel:
             self._handle_text
         )
 
+        self.event_bus.subscribe(
+            "voice_activity",
+            self._handle_voice_activity
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(
             "text_ready",
             self._handle_text
+        )
+
+        self.event_bus.unsubscribe(
+            "voice_activity",
+            self._handle_voice_activity
         )
 
         if self.nlu_executor is not None:
@@ -167,6 +193,24 @@ class IntentModel:
                 "intent_detected",
                 result
             )
+
+    # Vosk still actively hearing speech (a non-empty partial hypothesis)
+    # is real evidence the person hasn't gone quiet, even though it isn't
+    # itself a command to act on — pushes an already-open session's
+    # deadline forward so it isn't measured against how long Vosk takes to
+    # finalize the next chunk, only against genuine silence. Mostly a
+    # secondary safety net now that VoskSpeechModel's own VAD-hangover
+    # check (system.json's vad_silence_hangover_ms) owns keeping a SINGLE
+    # utterance from being cut short before text_ready is even published —
+    # see speech_model.py's module docstring; session_deadline here only
+    # matters BETWEEN separate utterances. Does nothing if no session is
+    # open: partial speech alone must never start one — that stays gated
+    # on the wake word in process_text.
+    def _handle_voice_activity(self, event):
+
+        if self._session_is_active():
+
+            self._renew_session()
 
     def process_text(
         self,
@@ -298,40 +342,23 @@ class IntentModel:
 
         if self.nlu_fallback_enabled:
 
-            semantic_result = self._match_semantic(
-                cleaned_text
+            # Bumped before dispatching, not after — see session_token —
+            # so this attempt's own eventual callback carries a token that
+            # is still current at the moment it's launched.
+            self.session_token += 1
+
+            self._start_nlu_fallback(
+                cleaned_text,
+                self.session_token
             )
 
-            if semantic_result:
-
-                self._end_session()
-
-                return {
-                    "command": semantic_result["command"],
-                    "confidence": semantic_result["confidence"],
-                    "source": "voice",
-                    "tier": "semantic"
-                }
-
-            llm_command = self._match_llm(
-                cleaned_text
-            )
-
-            if llm_command:
-
-                self._end_session()
-
-                return {
-                    "command": llm_command,
-                    "confidence": self.llm_confidence,
-                    "source": "voice",
-                    "tier": "llm"
-                }
-
-        # No match yet — keep the session open (the deadline was already
-        # pushed forward by _start_session/this method's callers) so a
-        # continuation utterance can still complete the command before it
-        # goes quiet.
+        # No exact match. If NLU fallback is enabled, semantic/LLM matching
+        # was just kicked off in the background (see _start_nlu_fallback)
+        # rather than awaited here — either callback may still end the
+        # session and publish intent_detected later. Either way, keep the
+        # session open for now (the deadline was already pushed forward by
+        # _start_session/this method's callers) so a continuation
+        # utterance can still complete the command before it goes quiet.
         self._renew_session()
 
         return None
@@ -363,6 +390,10 @@ class IntentModel:
         self.session_deadline = None
 
         self.pending_command_text = ""
+
+        # Invalidates any semantic/LLM callback still in flight from this
+        # session — see session_token above.
+        self.session_token += 1
 
     def _session_is_active(self):
 
@@ -407,9 +438,18 @@ class IntentModel:
 
         return self.nlu_executor
 
-    def _match_semantic(
+    # Fire-and-forget: submits semantic matching and returns immediately
+    # instead of blocking the caller (previously the speech pipeline's own
+    # callback chain, all the way back to the microphone thread) for
+    # however long a cold model load or a slow match takes. Confirmed
+    # against a real test session: this used to stall recognition of
+    # whatever the person kept saying next until the worker returned.
+    # add_done_callback's callback runs on the executor's own result-
+    # watching thread, never on the calling thread.
+    def _start_nlu_fallback(
         self,
-        text
+        text,
+        token
     ):
 
         executor = self._get_nlu_executor()
@@ -421,25 +461,74 @@ class IntentModel:
             text
         )
 
+        self._warn_if_slow(
+            future,
+            "Semantic match"
+        )
+
+        future.add_done_callback(
+            functools.partial(
+                self._handle_semantic_future,
+                text=text,
+                token=token
+            )
+        )
+
+    def _handle_semantic_future(
+        self,
+        future,
+        text,
+        token
+    ):
+
+        # A newer fragment already started its own attempt (concatenated
+        # continuation, or a fresh wake word) — this result is for text
+        # that's no longer current, so it must not end the session or
+        # publish anything on its behalf.
+        if token != self.session_token:
+            return
+
         try:
 
-            return future.result(
-                timeout=self.nlu_worker_timeout_seconds
+            semantic_result = future.result()
+
+        except Exception:
+
+            logger.exception(
+                "Semantic match worker failed"
             )
 
-        except FutureTimeoutError:
+            semantic_result = None
 
-            logger.warning(
-                "Semantic match worker timed out after %ss",
-                self.nlu_worker_timeout_seconds
+        if semantic_result:
+
+            self._end_session()
+
+            self.event_bus.publish(
+                "intent_detected",
+                {
+                    "command": semantic_result["command"],
+                    "confidence": semantic_result["confidence"],
+                    "source": "voice",
+                    "tier": "semantic"
+                }
             )
 
-            return None
+            return
 
-    def _match_llm(
+        self._start_llm_fallback(
+            text,
+            token
+        )
+
+    def _start_llm_fallback(
         self,
-        text
+        text,
+        token
     ):
+
+        if token != self.session_token:
+            return
 
         executor = self._get_nlu_executor()
 
@@ -450,20 +539,92 @@ class IntentModel:
             text
         )
 
+        self._warn_if_slow(
+            future,
+            "LLM fallback"
+        )
+
+        future.add_done_callback(
+            functools.partial(
+                self._handle_llm_future,
+                token=token
+            )
+        )
+
+    def _handle_llm_future(
+        self,
+        future,
+        token
+    ):
+
+        if token != self.session_token:
+            return
+
         try:
 
-            return future.result(
-                timeout=self.nlu_worker_timeout_seconds
+            llm_command = future.result()
+
+        except Exception:
+
+            logger.exception(
+                "LLM fallback worker failed"
             )
 
-        except FutureTimeoutError:
+            llm_command = None
 
-            logger.warning(
-                "LLM fallback worker timed out after %ss",
-                self.nlu_worker_timeout_seconds
+        if llm_command:
+
+            self._end_session()
+
+            self.event_bus.publish(
+                "intent_detected",
+                {
+                    "command": llm_command,
+                    "confidence": self.llm_confidence,
+                    "source": "voice",
+                    "tier": "llm"
+                }
             )
 
-            return None
+            return
+
+        # Neither tier matched. The session was already renewed when this
+        # attempt was dispatched (process_text) — renew again now, at the
+        # moment the attempt actually finished, so a slow match doesn't
+        # eat into the silence window a continuation still needs.
+        if self._session_is_active():
+
+            self._renew_session()
+
+    # No artificial cancellation — ProcessPoolExecutor can't cleanly
+    # interrupt a running worker — just a log line so a genuinely hung
+    # model call is visible instead of silently never resolving. The
+    # actual done-callback still fires normally whenever (if ever) the
+    # future completes, however late.
+    def _warn_if_slow(
+        self,
+        future,
+        label
+    ):
+
+        def check():
+
+            if not future.done():
+
+                logger.warning(
+                    "%s worker still running after %ss",
+                    label,
+                    self.nlu_worker_timeout_seconds
+                )
+
+        timer = threading.Timer(
+            self.nlu_worker_timeout_seconds,
+            check
+        )
+
+        timer.daemon = True
+
+        timer.start()
 
     def _normalize(self, text):
 

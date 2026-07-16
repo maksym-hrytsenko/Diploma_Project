@@ -344,9 +344,7 @@ MODE_INFO = (
             ("Closed-fist swipe left", "Previous slide"),
             ('Voice "next slide"', "Next slide"),
             ('Voice "previous slide"', "Previous slide"),
-            ('Voice "start presentation"', "Start slideshow (F5)"),
-            ("Keyboard →", "Next slide"),
-            ("Keyboard ←", "Previous slide")
+            ('Voice "start presentation"', "Start slideshow (F5)")
         )
     },
     {
@@ -391,6 +389,23 @@ MODE_INFO = (
             ("Swipe up", "Enter Flip mode"),
             ("Swipe down", "Enter Cursor mode"),
             ("Close the fist", "Cancel and close the circle")
+        )
+    },
+    {
+        "name": "Try Mode",
+        "entry": 'Voice "try mode" · Keyboard Ctrl+Shift+T · Switch next to the camera preview',
+        "description": (
+            "Not a mode like the others — an independent on/off switch that "
+            "can be active at the same time as any of them, so you can "
+            "safely see how the system works. While it's on, nothing above "
+            "ever touches the real computer: no key presses, clicks, cursor "
+            "movement, or app launches. Mode switching, gesture/voice/"
+            "keyboard recognition and the camera preview's live "
+            "\"Detected: ...\" caption all keep working exactly as normal."
+        ),
+        "gestures": (
+            ('Say "try mode" / Ctrl+Shift+T / click the switch again', "Turn Try Mode off"),
+            ('Say "exit mode" or press Esc', "Turn Try Mode off too, on top of leaving whichever mode is active")
         )
     }
 )

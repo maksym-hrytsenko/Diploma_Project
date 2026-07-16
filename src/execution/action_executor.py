@@ -4,6 +4,13 @@ Subscribes to SignalMapper's command_event, plus the continuous
 pointer/pinch streams that bypass fusion, and dispatches each to
 OSController. Contains no decision logic of its own — every command
 arrives already decided.
+
+The one exception is Try Mode (see try_mode_active): a single dry-run gate
+checked immediately before every OSController call, not a WHICH-command
+decision — SignalMapper still decides and publishes command_event exactly
+as normal while Try Mode is on, so mode switching and the on-screen
+"Detected: ..." caption keep working; this module just stops the OS side
+effect from actually happening.
 """
 
 import pyautogui
@@ -38,6 +45,15 @@ class ActionExecutor:
         # position, pinch-drag, pinch-zoom); discrete commands already
         # arrive fully decided via command_event.
         self.active_mode = None
+
+        # Mirrored from SignalMapper's "try_mode_changed" event. While True,
+        # every real OS side effect below is skipped (see _handle_command,
+        # _handle_pointer, _handle_pinch_drag, _handle_pinch_zoom) — the
+        # rest of the pipeline (mode switching, gesture recognition, the
+        # camera preview's "Detected: ..." caption) keeps running exactly
+        # as normal, so a demo can show the system deciding what it WOULD
+        # do without it actually touching the computer.
+        self.try_mode_active = False
 
         # Accumulates raw pinch-distance deltas and only fires a zoom
         # hotkey once zoom_step_threshold is crossed — firing on every
@@ -161,6 +177,11 @@ class ActionExecutor:
         )
 
         self.event_bus.subscribe(
+            "try_mode_changed",
+            self._handle_try_mode_changed
+        )
+
+        self.event_bus.subscribe(
             "fusion_signal",
             self._debug_event
         )
@@ -195,6 +216,11 @@ class ActionExecutor:
         self.event_bus.unsubscribe(
             "mode_changed",
             self._handle_mode_changed
+        )
+
+        self.event_bus.unsubscribe(
+            "try_mode_changed",
+            self._handle_try_mode_changed
         )
 
         self.event_bus.unsubscribe(
@@ -234,6 +260,20 @@ class ActionExecutor:
 
             return
 
+        if self.try_mode_active:
+
+            logger.info(
+                "[TRY MODE] would execute: %s",
+                command
+            )
+
+            self.event_bus.publish(
+                "try_mode_action",
+                {"command": command}
+            )
+
+            return
+
         logger.info(
             "%s",
             command
@@ -252,6 +292,18 @@ class ActionExecutor:
             "mode"
         )
 
+    def _handle_try_mode_changed(self, event):
+
+        data = event.get(
+            "data",
+            {}
+        )
+
+        self.try_mode_active = data.get(
+            "active",
+            False
+        )
+
     def _handle_pointer(self, event):
 
         data = event.get(
@@ -265,18 +317,24 @@ class ActionExecutor:
         if x is None or y is None:
             return
 
-        if self.active_mode == "cursor":
+        if self.active_mode == "cursor" and not self.try_mode_active:
 
             self._move_real_cursor_to(
                 x,
                 y
             )
 
-        elif self.active_mode is None or self.active_mode == "presentation":
+        elif (
+            self.active_mode is None
+            or self.active_mode == "presentation"
+            or (self.active_mode == "cursor" and self.try_mode_active)
+        ):
 
-            # Laser-pointer dot: standby (no mode) or Presentation (its
-            # own pointer math already computed upstream in
-            # GestureRecognizer, still ends up as a dot here). Every other
+            # Laser-pointer dot: standby (no mode), Presentation (its own
+            # pointer math already computed upstream in GestureRecognizer,
+            # still ends up as a dot here), or Cursor mode while Try Mode
+            # is active (shows where the real cursor WOULD go, without
+            # actually moving it — see try_mode_active above). Every other
             # mode — Flip, Call — has no pointer behavior of its own, so
             # the position is simply dropped.
             self.event_bus.publish(
@@ -310,6 +368,9 @@ class ActionExecutor:
     def _handle_pinch_drag(self, event):
 
         if self.active_mode != "cursor":
+            return
+
+        if self.try_mode_active:
             return
 
         data = event.get(
@@ -347,6 +408,9 @@ class ActionExecutor:
     def _handle_pinch_zoom(self, event):
 
         if self.active_mode != "cursor":
+            return
+
+        if self.try_mode_active:
             return
 
         data = event.get(

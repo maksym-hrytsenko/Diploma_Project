@@ -42,6 +42,7 @@
 | FLIP_MODE | flip mode | switch to flip mode | I want to scroll through pages, can you put me in flip mode please |
 | CURSOR_MODE | cursor mode | switch to cursor mode | I need to control the mouse with my hand, switch to cursor mode please |
 | CALL_MODE | call mode | switch to call mode | I'm joining a meeting, could you put me into call mode |
+| TRY_MODE | try mode | switch to try mode | can you let me try things out safely without actually doing anything |
 
 ## Оточення (environments)
 

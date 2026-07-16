@@ -78,6 +78,14 @@ class SignalMapper:
 
         self.current_environment = None
 
+        self.try_mode_triggers = []
+
+        # Independent of current_mode — Try Mode must be demonstrable
+        # alongside any of the four exclusive modes at once (see
+        # _update_try_mode), so it can't live in the same single-slot
+        # current_mode the way Presentation/Flip/Call/Cursor do.
+        self.try_mode_active = False
+
         # Main window's System ON/OFF hub button — while False, no mode
         # may be entered/exited and no command fires (see _handle_signal).
         self.system_enabled = True
@@ -159,6 +167,14 @@ class SignalMapper:
             []
         )
 
+        self.try_mode_triggers = data.get(
+            "try_mode",
+            {}
+        ).get(
+            "triggers",
+            []
+        )
+
     def _handle_signal(self, event):
 
         # System OFF — no mode changes, no commands, no quick_circle
@@ -206,7 +222,17 @@ class SignalMapper:
                 triggering_source
             )
 
-        if mode_matched or environment_matched or rule_matched:
+        try_mode_matched = self._update_try_mode(
+            signals,
+            triggering_source
+        )
+
+        if (
+            mode_matched
+            or environment_matched
+            or rule_matched
+            or try_mode_matched
+        ):
 
             self._maybe_clear_signals()
 
@@ -241,26 +267,57 @@ class SignalMapper:
         # hand shape closing has no bearing on whether it should stay
         # active (e.g. closing the fist mid-swipe in Flip mode must not
         # exit Flip mode).
-        exit_requested = (
+        exit_trigger = None
+
+        if (
             voice is not None
             and voice.get("signal") == "EXIT_MODE"
-        ) or (
+        ):
+            exit_trigger = "voice"
+
+        elif (
             keyboard is not None
             and keyboard.get("signal") == "ESCAPE_KEY"
-        ) or (
+        ):
+            exit_trigger = "keyboard"
+
+        elif (
             ui is not None
             and ui.get("signal") == "EXIT_MODE"
-        ) or (
+        ):
+            exit_trigger = "ui"
+
+        elif (
             gesture is not None
             and gesture.get("signal") == "HAND_SESSION_END"
             and self.current_mode == "quick_circle"
-        )
+        ):
+            exit_trigger = "gesture"
 
-        if exit_requested:
+        if exit_trigger is not None:
 
-            if self.current_mode is not None:
+            # "exit mode"/Esc/UI leaves whichever mode is active AND turns
+            # off Try Mode if it's on — both independently, since either
+            # one, both, or neither may currently be true (Try Mode
+            # deliberately doesn't occupy current_mode's slot, see
+            # try_mode_active above).
+            mode_was_active = self.current_mode is not None
 
-                self._exit_current_mode()
+            try_mode_was_active = self.try_mode_active
+
+            if mode_was_active or try_mode_was_active:
+
+                self._report_resolution(
+                    [exit_trigger],
+                    signals,
+                    action="EXIT_MODE"
+                )
+
+                if mode_was_active:
+                    self._exit_current_mode()
+
+                if try_mode_was_active:
+                    self._set_try_mode(False)
 
                 return True
 
@@ -268,14 +325,22 @@ class SignalMapper:
 
         for mode in self.modes:
 
-            if not self._mode_trigger_matches(
+            matched_trigger = self._mode_trigger_matches(
                 mode,
                 signals
-            ):
+            )
+
+            if matched_trigger is None:
                 continue
 
             if mode["mode"] == self.current_mode:
                 return False
+
+            self._report_resolution(
+                [matched_trigger["source"]],
+                signals,
+                enters_mode=mode["mode"]
+            )
 
             self._exit_current_mode()
 
@@ -288,6 +353,13 @@ class SignalMapper:
         return False
 
     def _mode_trigger_matches(self, mode, signals):
+        """Return the first matching trigger dict, or None.
+
+        Returning the trigger itself (not just a bool) lets _update_mode
+        log which source/signal actually decided the transition — the
+        same "[RESOLVED]" reporting _check_rules/_check_mode_rules already
+        give ordinary commands, see _report_resolution.
+        """
 
         for trigger in mode.get(
             "triggers",
@@ -315,9 +387,9 @@ class SignalMapper:
                 continue
 
             if signal_data.get("signal") == trigger["signal"]:
-                return True
+                return trigger
 
-        return False
+        return None
 
     def _enter_mode(self, mode):
 
@@ -350,6 +422,72 @@ class SignalMapper:
             {"mode": None}
         )
 
+    # Try Mode is an independent on/off flag, not a fifth entry in
+    # self.modes — it must stay on while the user switches between
+    # Presentation/Flip/Call/Cursor to demonstrate them, and current_mode
+    # only ever holds one of those at a time. Edge-triggered exactly like
+    # _check_rules (gated on triggering_source, not just on the signal
+    # value being present) — otherwise a HELD keyboard combo (persistent
+    # per MultimodalFusion) would flip this back and forth on every
+    # unrelated signal that arrives while ctrl+shift+t stays down.
+    def _update_try_mode(self, signals, triggering_source):
+
+        trigger_sources = {
+            trigger["source"]
+            for trigger in self.try_mode_triggers
+        }
+
+        if triggering_source not in trigger_sources:
+            return False
+
+        signal_data = signals.get(
+            triggering_source,
+            {}
+        )
+
+        current_signal = signal_data.get(
+            "signal"
+        )
+
+        matched = any(
+            trigger["source"] == triggering_source
+            and trigger["signal"] == current_signal
+            for trigger in self.try_mode_triggers
+        )
+
+        if not matched:
+            return False
+
+        self._report_resolution(
+            [triggering_source],
+            signals,
+            action=(
+                "EXIT_TRY_MODE"
+                if self.try_mode_active
+                else "ENTER_TRY_MODE"
+            )
+        )
+
+        self._set_try_mode(
+            not self.try_mode_active
+        )
+
+        return True
+
+    def _set_try_mode(self, active):
+
+        self.try_mode_active = active
+
+        logger.info(
+            "Try Mode -> %s",
+            "ON" if active else "OFF"
+        )
+
+        self.event_bus.publish(
+            "try_mode_changed",
+            {"active": active}
+        )
+
     # Environments are the longer-lived task backdrop — entering one runs a
     # real sequence of OS actions (opening apps, toggling Do Not Disturb,
     # music) and leaving it (by entering a different environment) undoes
@@ -374,6 +512,12 @@ class SignalMapper:
 
             if environment["environment"] == self.current_environment:
                 return False
+
+            self._report_resolution(
+                ["voice"],
+                signals,
+                enters_environment=environment["environment"]
+            )
 
             self._exit_current_environment()
 
@@ -571,7 +715,8 @@ class SignalMapper:
         conditions,
         signals,
         action=None,
-        enters_mode=None
+        enters_mode=None,
+        enters_environment=None
     ):
 
         descriptions = [
@@ -582,11 +727,14 @@ class SignalMapper:
             for source in conditions
         ]
 
-        outcome = (
-            f"enters mode: {enters_mode}"
-            if enters_mode is not None
-            else action
-        )
+        if enters_mode is not None:
+            outcome = f"enters mode: {enters_mode}"
+
+        elif enters_environment is not None:
+            outcome = f"enters environment: {enters_environment}"
+
+        else:
+            outcome = action
 
         logger.info(
             "[RESOLVED] %s <- %s",
@@ -717,8 +865,12 @@ class SignalMapper:
 
         self.environments = []
 
+        self.try_mode_triggers = []
+
         self.current_mode = None
 
         self.current_environment = None
+
+        self.try_mode_active = False
 
         self._load_fusion()

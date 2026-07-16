@@ -88,6 +88,15 @@ class PipelineHarness:
             }
         )
 
+    def ui(self, signal):
+
+        self.event_bus.publish(
+            "ui_signal",
+            {
+                "signal": signal
+            }
+        )
+
     def stream(self, event_type, data):
 
         self.event_bus.publish(
@@ -107,6 +116,17 @@ class PipelineHarness:
         )
 
         self.controller.reset_mock()
+
+    def assert_not_called(self, *method_names):
+
+        called = [
+            name for name in method_names
+            if getattr(self.controller, name).called
+        ]
+
+        assert not called, (
+            f"expected OSController methods NOT to be called: {called}"
+        )
 
 
 @pytest.fixture

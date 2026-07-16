@@ -4,6 +4,16 @@
         "clear_signals_after_match": true
     },
 
+    "try_mode": {
+
+        "triggers": [
+            { "source": "voice", "signal": "TRY_MODE" },
+            { "source": "keyboard", "signal": "TRY_MODE_KEY" },
+            { "source": "ui", "signal": "TRY_MODE" }
+        ]
+
+    },
+
     "modes": [
 
         {
@@ -327,20 +337,6 @@
             "name": "presentation_previous_voice",
             "mode": "presentation",
             "conditions": { "voice": "PREVIOUS_SLIDE" },
-            "action": "PREVIOUS_SLIDE"
-        },
-
-        {
-            "name": "presentation_next_key",
-            "mode": "presentation",
-            "conditions": { "keyboard": "KEY_RIGHT" },
-            "action": "NEXT_SLIDE"
-        },
-
-        {
-            "name": "presentation_previous_key",
-            "mode": "presentation",
-            "conditions": { "keyboard": "KEY_LEFT" },
             "action": "PREVIOUS_SLIDE"
         },
 

@@ -5,6 +5,7 @@
         "ctrl+shift+f": "FLIP_MODE_KEY",
         "ctrl+shift+c": "CURSOR_MODE_KEY",
         "ctrl+shift+w": "CALL_MODE_KEY",
+        "ctrl+shift+t": "TRY_MODE_KEY",
 
         "alt": "ALT_KEY",
         "ctrl": "CTRL_KEY",
@@ -29,6 +30,7 @@
         "FLIP_MODE": "flip mode",
         "CURSOR_MODE": "cursor mode",
         "CALL_MODE": "call mode",
+        "TRY_MODE": "try mode",
 
         "NEXT_SLIDE": "next slide",
         "PREVIOUS_SLIDE": "previous slide",
@@ -106,7 +108,8 @@
         "PRESENTATION_MODE": "PRESENTATION_MODE",
         "FLIP_MODE": "FLIP_MODE",
         "CURSOR_MODE": "CURSOR_MODE",
-        "CALL_MODE": "CALL_MODE"
+        "CALL_MODE": "CALL_MODE",
+        "TRY_MODE": "TRY_MODE"
     },
 
     "valid_signals": {
@@ -117,6 +120,7 @@
             "ctrl+shift+f",
             "ctrl+shift+c",
             "ctrl+shift+w",
+            "ctrl+shift+t",
 
             "alt",
             "ctrl",
@@ -141,6 +145,7 @@
             "FLIP_MODE",
             "CURSOR_MODE",
             "CALL_MODE",
+            "TRY_MODE",
 
             "NEXT_SLIDE",
             "PREVIOUS_SLIDE",
@@ -218,7 +223,8 @@
             "PRESENTATION_MODE",
             "FLIP_MODE",
             "CURSOR_MODE",
-            "CALL_MODE"
+            "CALL_MODE",
+            "TRY_MODE"
         ]
     }
 }
