@@ -136,6 +136,13 @@ the main window — a plain-language introduction and a nudge toward Try
 Mode. It only shows once; the same information is always available later
 via the main window's "Functions description" button.
 
+**Known first-run quirk:** on a fresh install, the camera preview
+sometimes stays blank even though the Camera toggle shows "Active" (the
+camera really is capturing — this is a macOS permission-prompt timing
+issue, not a crash). If the preview doesn't show your video within a few
+seconds of launch, just flip the Camera toggle off and back on once — the
+picture appears immediately after.
+
 Optional debug flags:
 
 - `--debug-gesture` — overlays the camera feed with the tracked hand,
