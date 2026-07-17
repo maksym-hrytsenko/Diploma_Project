@@ -12,6 +12,7 @@ import time
 
 from config.config_loader import load_system_config
 from utils.logger import get_logger
+from utils.permissions import ensure_camera_permission
 
 
 logger = get_logger(__name__)
@@ -83,6 +84,61 @@ class CameraInput:
         if self.running:
             return
 
+        # Set here (not inside _run) so a second start() call while the
+        # first is still waiting on _run's permission check is rejected
+        # by the guard above instead of spawning a duplicate thread.
+        self.running = True
+
+        self.thread = threading.Thread(
+            target=self._run,
+            daemon=True
+        )
+
+        self.thread.start()
+
+        logger.info("Started")
+
+    def _run(self):
+        """Capture-thread entry point: waits for camera permission, opens
+        the device, then runs the capture loop.
+
+        All three steps happen off the Qt main thread, so a slow-to-answer
+        system permission prompt delays only this thread, never the UI.
+        """
+
+        ensure_camera_permission()
+
+        if not self.running:
+            return
+
+        if not self._open_capture():
+
+            self.running = False
+
+            return
+
+        # stop() may have landed while _open_capture() was in flight — it
+        # would have found self.cap still None and skipped release(),
+        # so the now-open device has to be cleaned up here instead.
+        if not self.running:
+
+            self.cap.release()
+
+            self.cap = None
+
+            return
+
+        self._capture_loop()
+
+    def _open_capture(self) -> bool:
+        """Open the capture device and apply the configured resolution.
+
+        Only called after ensure_camera_permission() has settled the
+        system's camera prompt — opening ahead of that decision can leave
+        the capture session unable to ever deliver frames, even after the
+        user grants access (see utils/permissions.py's module docstring).
+        """
+
         self.cap = cv2.VideoCapture(
             self.camera_index
         )
@@ -93,7 +149,7 @@ class CameraInput:
                 "Failed to open camera"
             )
 
-            return
+            return False
 
         # Request a higher-than-default resolution: more pixels on the hand
         # matter most at Presentation Mode's typical 2-4m distance, where a
@@ -124,16 +180,7 @@ class CameraInput:
             int(actual_height)
         )
 
-        self.running = True
-
-        self.thread = threading.Thread(
-            target=self._capture_loop,
-            daemon=True
-        )
-
-        self.thread.start()
-
-        logger.info("Started")
+        return True
 
     def stop(self):
 
@@ -164,12 +211,6 @@ class CameraInput:
     def _capture_loop(self):
 
         while self.running:
-
-            if self.cap is None:
-
-                time.sleep(0.01)
-
-                continue
 
             ret, frame = self.cap.read()
 
