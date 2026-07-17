@@ -8,6 +8,7 @@ into an internal command.
 """
 
 import functools
+import logging
 import threading
 import time
 
@@ -43,6 +44,16 @@ class IntentModel:
         self.state_manager = state_manager
 
         self.debug = debug
+
+        # See the matching comment in SpeechRecognizer.__init__ — the
+        # shared root logger is fixed at INFO, so this override is what
+        # actually makes logger.debug() calls below visible under
+        # --debug-voice instead of being silently dropped.
+        if self.debug:
+
+            logger.setLevel(
+                logging.DEBUG
+            )
 
         self.mapping = load_mapping_config()
 

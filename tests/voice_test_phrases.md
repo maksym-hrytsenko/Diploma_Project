@@ -52,6 +52,7 @@
 | STUDY_MODE | study mode | switch to study environment | I need to focus and study now, can you set that up for me |
 | MOVIE_MODE | movie mode | switch to movie environment | I want to watch a film, could you set up movie mode please |
 | NEWS_MODE | news mode | switch to news environment | can you please bring up the news for me |
+| JOB_SEARCH_MODE | job search mode | *(не задокументовано)* | *(не задокументовано)* |
 
 ## Навігація (в режимі Presentation / медіа)
 
@@ -68,8 +69,6 @@
 
 | Команда | Рівень 1 (точний) | Рівень 2 (семантика) | Рівень 3 (LLM) |
 |---|---|---|---|
-| YES | yes | yeah | that's correct, go ahead |
-| NO | no | nope | that's not right, cancel that |
 | START | start | begin | could you please start it now |
 | STOP | stop | halt | could you please stop that now |
 | PAUSE | pause | pause it | could you pause whatever is playing please |

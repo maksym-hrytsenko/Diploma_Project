@@ -44,11 +44,7 @@ class SignalMapper:
         ("face", "HEAD_TILT_RIGHT"): "vector",
 
         ("face", "MOUTH_OPEN"): "model",
-        ("face", "DOUBLE_BLINK"): "model",
-        ("face", "EYEBROWS_UP"): "model",
-        ("face", "EYEBROWS_DOWN"): "model",
-        ("face", "DOUBLE_EYEBROWS_UP"): "model",
-        ("face", "CONFIRM"): "model"
+        ("face", "EYEBROWS_UP"): "model"
 
     }
 

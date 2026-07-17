@@ -27,9 +27,26 @@ logger = get_logger(__name__)
 
 class ActionExecutor:
 
-    def __init__(self, event_bus: EventBus):
+    def __init__(
+        self,
+        event_bus: EventBus,
+        force_dry_run: bool = False
+    ):
 
         self.event_bus = event_bus
+
+        # Independent of try_mode_active below and never toggled after
+        # construction — set only by main.py's --try-mode flag, for
+        # benchmarks/run_stress_suite.py. try_mode_active mirrors
+        # SignalMapper's Try Mode exactly, including its documented
+        # behavior of turning itself off on "exit mode"/Esc/UI-exit (see
+        # src/CLAUDE.md) — normal for a live demo, but wrong for an
+        # unattended synthetic run, whose own command set naturally
+        # exercises EXIT_MODE/HAND_SESSION_END and would otherwise let
+        # real OS side effects start firing partway through. This flag is
+        # the actual, unconditional safety guarantee; try_mode_active
+        # alone is not.
+        self.force_dry_run = force_dry_run
 
         execution_config = load_system_config().get(
             "execution",
@@ -134,8 +151,6 @@ class ActionExecutor:
 
             "VOLUME_UP": controller.volume_up,
             "VOLUME_DOWN": controller.volume_down,
-
-            "TAKE_SCREENSHOT": controller.take_screenshot,
 
             "ENABLE_DO_NOT_DISTURB": controller.enable_do_not_disturb,
             "DISABLE_DO_NOT_DISTURB": controller.disable_do_not_disturb,
@@ -260,7 +275,7 @@ class ActionExecutor:
 
             return
 
-        if self.try_mode_active:
+        if self._is_dry_run():
 
             logger.info(
                 "[TRY MODE] would execute: %s",
@@ -304,6 +319,17 @@ class ActionExecutor:
             False
         )
 
+    # Every OSController-call site below checks this instead of
+    # try_mode_active directly, so force_dry_run (permanent, set only at
+    # construction) keeps gating the OS side effect even after
+    # try_mode_active itself flips back to False mid-run.
+    def _is_dry_run(self):
+
+        return (
+            self.try_mode_active
+            or self.force_dry_run
+        )
+
     def _handle_pointer(self, event):
 
         data = event.get(
@@ -329,7 +355,7 @@ class ActionExecutor:
             # isn't — precisely the confusion Try Mode must not cause.
             # The camera preview's "Detected: Cursor control" caption is
             # the only Try Mode feedback for this gesture, on purpose.
-            if not self.try_mode_active:
+            if not self._is_dry_run():
 
                 self._move_real_cursor_to(
                     x,
@@ -379,7 +405,7 @@ class ActionExecutor:
         if self.active_mode != "cursor":
             return
 
-        if self.try_mode_active:
+        if self._is_dry_run():
             return
 
         data = event.get(
@@ -419,7 +445,7 @@ class ActionExecutor:
         if self.active_mode != "cursor":
             return
 
-        if self.try_mode_active:
+        if self._is_dry_run():
             return
 
         data = event.get(

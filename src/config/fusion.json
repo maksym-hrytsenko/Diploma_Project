@@ -69,6 +69,22 @@
     "environments": [
 
         {
+            "environment": "work",
+            "trigger": "WORK_MODE",
+
+            "enter_actions": [
+                "ENABLE_DO_NOT_DISTURB",
+                "OPEN_SLACK",
+                "OPEN_MAIL",
+                "OPEN_CALENDAR"
+            ],
+
+            "exit_actions": [
+                "DISABLE_DO_NOT_DISTURB"
+            ]
+        },
+
+        {
             "environment": "job_search",
             "trigger": "JOB_SEARCH_MODE",
 
@@ -295,12 +311,6 @@
             "name": "face_layer_pause",
             "conditions": { "keyboard": "ALT_KEY", "face": "MOUTH_OPEN" },
             "action": "MEDIA_PLAY_PAUSE"
-        },
-
-        {
-            "name": "face_layer_screenshot",
-            "conditions": { "keyboard": "ALT_KEY", "face": "DOUBLE_BLINK" },
-            "action": "TAKE_SCREENSHOT"
         },
 
         {

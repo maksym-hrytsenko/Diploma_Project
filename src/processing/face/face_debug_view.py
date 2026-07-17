@@ -145,40 +145,6 @@ class FaceDebugView:
             active_label="OPEN"
         )
 
-        y = self._draw_bar(
-            display,
-            y,
-            label="blink L (eyeBlinkLeft)",
-            score=data.get("eye_blink_left", 0.0),
-            enter_threshold=data.get(
-                "blink_close_threshold",
-                0.5
-            ),
-            exit_threshold=data.get(
-                "blink_open_threshold",
-                0.3
-            ),
-            active=data.get("eyes_closed", False),
-            active_label="CLOSED"
-        )
-
-        y = self._draw_bar(
-            display,
-            y,
-            label="blink R (eyeBlinkRight)",
-            score=data.get("eye_blink_right", 0.0),
-            enter_threshold=data.get(
-                "blink_close_threshold",
-                0.5
-            ),
-            exit_threshold=data.get(
-                "blink_open_threshold",
-                0.3
-            ),
-            active=data.get("eyes_closed", False),
-            active_label="CLOSED"
-        )
-
     def _draw_head_pose(self, display, data, y):
 
         pitch = data.get("pitch")

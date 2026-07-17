@@ -83,7 +83,6 @@ FACE_LAYER_RULES = [
     ("alt", "HEAD_TILT_RIGHT", "next_track"),
     ("alt", "HEAD_TILT_LEFT", "previous_track"),
     ("alt", "MOUTH_OPEN", "media_play_pause"),
-    ("alt", "DOUBLE_BLINK", "take_screenshot"),
     ("alt", "EYEBROWS_UP", "volume_up"),
     ("ctrl", "EYEBROWS_UP", "volume_down")
 
@@ -114,6 +113,11 @@ class TestFaceLayer:
 
 ENVIRONMENTS = [
 
+    (
+        "work mode",
+        "WORK_MODE",
+        ["enable_do_not_disturb", "open_slack", "open_mail", "open_calendar"]
+    ),
     (
         "job search mode",
         "JOB_SEARCH_MODE",

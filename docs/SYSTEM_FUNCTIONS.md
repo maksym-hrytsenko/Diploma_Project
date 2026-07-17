@@ -22,7 +22,8 @@ The system tracks three separate, orthogonal pieces of state at once:
   gestures from colliding with each other (a swipe means something
   different in Flip mode than a thumbs-up means in Call mode). They
   carry no OS side effects of their own.
-- **Environment** (`job_search` / `study` / `movie` / `news` / none) — a
+- **Environment** (`work` / `job_search` / `study` / `movie` / `news` /
+  none) — a
   longer-lived task backdrop. Entering one runs a real sequence of OS
   actions (opening apps, toggling Do Not Disturb, music); leaving it (by
   entering a different environment) undoes them.
@@ -311,8 +312,8 @@ alongside the off-hand pinch (`zoom_engaged = self.alt_held or
 off_hand_pinching`, tracked via a raw `keyboard_raw` subscription in
 `GestureRecognizer`, bypassing `KeyboardProcessor`/`mapping.json`
 entirely). Once Alt became the global face-layer modifier (§9.1) —
-`ALT_KEY` held plus `HEAD_TILT_*`/`MOUTH_OPEN`/`DOUBLE_BLINK`/
-`EYEBROWS_UP` firing track-switch/pause/screenshot/volume actions — the
+`ALT_KEY` held plus `HEAD_TILT_*`/`MOUTH_OPEN`/`EYEBROWS_UP` firing
+track-switch/pause/volume actions — the
 two uses of Alt collided: holding it to zoom in Cursor mode would
 simultaneously arm all of those face-layer actions, so any incidental
 head movement while zooming (very likely, since zooming draws the eyes
@@ -471,11 +472,27 @@ system back on first, the same detour clicking a mode icon already uses
 
 ## 3. Environments
 
-Entered by voice, each runs a real sequence of actions; switching directly
-to a different environment runs the old one's `exit_actions` before the
-new one's `enter_actions`.
+Entered by voice, each runs a real sequence of actions; switching
+directly from one environment to another cleanly ends up in the new one,
+with none of the old one's state left behind.
 
-### 3.1 Job Search — `"job search mode"`
+### 3.1 Work — `"work mode"`
+
+| On enter | On exit |
+|---|---|
+| `ENABLE_DO_NOT_DISTURB` | `DISABLE_DO_NOT_DISTURB` |
+| `OPEN_SLACK` | — |
+| `OPEN_MAIL` | — |
+| `OPEN_CALENDAR` | — |
+
+Reuses the same `OPEN_SLACK`/`OPEN_MAIL`/`OPEN_CALENDAR` actions the
+global "open slack"/"open mail"/"open calendar" voice commands use
+(§6) — no window-group config, just three real apps actually opening,
+so the effect is immediately visible. (Previously removed from
+`config/fusion.json`/`mapping.json` — apparently by accident, during an
+unrelated commit — and restored.)
+
+### 3.2 Job Search — `"job search mode"`
 
 | On enter | On exit |
 |---|---|
@@ -483,11 +500,11 @@ new one's `enter_actions`.
 | `OPEN_JOB_SEARCH_WINDOWS` | — |
 
 `OPEN_JOB_SEARCH_WINDOWS` opens the `job_search` entry of
-`os_controller.window_groups` (`config/system.json`) — three Chrome
-windows: job-board searches, and two thesis-work windows (ChatGPT +
-Overleaf each). See §3.4 for how window groups are opened.
+`os_controller.window_groups` (`config/system.json`) — one Chrome
+window with job-board searches, and a second with generic ChatGPT +
+Overleaf entry points. See §3.5 for how window groups are opened.
 
-### 3.2 Study — `"study mode"`
+### 3.3 Study — `"study mode"`
 
 | On enter | On exit |
 |---|---|
@@ -495,10 +512,11 @@ Overleaf each). See §3.4 for how window groups are opened.
 | `OPEN_STUDY_WINDOWS` | — |
 
 `OPEN_STUDY_WINDOWS` opens the `study` entry of
-`os_controller.window_groups` — three Chrome windows: ChatGPT threads,
-Overleaf + PlantUML, and research (Google Scholar/Images + IEEE Xplore).
+`os_controller.window_groups` — three Chrome windows: a generic ChatGPT
++ NotebookLM entry point, a generic Overleaf + PlantUML entry point, and
+research (Google Scholar/Images + IEEE Xplore).
 
-### 3.3 Movie — `"movie mode"`
+### 3.4 Movie — `"movie mode"`
 
 | On enter | On exit |
 |---|---|
@@ -508,7 +526,7 @@ Overleaf + PlantUML, and research (Google Scholar/Images + IEEE Xplore).
 | `OPEN_NETFLIX` (opens `netflix.com` in the browser) | — |
 | `RUN_CINEMA_MODE` (runs the user-authored **"Turn on cinema mode"** Shortcut, which drives the Magic Home smart lights) | — |
 
-### 3.4 News — `"news mode"`
+### 3.5 News — `"news mode"`
 
 | On enter | On exit |
 |---|---|
@@ -596,7 +614,6 @@ a session the way Cursor mode's cursor position does.
 | `NEXT_TRACK` | "next track" | `NEXT_TRACK` |
 | `PREVIOUS_TRACK` | "previous track" | `PREVIOUS_TRACK` |
 | `EXIT_MODE` | "exit mode" | Leaves the active mode only (§1) |
-| `YES` / `NO` | "yes" / "no" | Reserved, unbound — for a future confirmation prompt |
 
 **`MEDIA_PLAY_PAUSE`** posts the real macOS system Play/Pause media key
 (via `pyobjc`'s `NSEvent`/`Quartz`, the same event a physical keyboard's
@@ -752,9 +769,9 @@ however, genuinely is a multi-source combo gate — five global `rules` in
 (§9.1). This is exactly the case this held/released mechanism was built
 for: holding `alt` keeps `ALT_KEY` sitting in the signal buffer
 indefinitely, so whichever `face_signal` arrives next while it's held —
-a head tilt, a mouth-open, a double-blink, a double eyebrow-raise —
-combines with it correctly, no matter how far into the hold that face
-signal happens to occur.
+a head tilt, a mouth-open, an eyebrow-raise — combines with it
+correctly, no matter how far into the hold that face signal happens to
+occur.
 
 **Originally gated on `alt+shift`, simplified to bare `alt`** after
 hands-on testing showed the extra modifier added friction without
@@ -769,7 +786,7 @@ no keyboard involved at all (§2.3.1).
 
 ---
 
-## 9. Face (FaceRecognizer — idle-only, suppressed while any mode is active)
+## 9. Face (FaceRecognizer — global layer, works regardless of active mode)
 
 A second, independent recognizer (`src/processing/face/face_recognizer
 .py`, `src/processing/face/face_model.py`) running in parallel with the
@@ -780,42 +797,38 @@ task, with `output_face_blendshapes` and
 was confirmed to include the blendshapes and geometry-pipeline files
 needed for both, no custom training required).
 
-**Gated on one single condition: `active_mode is None`.** `_handle_frame`
-returns immediately whenever any mode (Flip, Presentation, Cursor, Call,
-Quick Circle) is active — not just Cursor, as an earlier revision of this
-feature had it. Confirmed by hands-on testing that letting nod/
-tilt/eyebrows/mouth/blink detection keep running inside an active mode
-produced spurious reactions from incidental head movement mixed into
-that mode's own gesture flow (most noticeably Flip mode's swipes). So
-despite the Alt/Ctrl rules in `fusion.json` (§9.1) being written
-mode-independent (`rules`, not `mode_rules`), in practice this whole
-signal family — including the reserved, unbound `CONFIRM` — only ever
-fires from idle.
+**Not gated on mode state.** `FaceRecognizer` used to suppress itself
+entirely whenever any mode (Flip, Presentation, Cursor, Call, Quick
+Circle) was active, after hands-on testing found incidental head
+movement during a mode's own gesture flow (most noticeably Flip mode's
+swipes) produced spurious reactions. That suppression has been removed
+— every signal below now fires the same whether idle or inside a mode,
+matching how the Alt/Ctrl rules in `fusion.json` (§9.1) were always
+written (`rules`, not `mode_rules` — mode-independent by design). Each
+of the three remaining signals requires a held modifier key to do
+anything (§9.1), which is what keeps incidental head movement from
+misfiring in practice — the modifier itself is the noise filter.
+
+The unbound signals this recognizer used to also detect and publish
+(`CONFIRM`/nod, `EYEBROWS_DOWN`, `DOUBLE_EYEBROWS_UP`, `DOUBLE_BLINK`)
+have been removed from the codebase — none had a `fusion.json` rule
+consuming them, so they never did anything (see §9.1 for `DOUBLE_BLINK`'s
+prior, since-removed screenshot binding).
 
 | Signal | How it's detected | Status |
 |---|---|---|
-| `CONFIRM` | Nod — head pitch swings fast one way, then fast back the other way, within `NOD_PHASE_WINDOW` (0.6s) | Reserved, unbound (same status as voice `YES`/`NO`) |
 | `HEAD_TILT_LEFT` / `HEAD_TILT_RIGHT` | Head roll past `TILT_ENTER_DEGREES` (15°); must return within `TILT_EXIT_DEGREES` (8°) of neutral before firing again | Wired — §9.1 |
-| `EYEBROWS_UP` / `EYEBROWS_DOWN` | `browInnerUp` blendshape crossing raise (0.4) / lower (0.24) thresholds, edge-triggered | `EYEBROWS_UP` wired — §9.1 (volume). `EYEBROWS_DOWN` reserved, unbound |
-| `DOUBLE_EYEBROWS_UP` | Two `EYEBROWS_UP` rising edges within `DOUBLE_EYEBROWS_WINDOW` (0.6s) of each other. A single raise fires nothing further — same "must be deliberate" reasoning as `DOUBLE_BLINK`. | Detected, but currently unbound — see §9.1's note on why its screenshot binding was removed |
+| `EYEBROWS_UP` | `browInnerUp` blendshape crossing the raise threshold (0.4), rising edge only | Wired — §9.1 (volume) |
 | `MOUTH_OPEN` | `jawOpen` blendshape crossing 0.4, rising edge only (closing fires nothing) | Wired — §9.1 |
-| `DOUBLE_BLINK` | Two completed blinks (`eyeBlinkLeft`/`eyeBlinkRight` both crossing close (0.4) / open (0.24) thresholds) within `DOUBLE_BLINK_WINDOW` (0.5s) of each other. A single blink fires nothing — blinking is frequent and involuntary, only a deliberate double counts. | Wired — §9.1 |
 
-**Eyebrows/mouth/blink thresholds were lowered 20% from their original
-0.5/0.3 defaults** (`EYEBROWS_RAISE_THRESHOLD`/`MOUTH_OPEN_THRESHOLD`/
-`BLINK_CLOSE_THRESHOLD` 0.5 → 0.4, `EYEBROWS_LOWER_THRESHOLD`/
-`MOUTH_CLOSE_THRESHOLD`/`BLINK_OPEN_THRESHOLD` 0.3 → 0.24) after
-hands-on calibration with `tests/face_calibration_standalone_test.py`
-— the original values needed an unnaturally exaggerated brow-raise/
-mouth-open/eye-close to cross reliably. Head tilt's
+**Eyebrows/mouth thresholds were lowered 20% from their original
+0.5/0.3 defaults** (`EYEBROWS_RAISE_THRESHOLD`/`MOUTH_OPEN_THRESHOLD`
+0.5 → 0.4, `EYEBROWS_LOWER_THRESHOLD`/`MOUTH_CLOSE_THRESHOLD` 0.3 →
+0.24) after hands-on calibration with `tests/face_calibration_
+standalone_test.py` — the original values needed an unnaturally
+exaggerated brow-raise/mouth-open to cross reliably. Head tilt's
 `TILT_ENTER_DEGREES`/`TILT_EXIT_DEGREES` were left unchanged — only
-these three blendshape-based signals needed the adjustment.
-
-**Nod uses relative sign changes, not absolute pitch direction** — a
-"fast swing away, then fast swing back" round trip, regardless of
-which absolute direction it starts in. This makes it immune to the
-head-pose matrix's exact axis-sign convention, which was not
-empirically verified against a real camera (see below).
+these two blendshape-based signals needed the adjustment.
 
 **Roll (used only for head tilt) is no longer read from the
 transformation matrix.** It originally used the same rotation-matrix ->
@@ -831,11 +844,10 @@ corners (landmark indices 33 and 263). Upright, that line is
 horizontal (roll ~ 0); tilting the head rotates it by exactly the
 physical tilt angle, with no 3D matrix convention involved at all —
 pure geometry, so this is the one signal here guaranteed to track
-physical head tilt cleanly. Pitch (nod) is unaffected and still comes
-from the matrix, since nod only looks at relative sign changes and was
-never reported as unreliable. Yaw is still computed from the matrix
-too (shown in `--debug-face`, §9.2) but is no longer read for gesture
-detection now that shake/`CANCEL` has been removed (§11).
+physical head tilt cleanly. Pitch and yaw still come from the matrix
+and are shown in `--debug-face` (§9.2) for calibration, but neither
+feeds a live signal any more now that nod/`CONFIRM` and shake/`CANCEL`
+have both been removed (§11).
 
 **Head tilt's left/right labeling WAS verified against a real camera,
 and came out backwards.** Tilting the head to the subject's own right
@@ -859,24 +871,16 @@ one.
 
 ### 9.1 The Alt/Ctrl face layer
 
-Six global `rules` in `fusion.json` combine a held bare `alt` (`ALT_KEY`)
-or `ctrl` (`CTRL_KEY`) with a specific `face_signal` (`rules`, not
-`mode_rules` — see §1). These rules themselves are written mode-
-independent, but `FaceRecognizer` only publishes any `face_signal` at
-all while idle (`active_mode is None`) — confirmed by hands-on testing
-that letting nod/tilt/eyebrows/mouth/blink detection keep running
-inside an active mode (Flip, Presentation, Cursor, Call, Quick Circle)
-produced spurious reactions from incidental head movement during that
-mode's own gesture flow (e.g. Flip mode's swipes). So in practice this
-whole layer, and `CONFIRM`, only ever fires from idle, not "regardless
-of mode" as the rules' own shape would suggest:
+Five global `rules` in `fusion.json` combine a held bare `alt`
+(`ALT_KEY`) or `ctrl` (`CTRL_KEY`) with a specific `face_signal` (`rules`,
+not `mode_rules` — see §1), and now genuinely fire regardless of mode —
+`FaceRecognizer` no longer suppresses itself while a mode is active (§9):
 
 | Held + face signal | Action |
 |---|---|
 | `alt` + `HEAD_TILT_RIGHT` | `NEXT_TRACK` |
 | `alt` + `HEAD_TILT_LEFT` | `PREVIOUS_TRACK` |
 | `alt` + `MOUTH_OPEN` | `MEDIA_PLAY_PAUSE` (same toggle as voice "start"/"stop"/"pause"/"reset", §5) |
-| `alt` + `DOUBLE_BLINK` | `TAKE_SCREENSHOT` |
 | `alt` + `EYEBROWS_UP` | `VOLUME_UP` |
 | `ctrl` + `EYEBROWS_UP` | `VOLUME_DOWN` |
 
@@ -885,18 +889,15 @@ media keys (`OSController.next_track`/`previous_track`) — the exact
 same `NSEvent`/`Quartz` mechanism as `MEDIA_PLAY_PAUSE` (§5, now
 factored into a shared `_post_system_media_key` helper taking an
 `NX_KEYTYPE_*` constant), so it works with whichever player owns "now
-playing", not tied to one specific app. `TAKE_SCREENSHOT` sends
-Cmd+Shift+3 (macOS's built-in full-screen capture, saved to the
-desktop) — not the interactive region-select variant (Cmd+Shift+4),
-since that needs a follow-up mouse drag a gesture-only trigger can't
-provide. `VOLUME_UP`/`VOLUME_DOWN` post `NX_KEYTYPE_SOUND_UP`/
-`NX_KEYTYPE_SOUND_DOWN` through the same helper — unlike the other
-three, these are handled directly by CoreAudio at the system level and
-do **not** depend on any app registering as "Now Playing", so they work
-regardless of what (if anything) is playing. One eyebrow-raise = one
-volume tick (the same step a physical volume key press does, ~6.25% of
-the range), not a continuous ramp — `_check_eyebrows` is edge-triggered,
-so holding the eyebrows raised does not repeat-fire it.
+playing", not tied to one specific app. `VOLUME_UP`/`VOLUME_DOWN` post
+`NX_KEYTYPE_SOUND_UP`/`NX_KEYTYPE_SOUND_DOWN` through the same helper —
+unlike the other two, these are handled directly by CoreAudio at the
+system level and do **not** depend on any app registering as "Now
+Playing", so they work regardless of what (if anything) is playing. One
+eyebrow-raise = one volume tick (the same step a physical volume key
+press does, ~6.25% of the range), not a continuous ramp —
+`_check_eyebrows` is edge-triggered, so holding the eyebrows raised does
+not repeat-fire it.
 
 **"Reset" on mouth-open was interpreted as reusing the play/pause
 toggle**, not a separate "restart current track" action — no system-
@@ -904,26 +905,13 @@ level API exists for the latter, and this reading matches the
 mouth-open example's other stated half ("pause") using an already-
 existing, already-documented action rather than inventing a new one.
 
-**Double-blink was explicitly removed from this system in an earlier
-round of design** (this project's very first redesign explicitly said
-to drop it) and has now been explicitly reintroduced, scoped narrowly
-to this one Alt-gated screenshot trigger rather than restored as a
-general-purpose gesture — worth knowing if `git log`/older docs still
-describe it as removed.
-
-**`DOUBLE_EYEBROWS_UP`'s screenshot binding (`face_layer_screenshot_
-eyebrows`) was added, then removed.** It briefly existed as a second way
-to trigger the screenshot, alongside double-blink. Once `EYEBROWS_UP`
-(the single-raise signal) was wired to `alt` + `EYEBROWS_UP` for volume,
-keeping it would have meant every double-raise-for-screenshot attempt
-under `alt` *also* bumped the volume up twice as an unwanted side
-effect — `_check_eyebrows` always fires the plain `EYEBROWS_UP` signal
-on every rising edge, including both raises that make up a double-raise.
-Removing the eyebrows screenshot rule keeps double-blink as the sole
-screenshot trigger and eyebrows dedicated to volume, with no overlap.
-`FaceRecognizer` still detects and publishes `DOUBLE_EYEBROWS_UP` (see
-the signal table above) — it's just unbound again, the same "reserved"
-status `EYEBROWS_DOWN` already has.
+**`DOUBLE_BLINK`'s screenshot trigger (`alt` + `DOUBLE_BLINK` →
+`TAKE_SCREENSHOT`) and the unbound `CONFIRM`/`EYEBROWS_DOWN`/
+`DOUBLE_EYEBROWS_UP` signals have all been removed** — none of the
+latter three ever had a `fusion.json` rule consuming them, and
+double-blink as a trigger was judged not worth keeping. `FaceRecognizer`
+no longer detects any of the four; `TAKE_SCREENSHOT` has no remaining
+trigger and was dropped from `ActionExecutor`'s command table too.
 
 **Known limitation: system media keys don't reach video played
 *through* an app that doesn't register as "Now Playing".** Confirmed in
@@ -944,10 +932,9 @@ itself works.
 `src/processing/face/face_debug_view.py` — same role as
 `GestureDebugView` (§2), for `FaceRecognizer`'s thresholds instead of
 the hand. Subscribes to a new `face_debug` event (published every frame
-by `FaceRecognizer._publish_debug`) carrying pitch/yaw/roll,
-`tilt_zone`, and the raw `browInnerUp`/`jawOpen`/`eyeBlinkLeft`/
-`eyeBlinkRight` blendshape scores alongside the exact threshold
-constants each one is compared against.
+by `FaceRecognizer._publish_debug`) carrying pitch/yaw/roll, `tilt_zone`,
+and the raw `browInnerUp`/`jawOpen` blendshape scores alongside the
+exact threshold constants each one is compared against.
 
 Opened with `python src/main.py --debug-face`. Draws pitch/yaw/roll as
 text, the current `tilt_zone` next to its enter/exit degrees, and one
@@ -1003,7 +990,7 @@ whichever thread published it.
 - `PLAY_FOCUS_MUSIC`/`PAUSE_FOCUS_MUSIC` (resumes/pauses whatever
   Spotify was last on) remain wired into the command table but are no
   longer used by any environment — Study mode now opens Chrome window
-  groups instead (§3.2). Spotify must still be installed if a rule is
+  groups instead (§3.3). Spotify must still be installed if a rule is
   later added that calls them.
 - **VS Code's `code` CLI** must be on `PATH` for `OPEN_VSCODE`.
 - Third-party apps (Chrome, Slack, Discord, Telegram, Notion) must be
@@ -1140,14 +1127,25 @@ environment `enter_actions`/`exit_actions`) all still exist.
   `_check_shake` (and, with it, yaw-velocity tracking — nod only ever
   needed pitch velocity); `CANCEL` from `mapping.json`'s `face`
   mapping and `valid_signals`; and the `face_cancel_pause` rule from
-  `fusion.json`. Nod (`CONFIRM`) is untouched and still reserved,
-  unbound. Raw `yaw` (the angle, not its velocity) is still computed
-  and shown in `--debug-face` (§9.2) — only shake's use of it as a
-  gesture trigger is gone.
-- **Double-blink was reintroduced**, narrowly, as one of the new
-  Shift+Alt face-layer triggers (§9.1) — it was explicitly removed from
-  this system in an earlier round of design and has now been brought
-  back for this one specific use, not restored as a general gesture.
+  `fusion.json`. Nod (`CONFIRM`) was left reserved, unbound at the time
+  — later removed outright, see below. Raw `yaw` (the angle, not its
+  velocity) is still computed and shown in `--debug-face` (§9.2) — only
+  shake's use of it as a gesture trigger is gone.
+- **Double-blink was reintroduced**, narrowly, as one of the Alt
+  face-layer triggers (§9.1) — it had been explicitly removed from this
+  system in an earlier round of design and was brought back for this
+  one specific use, not restored as a general gesture. (Removed again
+  since — see below.)
+- **`CONFIRM` (nod), `EYEBROWS_DOWN`, `DOUBLE_EYEBROWS_UP`, and
+  `DOUBLE_BLINK` were all removed**, at the user's request, along with
+  the mode-idle suppression `FaceRecognizer` used to apply to itself —
+  none of the four signals had ever done anything (no `fusion.json`
+  rule consumed the first three; double-blink's one screenshot binding
+  was judged not worth keeping either), and the remaining three signals
+  (`HEAD_TILT_*`/`MOUTH_OPEN`/`EYEBROWS_UP`) are Alt/Ctrl-gated already,
+  so the idle-only suppression was no longer earning its complexity.
+  `TAKE_SCREENSHOT` was dropped from `ActionExecutor` too, having lost
+  its only trigger. See §9/§9.1 for the current, smaller signal set.
 
 ---
 
@@ -1156,8 +1154,8 @@ environment `enter_actions`/`exit_actions`) all still exist.
 Cannot be fully automated headlessly — needs a real camera, microphone,
 macOS desktop, and Accessibility permission. Run `python src/main.py`
 (add `--debug-gesture` for a live gesture-calibration overlay, or
-`--debug-face` for the equivalent head-pose/eyebrows/mouth/blink
-overlay — see §9.2) and manually verify:
+`--debug-face` for the equivalent head-pose/eyebrows/mouth overlay —
+see §9.2) and manually verify:
 
 - **Voice**: speak each app-opening phrase and each mode/environment
   trigger, confirm `[EXECUTOR] <ACTION>` prints and the effect happens.
@@ -1198,8 +1196,8 @@ overlay — see §9.2) and manually verify:
   in each of the 4 directions enters the right mode and closes the
   circle.
 - **Environments**: confirm entering one runs its full `enter_actions` in
-  order, and switching directly to a different environment runs the old
-  one's `exit_actions` first.
+  order, and switching directly to a different environment ends up
+  cleanly in the new one, with none of the old one's state left behind.
 - **"exit mode" scope**: enter an environment, then a mode, say "exit
   mode", confirm only the mode cleared and the environment's apps/DND
   state are untouched.
@@ -1221,17 +1219,14 @@ overlay — see §9.2) and manually verify:
   turning/rotating the head to look left or right is a different motion
   (yaw) and produces no signal at all (shake/`CANCEL` was removed); use
   `--debug-face` to watch `roll` vs `yaw` live if it's unclear which one
-  a given movement produced. Open your mouth — confirm
-  play/pause. Blink twice quickly — confirm a screenshot appears on the
-  desktop (check `defaults read com.apple.screencapture location` if the
-  default save folder was changed); confirm a single blink does nothing.
-  Hold `alt` and raise your eyebrows once — confirm the volume goes up
-  one tick; hold `ctrl` and raise your eyebrows once — confirm it goes
-  down one tick instead. Release `alt`/`ctrl` and repeat — confirm
-  nothing fires without one of them held. Separately, without `alt` or
-  `ctrl` held, nod your head — confirm the console shows `CONFIRM`
-  firing (reserved, no visible effect yet). Shake your head — confirm
-  nothing fires at all (shake/`CANCEL` was removed, §11).
+  a given movement produced. Open your mouth — confirm play/pause. Hold
+  `alt` and raise your eyebrows once — confirm the volume goes up one
+  tick; hold `ctrl` and raise your eyebrows once — confirm it goes down
+  one tick instead. Release `alt`/`ctrl` and repeat — confirm nothing
+  fires without one of them held. Repeat all of the above while a mode
+  (Flip/Presentation/Cursor/Call) is active — confirm it fires exactly
+  the same way as from idle (§9's suppression was removed; this is the
+  regression check for that).
 - **Media keys vs. an app that doesn't register "Now Playing"**: if
   next/previous/play-pause print correctly in the console
   (`[EXECUTOR] NEXT_TRACK`, etc.) but nothing happens to the actual
@@ -1242,7 +1237,7 @@ overlay — see §9.2) and manually verify:
   that's this limitation, not a bug in this app.
 - **`--debug-face` calibration**: run with the flag, confirm a "Face
   Debug" window opens showing live pitch/yaw/roll and a bar per
-  blendshape (eyebrows/mouth/blink) with red/blue tick marks at the
+  blendshape (eyebrows/mouth) with red/blue tick marks at the
   enter/exit thresholds. Tilt your head until `tilt_zone` flips to
   `left`/`right` at roughly `TILT_ENTER_DEGREES`; raise your eyebrows
   and confirm the bar crosses the red tick at the same moment

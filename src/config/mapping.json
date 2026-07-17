@@ -18,9 +18,6 @@
 
     "voice": {
 
-        "YES": "yes",
-        "NO": "no",
-
         "START": "start",
         "STOP": "stop",
 
@@ -36,6 +33,7 @@
         "PREVIOUS_SLIDE": "previous slide",
         "START_SLIDESHOW": "start presentation",
 
+        "WORK_MODE": "work mode",
         "JOB_SEARCH_MODE": "job search mode",
         "STUDY_MODE": "study mode",
         "MOVIE_MODE": "movie mode",
@@ -92,13 +90,8 @@
         "HEAD_TILT_RIGHT": "HEAD_TILT_RIGHT",
 
         "MOUTH_OPEN": "MOUTH_OPEN",
-        "DOUBLE_BLINK": "DOUBLE_BLINK",
 
-        "EYEBROWS_UP": "EYEBROWS_UP",
-        "EYEBROWS_DOWN": "EYEBROWS_DOWN",
-        "DOUBLE_EYEBROWS_UP": "DOUBLE_EYEBROWS_UP",
-
-        "CONFIRM": "CONFIRM"
+        "EYEBROWS_UP": "EYEBROWS_UP"
     },
 
     "ui": {
@@ -133,9 +126,6 @@
 
         "voice": [
 
-            "YES",
-            "NO",
-
             "START",
             "STOP",
 
@@ -151,6 +141,7 @@
             "PREVIOUS_SLIDE",
             "START_SLIDESHOW",
 
+            "WORK_MODE",
             "JOB_SEARCH_MODE",
             "STUDY_MODE",
             "MOVIE_MODE",
@@ -207,13 +198,8 @@
             "HEAD_TILT_RIGHT",
 
             "MOUTH_OPEN",
-            "DOUBLE_BLINK",
 
-            "EYEBROWS_UP",
-            "EYEBROWS_DOWN",
-            "DOUBLE_EYEBROWS_UP",
-
-            "CONFIRM"
+            "EYEBROWS_UP"
         ],
 
         "ui": [

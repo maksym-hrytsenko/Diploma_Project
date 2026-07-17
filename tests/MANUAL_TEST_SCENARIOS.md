@@ -285,14 +285,16 @@ grade (correct / partially correct / incorrect) per row.
 Manual functional test scenarios for the face module (`FaceRecognizer`,
 `FaceModel`). Same three-point grading scale as §2. Run
 `python src/main.py --debug-face` for a live overlay of pitch/yaw/roll and
-a bar per blendshape (eyebrows/mouth/blink) with tick marks at the
-enter/exit thresholds — use it to see whether a borderline result is a
-recognition problem (the value never crossed the threshold) or a mapping
-problem (the signal fired but nothing consumed it). A physical camera and
-a well-lit face are required.
+a bar per blendshape (eyebrows/mouth) with tick marks at the enter/exit
+thresholds — use it to see whether a borderline result is a recognition
+problem (the value never crossed the threshold) or a mapping problem (the
+signal fired but nothing consumed it). A physical camera and a well-lit
+face are required.
 
-All scenarios below assume the system is **idle** (no gesture mode active)
-— face tracking is suppressed entirely while any mode is active, see §3.5.
+This is a global layer — every scenario below is expected to behave
+identically whether the system is idle or a mode (Flip/Presentation/
+Cursor/Call) is active. Run each row once from idle and once with a mode
+active to confirm both.
 
 ### 3.1 Head tilt (with Alt held)
 
@@ -320,12 +322,6 @@ Also verify:
 | 1 | `alt` | Raise eyebrows once | `EYEBROWS_UP` | `VOLUME_UP` (one tick) |
 | 2 | `ctrl` | Raise eyebrows once | `EYEBROWS_UP` | `VOLUME_DOWN` (one tick) |
 | 3 | none | Raise eyebrows once | `EYEBROWS_UP` fires (console/overlay only) | No action — confirm nothing happens without a modifier held |
-| 4 | any | Lower eyebrows back down | `EYEBROWS_DOWN` | No action wired currently — grade on whether the signal itself fires, not on any effect |
-
-Also verify: two eyebrow raises completing within ~0.6 s of each other
-produce one `DOUBLE_EYEBROWS_UP` signal (console/overlay only — no action
-wired up yet, same as `EYEBROWS_DOWN`), not two separate `EYEBROWS_UP`
-volume changes.
 
 ### 3.3 Mouth open (with Alt held)
 
@@ -337,34 +333,12 @@ volume changes.
 Also verify: `MOUTH_OPEN` fires once on the rising edge only — closing the
 mouth again does **not** fire a second toggle.
 
-### 3.4 Double blink (with Alt held) and nod
-
-| # | Modifier held | Action | Expected signal | Expected result |
-|---|---|---|---|---|
-| 1 | `alt` | Blink twice quickly (within ~0.5 s) | `DOUBLE_BLINK` | A screenshot is saved to the desktop (or the configured screenshot location) |
-| 2 | `alt` | Single blink only | no signal | Confirm nothing fires from a single blink |
-| 3 | none | Nod your head (fast down-then-up, or up-then-down) | `CONFIRM` fires (console/overlay only) | No action wired currently — grade on whether the signal fires, not on any visible effect |
-
-### 3.5 Idle-only gating (negative test)
-
-Enter any mode (e.g. Flip, via voice or keyboard), then, while it is
-active:
-
-| # | Action | Expected result |
-|---|---|---|
-| 1 | Tilt your head as in §3.1, with `alt` held | No `HEAD_TILT_*` signal at all, no track change |
-| 2 | Open your mouth with `alt` held | No `MOUTH_OPEN` signal, no play/pause |
-| 3 | Nod your head | No `CONFIRM` signal |
-
-Exit the mode (back to idle) and confirm face signals resume working
-immediately without needing to restart the application.
-
-**How to test:** run `python src/main.py --debug-face`. From idle, work
-through §3.1–§3.4 in order, holding the modifier key (`alt`/`ctrl`) named
-in each row before performing the facial movement. Compare the
-console/overlay output and the actual OS-level effect (or lack thereof)
-against "Expected". Then enter a mode and repeat a few of the same
-movements per §3.5 to confirm the idle-only gating. Record a grade per row.
+**How to test:** run `python src/main.py --debug-face`. Work through
+§3.1–§3.3 in order, holding the modifier key (`alt`/`ctrl`) named in each
+row before performing the facial movement, once from idle and once with
+any mode active. Compare the console/overlay output and the actual
+OS-level effect (or lack thereof) against "Expected" — both passes should
+match. Record a grade per row.
 
 ---
 
@@ -445,7 +419,7 @@ Grading: **binary** (pass/fail) per real-world effect.
 
 | # | Action | Expected result |
 |---|---|---|
-| 1 | While Work environment is active, say "jack movie mode" directly | Work's `exit_actions` (DND off) run first, then Movie's `enter_actions` run — verify via the actual DND state and app windows, not just the console log |
+| 1 | While Work environment is active, say "jack movie mode" directly | Ends up fully in Movie: Work's apps/DND are cleanly unwound and Movie's are cleanly applied — verify via the actual DND state and app windows, not just the console log |
 | 2 | Switch to the same environment you're already in (e.g. say "jack work mode" again while Work is active) | No-op — no duplicate enter/exit cycle |
 
 ### 5.8 Environment and mode independence
@@ -525,9 +499,9 @@ browser window — not a screen share, see §6.3).
 
 ### 6.4 Face-layer media combos (cross-reference)
 
-Already covered in §3.1–§3.4 (head tilt, mouth open, double blink with
-`alt` held) — re-run them here only for a combined pass covering every
-media-control path (voice + face) in one session.
+Already covered in §3.1/§3.3 (head tilt, mouth open, with `alt` held) —
+re-run them here only for a combined pass covering every media-control
+path (voice + face) in one session.
 
 **How to test:** run `python src/main.py --debug-voice`. For §6.1, close
 each app first so opening is actually observable, and confirm the

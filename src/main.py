@@ -7,6 +7,7 @@ polling loop.
 """
 
 import multiprocessing
+import os
 import sys
 import threading
 import time
@@ -52,6 +53,25 @@ from utils.app_state import has_shown_onboarding
 logger = get_logger(__name__)
 
 
+# Looks up a "--flag value" pair in sys.argv rather than just a bare
+# "--flag" membership check — used below for the benchmarks/ synthetic-input
+# flags, which need an accompanying path/number, not just an on/off switch.
+def _arg_value(
+    flag: str,
+    default: str | None = None
+) -> str | None:
+
+    if flag not in sys.argv:
+        return default
+
+    flag_index = sys.argv.index(flag)
+
+    if flag_index + 1 >= len(sys.argv):
+        return default
+
+    return sys.argv[flag_index + 1]
+
+
 def main() -> None:
 
     # --debug-gesture: overlays the camera feed with the anchor point,
@@ -63,6 +83,73 @@ def main() -> None:
     debug_face = "--debug-face" in sys.argv
 
     debug_voice = "--debug-voice" in sys.argv
+
+    # The following flags exist only for benchmarks/run_stress_suite.py
+    # (unattended CPU/RAM load measurement) — never needed for normal use.
+    #
+    # --synthetic-audio <path>: replaces MicrophoneInput with
+    # SyntheticMicrophoneInput, sourced from a pre-recorded file instead of
+    # the live mic, so a benchmark run is exactly reproducible.
+    synthetic_audio_path = _arg_value(
+        "--synthetic-audio"
+    )
+
+    synthetic_audio_speed = float(
+        _arg_value(
+            "--synthetic-audio-speed",
+            "1.0"
+        )
+    )
+
+    synthetic_audio_loops = int(
+        _arg_value(
+            "--synthetic-audio-loops",
+            "1"
+        )
+    )
+
+    # --synthetic-camera <path>: same idea as --synthetic-audio above, but
+    # for CameraInput -- sourced from a pre-recorded video instead of the
+    # live webcam.
+    synthetic_camera_path = _arg_value(
+        "--synthetic-camera"
+    )
+
+    synthetic_camera_speed = float(
+        _arg_value(
+            "--synthetic-camera-speed",
+            "1.0"
+        )
+    )
+
+    synthetic_camera_loops = int(
+        _arg_value(
+            "--synthetic-camera-loops",
+            "1"
+        )
+    )
+
+    # --disable-camera: never starts CameraInput, so a scenario meant to
+    # isolate the speech pipeline's load doesn't also carry the camera's.
+    disable_camera = "--disable-camera" in sys.argv
+
+    # Which synthetic sources this run actually has active -- shutdown
+    # waits for all of them to report finished (see
+    # _handle_synthetic_input_finished below), not just the first one, so
+    # a short looping gesture video can't cut a longer voice session short
+    # when both run at once (the combined-load scenario).
+    synthetic_sources_pending = set()
+
+    if synthetic_audio_path is not None:
+        synthetic_sources_pending.add("audio")
+
+    if synthetic_camera_path is not None:
+        synthetic_sources_pending.add("camera")
+
+    # --try-mode: forces Try Mode on at startup (see SignalMapper/
+    # ActionExecutor's try_mode_active) so a synthetic session's simulated
+    # commands never reach the real OSController while unattended.
+    try_mode = "--try-mode" in sys.argv
 
     # Qt requires its widgets to be created after a QApplication exists, on
     # the thread that owns it — this must run before PointerOverlay is
@@ -99,9 +186,35 @@ def main() -> None:
         event_bus
     )
 
-    microphone_input = MicrophoneInput(
-        event_bus
-    )
+    if synthetic_audio_path is not None:
+
+        # Deferred, path-appended import: benchmarks/ deliberately stays
+        # outside src/'s own dependency graph (see resource_monitor.py's
+        # docstring) — this is a QA tool import, not a production one, so
+        # it's only ever reached when a benchmark run actually asks for it.
+        sys.path.insert(
+            0,
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "benchmarks"
+            )
+        )
+
+        from synthetic_microphone_input import SyntheticMicrophoneInput
+
+        microphone_input = SyntheticMicrophoneInput(
+            event_bus,
+            source_path=synthetic_audio_path,
+            speed=synthetic_audio_speed,
+            loop_count=synthetic_audio_loops
+        )
+
+    else:
+
+        microphone_input = MicrophoneInput(
+            event_bus
+        )
 
     speech_recognizer = SpeechRecognizer(
         event_bus,
@@ -115,9 +228,32 @@ def main() -> None:
         debug=debug_voice
     )
 
-    camera_input = CameraInput(
-        event_bus
-    )
+    if synthetic_camera_path is not None:
+
+        # Same deferred, path-appended import as the synthetic mic above.
+        sys.path.insert(
+            0,
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "benchmarks"
+            )
+        )
+
+        from synthetic_camera_input import SyntheticCameraInput
+
+        camera_input = SyntheticCameraInput(
+            event_bus,
+            source_path=synthetic_camera_path,
+            speed=synthetic_camera_speed,
+            loop_count=synthetic_camera_loops
+        )
+
+    else:
+
+        camera_input = CameraInput(
+            event_bus
+        )
 
     gesture_recognizer = GestureRecognizer(
         event_bus
@@ -155,8 +291,15 @@ def main() -> None:
         event_bus
     )
 
+    # force_dry_run, not just the try_mode_active mirror set further down —
+    # SignalMapper's Try Mode intentionally turns itself back off on "exit
+    # mode"/Esc/UI-exit (see src/CLAUDE.md), which an unattended synthetic
+    # session's own command set naturally triggers. force_dry_run is
+    # permanent for the life of this process, so real OSController calls
+    # stay blocked regardless of what SignalMapper's own state does later.
     executor = ActionExecutor(
-        event_bus
+        event_bus,
+        force_dry_run=try_mode
     )
 
     pointer_overlay = PointerOverlay(
@@ -189,6 +332,32 @@ def main() -> None:
     event_bus.subscribe(
         "ui_quit_requested",
         _handle_quit_requested
+    )
+
+    # Only SyntheticMicrophoneInput/SyntheticCameraInput ever publish this —
+    # a benchmark run exits on its own once every active synthetic source
+    # has finished playing, instead of running until someone manually stops
+    # it (see benchmarks/run_stress_suite.py, which waits on the process
+    # exiting). Waiting for ALL of them, not just whichever finishes first,
+    # matters for the combined scenario: a short looping gesture video must
+    # not cut a much longer voice session short.
+    def _handle_synthetic_input_finished(event):
+
+        source = event.get(
+            "data",
+            {}
+        ).get(
+            "source"
+        )
+
+        synthetic_sources_pending.discard(source)
+
+        if not synthetic_sources_pending:
+            shutdown_requested.set()
+
+    event_bus.subscribe(
+        "synthetic_input_finished",
+        _handle_synthetic_input_finished
     )
 
     # Started in reverse pipeline order so every consumer subscribes before
@@ -244,11 +413,27 @@ def main() -> None:
 
     speech_recognizer.start()
 
-    camera_input.start()
+    if not disable_camera:
+
+        camera_input.start()
 
     microphone_input.start()
 
     keyboard_input.start()
+
+    if try_mode:
+
+        # Same two effects _set_try_mode(True) would produce, applied
+        # directly here since there's no real trigger signal to simulate —
+        # every subscriber (SignalMapper itself, ActionExecutor, the UI's
+        # Try Mode indicator) is already listening by this point, all
+        # .start() calls above having run.
+        signal_mapper.try_mode_active = True
+
+        event_bus.publish(
+            "try_mode_changed",
+            {"active": True}
+        )
 
     try:
 

@@ -252,6 +252,8 @@ def run_monitor(
         output_path
     )
 
+    return samples
+
 
 def write_csv(samples, output_path):
 

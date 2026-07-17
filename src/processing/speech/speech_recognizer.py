@@ -5,6 +5,8 @@ Receives audio_chunk, feeds it to VoskSpeechModel, and publishes text_ready
 debug logging only, never forwarded downstream.
 """
 
+import logging
+
 from processing.speech.speech_model import (
     VoskSpeechModel
 )
@@ -29,6 +31,16 @@ class SpeechRecognizer:
         self.state_manager = state_manager
 
         self.debug = debug
+
+        # The shared "gvcontrol" root logger (utils/logger.py) is fixed at
+        # INFO, so logger.debug() below would otherwise be silently dropped
+        # before it ever reaches a handler, regardless of --debug-voice.
+        # Raising this module's own logger overrides that floor for it only.
+        if self.debug:
+
+            logger.setLevel(
+                logging.DEBUG
+            )
 
         self.last_partial_text = None
 
