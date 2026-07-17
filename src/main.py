@@ -69,13 +69,10 @@ def main() -> None:
     # constructed below.
     qt_app = QApplication(sys.argv)
 
-    # Must run before any object that touches synthetic input is
-    # constructed below — a denied-but-unprompted Accessibility permission
-    # fails silently (synthetic input never lands) rather than with a
-    # catchable error. Camera has its own preflight, ensure_camera_
-    # permission(), run lazily on CameraInput's own background thread
-    # instead of here — see CameraInput._run — since it can block for as
-    # long as the user takes to answer the system prompt.
+    # Must run before any object that touches camera/microphone/synthetic
+    # input is constructed below — a denied-but-unprompted permission fails
+    # silently (camera never opens, synthetic input never lands) rather
+    # than with a catchable error.
     ensure_macos_permissions()
 
     loop_sleep_seconds = load_system_config().get(
