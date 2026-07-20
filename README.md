@@ -44,6 +44,12 @@ control calls/media without touching the mouse or keyboard.
      same set of motions and reacts to quick hand movements.
    - **To close the action circle,** slowly close your hand into a fist
      and move it out of frame — that avoids false triggers.
+   - **Watch the "Detected: ..." caption at the bottom of the camera
+     preview** — it prints out whatever command the app just recognized,
+     from any mode. This covers hand gestures as well as face-based
+     commands (Alt + head tilt / mouth open / eyebrows) and voice control
+     words, so you can always confirm what the app understood before
+     trusting it with real control.
 
 This app is an attempt at a ready-made solution in this space — nothing
 quite like it exists yet, so it closes out a whole list of problems and
