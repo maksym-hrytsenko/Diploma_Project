@@ -25,10 +25,15 @@ control calls/media without touching the mouse or keyboard.
    macOS's permission prompt, not a crash. Just flip the Camera toggle
    off and back on once and the picture appears immediately.
 
-4. **From there, just follow the instructions you're given** — the app
+4. **Every voice command needs a name to address the app by first** —
+   right now that name is **"jack"** (e.g. say "jack, open browser" or
+   "jack, cursor mode"). It's configurable in Settings if you'd rather
+   use something else.
+
+5. **From there, just follow the instructions you're given** — the app
    walks you through the first steps itself on its welcome screen.
 
-5. **To actually use the app, you first need to spend a little time
+6. **To actually use the app, you first need to spend a little time
    learning how it works.** That's exactly what **Try Mode** is for: you
    see how the app perceives you and reacts to commands, but no action
    ever reaches the real computer. I'd recommend trying everything
