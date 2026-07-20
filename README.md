@@ -20,10 +20,15 @@ control calls/media without touching the mouse or keyboard.
    sometimes hides behind the app's own window** — don't forget to find
    and confirm it, or the app won't be able to perform any real actions.
 
-3. **From there, just follow the instructions you're given** — the app
+3. **If the camera preview stays blank even though the Camera toggle
+   shows "Active"** — that's a known first-run timing quirk with
+   macOS's permission prompt, not a crash. Just flip the Camera toggle
+   off and back on once and the picture appears immediately.
+
+4. **From there, just follow the instructions you're given** — the app
    walks you through the first steps itself on its welcome screen.
 
-4. **To actually use the app, you first need to spend a little time
+5. **To actually use the app, you first need to spend a little time
    learning how it works.** That's exactly what **Try Mode** is for: you
    see how the app perceives you and reacts to commands, but no action
    ever reaches the real computer. I'd recommend trying everything
