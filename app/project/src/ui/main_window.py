@@ -2,7 +2,7 @@
 
 Renders the control panel on top of images/01_main_menu.png. Reflects
 state only — SignalMapper decides modes, this window just displays
-"mode_changed" events and publishes UI intent (see CLAUDE.md).
+"mode_changed" events and publishes UI intent (see docs/ARCHITECTURE.md).
 """
 
 import os
@@ -47,7 +47,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# Palette — see ui_documentation_final_without_functions_dialog.txt §1
+# Palette — see docs/UI_SPEC.txt §1
 
 COLOR_BACKGROUND = "#F4F6FB"
 COLOR_TEXT_DARK = "#172A5A"
@@ -1323,7 +1323,7 @@ class MainWindow(QWidget):
     # ---------------------------------
     # Try Mode — top-left corner of panel_control_wheel (the white square
     # the mode wheel sits on: x=800,y=128 per
-    # ui_documentation_final_without_functions_dialog.txt §"panel_control_
+    # docs/UI_SPEC.txt §"panel_control_
     # wheel" — empty space there, well clear of glow_mode_flip at
     # x=1014,y=128). Independent of camera_active/microphone_active/
     # keyboard_active (those gate which INPUTS are read) and of
@@ -1614,7 +1614,7 @@ class MainWindow(QWidget):
 
     # Asks via the real pipeline (CommandInterpreter -> MultimodalFusion
     # -> SignalMapper) instead of setting active_mode directly —
-    # SignalMapper alone decides (CLAUDE.md). Visible effect only happens
+    # SignalMapper alone decides (docs/ARCHITECTURE.md). Visible effect only happens
     # once mode_changed comes back, see _on_mode_changed_from_bus.
     def _on_mode_clicked(self, mode_name):
 

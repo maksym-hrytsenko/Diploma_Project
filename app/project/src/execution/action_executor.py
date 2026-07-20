@@ -37,10 +37,10 @@ class ActionExecutor:
 
         # Independent of try_mode_active below and never toggled after
         # construction — set only by main.py's --try-mode flag, for
-        # benchmarks/run_stress_suite.py. try_mode_active mirrors
+        # tests/benchmarks/run_stress_suite.py. try_mode_active mirrors
         # SignalMapper's Try Mode exactly, including its documented
         # behavior of turning itself off on "exit mode"/Esc/UI-exit (see
-        # src/CLAUDE.md) — normal for a live demo, but wrong for an
+        # docs/ARCHITECTURE.md) — normal for a live demo, but wrong for an
         # unattended synthetic run, whose own command set naturally
         # exercises EXIT_MODE/HAND_SESSION_END and would otherwise let
         # real OS side effects start firing partway through. This flag is

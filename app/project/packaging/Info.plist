@@ -16,7 +16,7 @@
 
     <!-- mlx (0.32.0) is the actual floor here — its wheel is tagged
          macosx_26_0_arm64, well above what mediapipe/torch/PyQt6 need.
-         See packaging/README.md. -->
+         See packaging/BUILD.md. -->
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
 
@@ -27,9 +27,9 @@
     <true/>
 
     <key>NSCameraUsageDescription</key>
-    <string>Додаток використовує камеру для розпізнавання жестів рук, якими керується курсор, презентації та інші дії.</string>
+    <string>The app uses the camera to recognize hand gestures used to control the cursor, presentations and other actions.</string>
 
     <key>NSMicrophoneUsageDescription</key>
-    <string>Додаток використовує мікрофон для розпізнавання голосових команд керування комп'ютером.</string>
+    <string>The app uses the microphone to recognize voice commands for controlling the computer.</string>
 </dict>
 </plist>

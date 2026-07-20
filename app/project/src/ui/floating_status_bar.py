@@ -30,7 +30,7 @@ Both chip kinds are purely informative — none of them are clickable.
 Icon centers below were measured directly from the source PNG (column/row
 ink-density analysis, since the AI-generated photo's actual icon spacing
 doesn't match the idealized coordinate table in
-ui_documentation_final_without_functions_dialog.txt section 6) and then
+docs/UI_SPEC.txt section 6) and then
 scaled into this widget's render size.
 
 The source PNG (images/02_floating_status_bar.png) was replaced with a

@@ -19,7 +19,7 @@ to read command latency — microphone to executed action — out of
 `logs/app.log`). §4 below only summarizes and links to both.
 
 For what to test conceptually, see [`docs/SYSTEM_FUNCTIONS.md`](../docs/SYSTEM_FUNCTIONS.md)
-(behavior reference) and [`src/CLAUDE.md`](../src/CLAUDE.md) (architecture).
+(behavior reference) and [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) (architecture).
 For the chronological engineering log of a real voice-pipeline debugging
 session, see [`voice_pipeline_fixes_log.md`](voice_pipeline_fixes_log.md)
 (a different kind of document — history, not a checklist).
@@ -782,7 +782,7 @@ held, perform an unrelated voice command and gesture — confirm Try Mode
 does not flip on/off/on repeatedly just because those unrelated signals
 kept arriving while the combo stayed down (only OS key auto-repeat on
 the SAME combo can cause that — see the known limitation noted in
-`src/CLAUDE.md`'s Try Mode section — this row is specifically about
+`docs/ARCHITECTURE.md`'s Try Mode section — this row is specifically about
 *other* signals, not repeats of the same key).
 
 ### 10.5 System OFF mid-mode

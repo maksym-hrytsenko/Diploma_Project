@@ -54,7 +54,7 @@ logger = get_logger(__name__)
 
 
 # Looks up a "--flag value" pair in sys.argv rather than just a bare
-# "--flag" membership check — used below for the benchmarks/ synthetic-input
+# "--flag" membership check — used below for the tests/benchmarks/ synthetic-input
 # flags, which need an accompanying path/number, not just an on/off switch.
 def _arg_value(
     flag: str,
@@ -84,7 +84,7 @@ def main() -> None:
 
     debug_voice = "--debug-voice" in sys.argv
 
-    # The following flags exist only for benchmarks/run_stress_suite.py
+    # The following flags exist only for tests/benchmarks/run_stress_suite.py
     # (unattended CPU/RAM load measurement) — never needed for normal use.
     #
     # --synthetic-audio <path>: replaces MicrophoneInput with
@@ -188,15 +188,17 @@ def main() -> None:
 
     if synthetic_audio_path is not None:
 
-        # Deferred, path-appended import: benchmarks/ deliberately stays
-        # outside src/'s own dependency graph (see resource_monitor.py's
-        # docstring) — this is a QA tool import, not a production one, so
-        # it's only ever reached when a benchmark run actually asks for it.
+        # Deferred, path-appended import: tests/benchmarks/ deliberately
+        # stays outside src/'s own dependency graph (see
+        # resource_monitor.py's docstring) — this is a QA tool import, not
+        # a production one, so it's only ever reached when a benchmark run
+        # actually asks for it.
         sys.path.insert(
             0,
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
+                "tests",
                 "benchmarks"
             )
         )
@@ -236,6 +238,7 @@ def main() -> None:
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
+                "tests",
                 "benchmarks"
             )
         )
@@ -293,7 +296,7 @@ def main() -> None:
 
     # force_dry_run, not just the try_mode_active mirror set further down —
     # SignalMapper's Try Mode intentionally turns itself back off on "exit
-    # mode"/Esc/UI-exit (see src/CLAUDE.md), which an unattended synthetic
+    # mode"/Esc/UI-exit (see docs/ARCHITECTURE.md), which an unattended synthetic
     # session's own command set naturally triggers. force_dry_run is
     # permanent for the life of this process, so real OSController calls
     # stay blocked regardless of what SignalMapper's own state does later.
@@ -337,7 +340,7 @@ def main() -> None:
     # Only SyntheticMicrophoneInput/SyntheticCameraInput ever publish this —
     # a benchmark run exits on its own once every active synthetic source
     # has finished playing, instead of running until someone manually stops
-    # it (see benchmarks/run_stress_suite.py, which waits on the process
+    # it (see tests/benchmarks/run_stress_suite.py, which waits on the process
     # exiting). Waiting for ALL of them, not just whichever finishes first,
     # matters for the combined scenario: a short looping gesture video must
     # not cut a much longer voice session short.

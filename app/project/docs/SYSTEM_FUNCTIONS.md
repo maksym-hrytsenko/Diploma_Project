@@ -5,7 +5,7 @@ environment and visual feature in the multimodal control system. For a
 short, plain-text quick-lookup list instead ("what opens/launches what"),
 see [`docs/FUNCTIONS_LIST.txt`](FUNCTIONS_LIST.txt). For the module-level
 architecture (EventBus pipeline, module responsibilities), see
-[`src/CLAUDE.md`](../src/CLAUDE.md). This document describes *behavior*,
+[`ARCHITECTURE.md`](ARCHITECTURE.md). This document describes *behavior*,
 not code structure.
 
 Target platform: **macOS only**.

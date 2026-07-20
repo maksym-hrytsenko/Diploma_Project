@@ -11,10 +11,10 @@ much load the app puts on the machine, not part of the shipped application
 or its packaged .exe build.
 
 Usage:
-    python benchmarks/resource_monitor.py
-    python benchmarks/resource_monitor.py --duration 120
-    python benchmarks/resource_monitor.py --attach-pid 12345
-    python benchmarks/resource_monitor.py -- --debug-gesture
+    python tests/benchmarks/resource_monitor.py
+    python tests/benchmarks/resource_monitor.py --duration 120
+    python tests/benchmarks/resource_monitor.py --attach-pid 12345
+    python tests/benchmarks/resource_monitor.py -- --debug-gesture
 """
 
 import argparse
@@ -83,7 +83,7 @@ def parse_args():
         default=None,
         help=(
             "CSV output path (default: "
-            "benchmarks/resource_log_<timestamp>.csv)."
+            "tests/benchmarks/resource_log_<timestamp>.csv)."
         )
     )
 

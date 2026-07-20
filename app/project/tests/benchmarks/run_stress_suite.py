@@ -12,19 +12,19 @@ themselves -- see their comments below).
 
 Output layout, one folder per scenario:
 
-    benchmarks/results/<run_id>/<scenario_name>/
+    tests/benchmarks/results/<run_id>/<scenario_name>/
         resource.csv   -- from resource_monitor.run_monitor, unchanged format
         app.log        -- just this scenario's slice of logs/app.log
         summary.txt     -- scenario params + avg/max CPU/RAM for this run
 
-    benchmarks/results/<run_id>/overview.txt -- one row per scenario
+    tests/benchmarks/results/<run_id>/overview.txt -- one row per scenario
 
 Usage:
-    python benchmarks/run_stress_suite.py
-    python benchmarks/run_stress_suite.py --only idle_baseline
-    python benchmarks/run_stress_suite.py --resume 20260717_223137
+    python tests/benchmarks/run_stress_suite.py
+    python tests/benchmarks/run_stress_suite.py --only idle_baseline
+    python tests/benchmarks/run_stress_suite.py --resume 20260717_223137
 
---resume <run_id> reuses an existing benchmarks/results/<run_id> folder
+--resume <run_id> reuses an existing tests/benchmarks/results/<run_id> folder
 instead of starting a fresh one -- any scenario that already has a
 non-empty resource.csv there is treated as done (its stats are read back
 from that CSV, not re-measured) and only whatever didn't finish last time
@@ -73,7 +73,7 @@ SYNTH_AUDIO_PATH = os.path.join(
     "voice_test_synthesized.m4a"
 )
 
-# Recorded via benchmarks/record_gesture_sample.py -- doesn't exist until
+# Recorded via tests/benchmarks/record_gesture_sample.py -- doesn't exist until
 # that's actually been run once; scenarios that need it are skipped
 # cleanly (not a crash) until then, see run_scenario's "requires" check.
 SYNTH_GESTURE_PATH = os.path.join(
@@ -85,7 +85,7 @@ SYNTH_GESTURE_PATH = os.path.join(
 
 
 # Natural length of the voice recording at speed 1x, loops=1 (see
-# tests/synthesized_voice/README.md) is ~1219s; the gesture recording at
+# tests/synthesized_voice/GUIDE.md) is ~1219s; the gesture recording at
 # speed 1x, loops=1 (see record_gesture_sample.py's BEATS) is ~139s.
 # max_duration below always leaves headroom above what a self-terminating
 # scenario needs so it never gets cut off under normal conditions -- the
@@ -97,8 +97,8 @@ SCENARIOS = [
     {
         "name": "idle_baseline",
         "description": (
-            "Застосунок працює, камера дивиться в статичну сцену, тиша -- "
-            "базове навантаження без активного розпізнавання."
+            "App running, camera pointed at a static scene, silence -- "
+            "baseline load with no active recognition."
         ),
         "extra_args": [],
         "sample_interval": 0.5,
@@ -110,9 +110,9 @@ SCENARIOS = [
     {
         "name": "speech_synthetic_1x",
         "description": (
-            "Синтезована голосова сесія (113 команд) у реальному темпі, "
-            "камера вимкнена -- ізольоване навантаження мовного конвеєра, "
-            "включно з fallback-командами поза точною граматикою."
+            "Synthesized voice session (113 commands) at real-time pace, "
+            "camera off -- isolated load on the speech pipeline, including "
+            "fallback commands outside the exact grammar."
         ),
         "extra_args": [
             "--disable-camera",
@@ -129,9 +129,9 @@ SCENARIOS = [
     {
         "name": "speech_synthetic_4x_loop3",
         "description": (
-            "Та сама сесія в 4 рази швидше, по колу 3 рази -- більше "
-            "циклів розпізнавання за коротший час, для перевірки витоку "
-            "пам'яті без повногодинного прогону."
+            "The same session 4x faster, looped 3 times -- more "
+            "recognition cycles in less time, to check for memory leaks "
+            "without a full hour-long run."
         ),
         "extra_args": [
             "--disable-camera",
@@ -148,8 +148,8 @@ SCENARIOS = [
     {
         "name": "camera_gesture_only",
         "description": (
-            "Записана сесія жестів/міміки (~2.3 хв) по колу 6 разів, мова "
-            "мовчить -- ізольоване навантаження gesture+face конвеєра."
+            "Recorded gesture/face session (~2.3 min) looped 6 times, "
+            "voice silent -- isolated load on the gesture+face pipeline."
         ),
         "extra_args": [
             "--synthetic-camera", SYNTH_GESTURE_PATH,
@@ -165,12 +165,12 @@ SCENARIOS = [
     {
         "name": "combined_worst_case",
         "description": (
-            "Синтезована мовна сесія (реальний темп, один прохід) "
-            "одночасно із записаною сесією жестів/міміки, що крутиться по "
-            "колу весь час -- найважчий одночасний сценарій. Камера "
-            "навмисно зациклена набагато довше за голосову сесію "
-            "(200 циклів) і не встигає завершитись сама -- сценарій "
-            "завжди зупиняється по max_duration, а не самостійно."
+            "Synthesized voice session (real-time pace, single pass) "
+            "at the same time as a recorded gesture/face session looping "
+            "the whole time -- the heaviest concurrent scenario. The "
+            "camera is deliberately looped for much longer than the voice "
+            "session (200 loops) and never finishes on its own -- this "
+            "scenario always stops via max_duration, never by itself."
         ),
         "extra_args": [
             "--synthetic-audio", SYNTH_AUDIO_PATH,
@@ -206,7 +206,7 @@ def parse_args():
         "--resume",
         default=None,
         help=(
-            "Reuse an existing benchmarks/results/<run_id> folder -- "
+            "Reuse an existing tests/benchmarks/results/<run_id> folder -- "
             "scenarios that already have data there are skipped, not "
             "re-run. Pass just the <run_id> (the folder name), e.g. "
             "20260717_223137."
@@ -388,43 +388,43 @@ def _write_summary(
         if ambient is not None:
 
             f.write(
-                "Стан машини безпосередньо ПЕРЕД запуском цього "
-                "сценарію (не стосується наших вимірів нижче -- ті вже "
-                "ізольовані per-process -- це лише контекст, щоб було "
-                "чим пояснити аномалію заднім числом):\n"
+                "Machine state immediately BEFORE this scenario started "
+                "(does not affect the measurements below -- those are "
+                "already isolated per-process -- this is just context, so "
+                "an anomaly can be explained after the fact):\n"
             )
 
             f.write(
-                f"  системний CPU: {ambient['system_cpu_percent']:5.1f}%   "
-                f"RAM зайнято: {ambient['system_ram_used_pct']:5.1f}%   "
-                f"вільно RAM: {ambient['system_ram_available_mb']:7.0f} MB\n"
+                f"  system CPU: {ambient['system_cpu_percent']:5.1f}%   "
+                f"RAM used: {ambient['system_ram_used_pct']:5.1f}%   "
+                f"RAM free: {ambient['system_ram_available_mb']:7.0f} MB\n"
             )
 
             f.write(
-                f"  load average (1хв/5хв): "
+                f"  load average (1min/5min): "
                 f"{ambient['loadavg_1min']:.2f} / {ambient['loadavg_5min']:.2f}\n\n"
             )
 
         if stats is None:
 
             f.write(
-                f"ПРОПУЩЕНО/ПОМИЛКА: {error_message}\n"
+                f"SKIPPED/ERROR: {error_message}\n"
             )
 
             return
 
         f.write(
-            f"Тривалість вимірювання: {stats['duration_s']:.1f}s\n"
+            f"Measurement duration: {stats['duration_s']:.1f}s\n"
         )
 
         f.write(
             f"CPU  avg: {stats['cpu_avg_pct_of_machine']:6.1f}% "
-            f"від машини   max: {stats['cpu_max_pct_of_machine']:6.1f}%\n"
+            f"of machine   max: {stats['cpu_max_pct_of_machine']:6.1f}%\n"
         )
 
         f.write(
             f"     avg: {stats['cpu_avg_pct_of_core']:6.1f}% "
-            f"від одного ядра   max: {stats['cpu_max_pct_of_core']:6.1f}%\n"
+            f"of one core   max: {stats['cpu_max_pct_of_core']:6.1f}%\n"
         )
 
         f.write(
@@ -433,7 +433,7 @@ def _write_summary(
         )
 
         f.write(
-            f"Процесів у дереві (пік): {stats['process_count_max']}\n"
+            f"Processes in tree (peak): {stats['process_count_max']}\n"
         )
 
 
@@ -450,7 +450,7 @@ def _write_overview(
     with open(path, "w", encoding="utf-8") as f:
 
         header = (
-            f"{'сценарій':28} {'трив.,с':>8} {'CPU avg%':>9} "
+            f"{'scenario':28} {'dur.,s':>8} {'CPU avg%':>9} "
             f"{'CPU max%':>9} {'RAM avg,MB':>11} {'RAM max,MB':>11}\n"
         )
 
@@ -460,7 +460,7 @@ def _write_overview(
 
             if stats is None:
 
-                f.write(f"{name:28} ПРОПУЩЕНО: {note}\n")
+                f.write(f"{name:28} SKIPPED: {note}\n")
 
                 continue
 
@@ -471,7 +471,7 @@ def _write_overview(
                 f"{stats['ram_avg_mb']:11.1f} {stats['ram_max_mb']:11.1f}\n"
             )
 
-    print(f"\nЗведення: {path}")
+    print(f"\nOverview: {path}")
 
 
 def run_scenario(
@@ -493,8 +493,8 @@ def run_scenario(
     if _scenario_has_data(scenario_dir):
 
         print(
-            f"[{scenario['name']}] вже є з попереднього прогону -- "
-            f"пропускаю запуск, читаю наявний resource.csv."
+            f"[{scenario['name']}] already present from a previous run -- "
+            f"skipping the launch, reading the existing resource.csv."
         )
 
         samples = _read_samples_csv(
@@ -516,10 +516,10 @@ def run_scenario(
     if missing:
 
         error_message = (
-            "відсутній вхідний файл: " + ", ".join(missing)
+            "missing input file: " + ", ".join(missing)
         )
 
-        print(f"[{scenario['name']}] ПРОПУЩЕНО -- {error_message}")
+        print(f"[{scenario['name']}] SKIPPED -- {error_message}")
 
         _write_summary(scenario, scenario_dir, None, error_message)
 
@@ -540,8 +540,8 @@ def run_scenario(
     ambient = _system_snapshot()
 
     print(
-        f"[{scenario['name']}] старт... "
-        f"(системний CPU перед стартом: {ambient['system_cpu_percent']:.0f}%)"
+        f"[{scenario['name']}] starting... "
+        f"(system CPU before start: {ambient['system_cpu_percent']:.0f}%)"
     )
 
     process = subprocess.Popen(
@@ -556,10 +556,10 @@ def run_scenario(
     if process.poll() is not None:
 
         error_message = (
-            f"процес завершився під час прогріву (код {process.returncode})"
+            f"process exited during warm-up (code {process.returncode})"
         )
 
-        print(f"[{scenario['name']}] ПОМИЛКА: {error_message}")
+        print(f"[{scenario['name']}] ERROR: {error_message}")
 
         _copy_log_slice(
             log_offset,
@@ -580,9 +580,9 @@ def run_scenario(
     )
 
     print(
-        f"[{scenario['name']}] вимірюю "
-        f"(інтервал {scenario['sample_interval']}s, "
-        f"макс {scenario['max_duration']}s)..."
+        f"[{scenario['name']}] measuring "
+        f"(interval {scenario['sample_interval']}s, "
+        f"max {scenario['max_duration']}s)..."
     )
 
     samples = run_monitor(
@@ -624,7 +624,7 @@ def run_scenario(
     if stats is not None:
 
         print(
-            f"[{scenario['name']}] завершено за {stats['duration_s']:.1f}s "
+            f"[{scenario['name']}] finished in {stats['duration_s']:.1f}s "
             f"-> {scenario_dir}"
         )
 
@@ -647,8 +647,8 @@ def main():
         if not scenarios:
 
             print(
-                f"Немає сценарію з назвою '{args.only}'. "
-                f"Доступні: {', '.join(s['name'] for s in SCENARIOS)}"
+                f"No scenario named '{args.only}'. "
+                f"Available: {', '.join(s['name'] for s in SCENARIOS)}"
             )
 
             sys.exit(1)
@@ -667,7 +667,7 @@ def main():
 
     if args.resume is not None and not os.path.isdir(run_dir):
 
-        print(f"Немає такої теки для відновлення: {run_dir}")
+        print(f"No such folder to resume from: {run_dir}")
 
         sys.exit(1)
 
@@ -678,11 +678,11 @@ def main():
 
     core_count = psutil.cpu_count()
 
-    resume_note = " (відновлення)" if args.resume is not None else ""
+    resume_note = " (resuming)" if args.resume is not None else ""
 
     print(
-        f"Прогін набору стрес-тестів ({len(scenarios)} сценаріїв){resume_note}. "
-        f"Результати: {run_dir}\n"
+        f"Running the stress-test suite ({len(scenarios)} scenarios){resume_note}. "
+        f"Results: {run_dir}\n"
     )
 
     computed = {}
@@ -734,7 +734,7 @@ def main():
 
             else:
 
-                stats, note = None, "ще не запущено в цьому run_dir"
+                stats, note = None, "not yet run in this run_dir"
 
         overview_rows.append((name, stats, note))
 

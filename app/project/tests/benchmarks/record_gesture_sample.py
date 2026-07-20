@@ -17,8 +17,8 @@ only -- never into the saved frames, since those get fed back through the
 real recognizers later.
 
 Usage:
-    python benchmarks/record_gesture_sample.py
-    python benchmarks/record_gesture_sample.py --output tests/synthesized_gesture/gesture_sample.mp4
+    python tests/benchmarks/record_gesture_sample.py
+    python tests/benchmarks/record_gesture_sample.py --output tests/synthesized_gesture/gesture_sample.mp4
 """
 
 import argparse
@@ -35,11 +35,11 @@ PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
 
-# cv2.putText only supports its built-in Hershey fonts, which have no
-# Cyrillic glyphs (renders as "?????") -- draw overlay text through a real
-# system font via Pillow instead. Tried in order; every one of these ships
-# on a stock macOS install, but a missing/renamed font shouldn't crash a
-# recording session, hence the fallback chain.
+# cv2.putText only supports its built-in blocky Hershey fonts -- draw
+# overlay text through a real system font via Pillow instead. Tried in
+# order; every one of these ships on a stock macOS install, but a
+# missing/renamed font shouldn't crash a recording session, hence the
+# fallback chain.
 _OVERLAY_FONT_CANDIDATES = [
     "/System/Library/Fonts/SFNS.ttf",
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
@@ -86,34 +86,34 @@ DEFAULT_OUTPUT_PATH = os.path.join(
 # (label, seconds, instruction shown on the live preview -- not saved)
 BEATS = [
 
-    ("baseline_still_start", 5, "Нічого не робіть -- руки поза кадром, обличчя нейтральне"),
+    ("baseline_still_start", 5, "Do nothing -- hands out of frame, neutral face"),
 
-    ("session_start", 6, "Кулак -> розкрита долоня, кілька разів (HAND_SESSION_START)"),
+    ("session_start", 6, "Fist -> open palm, a few times (HAND_SESSION_START)"),
 
-    ("swipe_right", 10, "Свайп рукою ВПРАВО, кілька разів"),
-    ("swipe_left", 10, "Свайп рукою ВЛІВО, кілька разів"),
-    ("swipe_up", 10, "Свайп рукою ВГОРУ, кілька разів"),
-    ("swipe_down", 10, "Свайп рукою ВНИЗ, кілька разів"),
+    ("swipe_right", 10, "Swipe your hand RIGHT, a few times"),
+    ("swipe_left", 10, "Swipe your hand LEFT, a few times"),
+    ("swipe_up", 10, "Swipe your hand UP, a few times"),
+    ("swipe_down", 10, "Swipe your hand DOWN, a few times"),
 
-    ("pinch", 10, "З'єднайте великий і вказівний пальці (pinch), розтисніть -- кілька разів"),
-    ("pinch_drag", 10, "Pinch і потягніть руку в сторону, не розтискаючи"),
-    ("double_pinch", 6, "Два швидких pinch поспіль (double pinch)"),
+    ("pinch", 10, "Touch thumb and index finger together (pinch), release -- a few times"),
+    ("pinch_drag", 10, "Pinch and drag your hand sideways without releasing"),
+    ("double_pinch", 6, "Two quick pinches in a row (double pinch)"),
 
-    ("one_finger", 4, "Покажіть ОДИН палець"),
-    ("two_fingers", 4, "Покажіть ДВА пальці"),
-    ("three_fingers", 4, "Покажіть ТРИ пальці"),
-    ("four_fingers", 4, "Покажіть ЧОТИРИ пальці"),
+    ("one_finger", 4, "Hold up ONE finger"),
+    ("two_fingers", 4, "Hold up TWO fingers"),
+    ("three_fingers", 4, "Hold up THREE fingers"),
+    ("four_fingers", 4, "Hold up FOUR fingers"),
 
-    ("cursor_move", 20, "Повільно водіть розкритою долонею по колу (курсор)"),
+    ("cursor_move", 20, "Slowly move an open palm in a circle (cursor)"),
 
-    ("session_end", 5, "Кулак знову -- закрити сесію (HAND_SESSION_END)"),
+    ("session_end", 5, "Fist again -- close the session (HAND_SESSION_END)"),
 
-    ("face_tilt_left", 4, "Нахиліть голову ВЛІВО"),
-    ("face_tilt_right", 4, "Нахиліть голову ВПРАВО"),
-    ("face_mouth_open", 4, "Відкрийте рот (як позіхання)"),
-    ("face_eyebrows", 4, "Підніміть брови"),
+    ("face_tilt_left", 4, "Tilt your head LEFT"),
+    ("face_tilt_right", 4, "Tilt your head RIGHT"),
+    ("face_mouth_open", 4, "Open your mouth (like a yawn)"),
+    ("face_eyebrows", 4, "Raise your eyebrows"),
 
-    ("baseline_still_end", 5, "Знову нічого не робіть")
+    ("baseline_still_end", 5, "Do nothing again")
 
 ]
 
@@ -203,7 +203,7 @@ def draw_overlay(
 
     draw.text(
         (20, 78),
-        f"{seconds_left:.0f}s   (q = зупинити достроково)",
+        f"{seconds_left:.0f}s   (q = stop early)",
         font=FONT_HINT,
         fill=(200, 200, 200)
     )
@@ -243,7 +243,7 @@ def main():
 
     if not capture.isOpened():
 
-        print("Не вдалось відкрити камеру.")
+        print("Failed to open the camera.")
 
         return
 
@@ -280,9 +280,9 @@ def main():
     )
 
     print(
-        f"Запис у {output_path} ({actual_width}x{actual_height}). "
-        f"Загалом ~{total_seconds}s ({total_seconds / 60:.1f} хв). "
-        f"Вікно попереднього перегляду відкриється зараз."
+        f"Recording to {output_path} ({actual_width}x{actual_height}). "
+        f"Total ~{total_seconds}s ({total_seconds / 60:.1f} min). "
+        f"The preview window will open now."
     )
 
     aborted = False
@@ -353,7 +353,7 @@ def main():
 
     if frames_written == 0 or recording_elapsed <= 0:
 
-        print("Нічого не записано.")
+        print("Nothing was recorded.")
 
         os.remove(temp_path)
 
@@ -362,9 +362,9 @@ def main():
     true_fps = frames_written / recording_elapsed
 
     print(
-        f"Записано {frames_written} кадрів за {recording_elapsed:.1f}s "
-        f"-> справжній fps ~{true_fps:.1f} (метадані камери цьому не "
-        f"довіряю, рахую сам)."
+        f"Recorded {frames_written} frames in {recording_elapsed:.1f}s "
+        f"-> true fps ~{true_fps:.1f} (not trusting the camera's own "
+        f"metadata for this, measuring it myself)."
     )
 
     reencode_with_fps(
@@ -377,11 +377,11 @@ def main():
 
     if aborted:
 
-        print(f"Зупинено достроково. Записане збережено у {output_path}.")
+        print(f"Stopped early. What was recorded is saved to {output_path}.")
 
     else:
 
-        print(f"Готово: {output_path}")
+        print(f"Done: {output_path}")
 
 
 def reencode_with_fps(

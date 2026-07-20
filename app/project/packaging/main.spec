@@ -46,7 +46,7 @@ hiddenimports = []
 # One collect_all() per ML/native dependency instead of hand-picked hidden
 # imports — the safer default for a one-person project, at the cost of a
 # larger bundle. mediapipe's Tasks-C dylib and mlx's Metal shader library
-# are the two riskiest here (see packaging/README.md) — if either is
+# are the two riskiest here (see packaging/BUILD.md) — if either is
 # missing after a build, add its exact file as an explicit `datas` entry.
 COLLECT_ALL_PACKAGES = (
     "mediapipe",

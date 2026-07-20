@@ -4,7 +4,7 @@ Publishes `audio_chunk` events sourced from a pre-recorded audio file
 instead of a live microphone, at the same chunk size and pacing
 MicrophoneInput would produce from real hardware — so SpeechRecognizer,
 IntentModel and everything downstream run completely unmodified and
-unaware the signal isn't live. Exists for benchmarks/run_stress_suite.py:
+unaware the signal isn't live. Exists for tests/benchmarks/run_stress_suite.py:
 a recorded session is exactly reproducible across runs, which a live mic
 session never is.
 
