@@ -9,6 +9,44 @@ keyboard shortcuts into a single event-driven control pipeline, letting a
 user open apps, navigate presentations, scroll, move the cursor and
 control calls/media without touching the mouse or keyboard.
 
+## ⚠️ Must read
+
+1. **You received the pre-built app separately from this git
+   repository.** Or you can build it yourself following the instructions
+   below.
+
+2. **After the first launch you'll see three permission prompts**
+   (Camera, Microphone, Accessibility). Watch out: **the third one
+   sometimes hides behind the app's own window** — don't forget to find
+   and confirm it, or the app won't be able to perform any real actions.
+
+3. **From there, just follow the instructions you're given** — the app
+   walks you through the first steps itself on its welcome screen.
+
+4. **To actually use the app, you first need to spend a little time
+   learning how it works.** That's exactly what **Try Mode** is for: you
+   see how the app perceives you and reacts to commands, but no action
+   ever reaches the real computer. I'd recommend trying everything
+   yourself:
+   - **Switching modes by hand:** show a closed fist to the camera, then
+     open it — the action circle (**Quick Circle**) appears.
+   - **To learn swipes,** try **Flip** mode in Try Mode — it uses the
+     same set of motions and reacts to quick hand movements.
+   - **To close the action circle,** slowly close your hand into a fist
+     and move it out of frame — that avoids false triggers.
+
+This app is an attempt at a ready-made solution in this space — nothing
+quite like it exists yet, so it closes out a whole list of problems and
+use cases. One note: to try the app-opening functions, those apps need
+to actually be installed on your computer — trying to open one that
+isn't there simply won't work.
+
+**Enjoy!**
+
+---
+
+*Read on if you're curious.*
+
 ## Quick start
 
 1. **Install it** — see [Setup](#setup) below; the project is already
