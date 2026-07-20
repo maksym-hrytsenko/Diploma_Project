@@ -1,0 +1,531 @@
+"""Application entry point.
+
+Wires every module of the multimodal control pipeline (input -> processing ->
+interpretation -> fusion -> execution -> UI) to a shared EventBus, starts them
+in dependency order, and drives the Qt event loop alongside the system's own
+polling loop.
+"""
+
+import multiprocessing
+import os
+import sys
+import threading
+import time
+
+from PyQt6.QtWidgets import QApplication
+
+from core.event_bus import EventBus
+from core.state_manager import StateManager
+
+from input.keyboard_input import KeyboardInput
+from processing.keyboard.keyboard_processor import KeyboardProcessor
+
+from input.microphone_input import MicrophoneInput
+from processing.speech.speech_recognizer import SpeechRecognizer
+from interpretation.intent_model import IntentModel
+
+from input.camera_input import CameraInput
+from processing.gesture.gesture_recognizer import GestureRecognizer
+from processing.gesture.gesture_debug_view import GestureDebugView
+from processing.face.face_recognizer import FaceRecognizer
+from processing.face.face_debug_view import FaceDebugView
+
+from interpretation.command_interpreter import CommandInterpreter
+
+from fusion.multimodal_fusion import MultimodalFusion
+from fusion.signal_mapper import SignalMapper
+
+from execution.action_executor import ActionExecutor
+
+from ui.quick_command_overlay import QuickCommandOverlay
+from ui.main_window import MainWindow
+from ui.floating_status_bar import FloatingStatusBar
+from ui.pointer_overlay import PointerOverlay
+from ui.native_window import configure_accessory_app
+from ui.welcome_window import WelcomeWindow
+
+from config.config_loader import load_system_config
+from utils.logger import get_logger
+from utils.permissions import ensure_macos_permissions
+from utils.app_state import has_shown_onboarding
+
+
+logger = get_logger(__name__)
+
+
+# Looks up a "--flag value" pair in sys.argv rather than just a bare
+# "--flag" membership check — used below for the tests/benchmarks/ synthetic-input
+# flags, which need an accompanying path/number, not just an on/off switch.
+def _arg_value(
+    flag: str,
+    default: str | None = None
+) -> str | None:
+
+    if flag not in sys.argv:
+        return default
+
+    flag_index = sys.argv.index(flag)
+
+    if flag_index + 1 >= len(sys.argv):
+        return default
+
+    return sys.argv[flag_index + 1]
+
+
+def main() -> None:
+
+    # --debug-gesture: overlays the camera feed with the anchor point,
+    # tracked finger and current zone.
+    debug_gesture = "--debug-gesture" in sys.argv
+
+    # --debug-face: overlays live pitch/yaw/roll and blendshape scores
+    # against the thresholds they're compared to (see docs/SYSTEM_FUNCTIONS.md §9).
+    debug_face = "--debug-face" in sys.argv
+
+    debug_voice = "--debug-voice" in sys.argv
+
+    # The following flags exist only for tests/benchmarks/run_stress_suite.py
+    # (unattended CPU/RAM load measurement) — never needed for normal use.
+    #
+    # --synthetic-audio <path>: replaces MicrophoneInput with
+    # SyntheticMicrophoneInput, sourced from a pre-recorded file instead of
+    # the live mic, so a benchmark run is exactly reproducible.
+    synthetic_audio_path = _arg_value(
+        "--synthetic-audio"
+    )
+
+    synthetic_audio_speed = float(
+        _arg_value(
+            "--synthetic-audio-speed",
+            "1.0"
+        )
+    )
+
+    synthetic_audio_loops = int(
+        _arg_value(
+            "--synthetic-audio-loops",
+            "1"
+        )
+    )
+
+    # --synthetic-camera <path>: same idea as --synthetic-audio above, but
+    # for CameraInput -- sourced from a pre-recorded video instead of the
+    # live webcam.
+    synthetic_camera_path = _arg_value(
+        "--synthetic-camera"
+    )
+
+    synthetic_camera_speed = float(
+        _arg_value(
+            "--synthetic-camera-speed",
+            "1.0"
+        )
+    )
+
+    synthetic_camera_loops = int(
+        _arg_value(
+            "--synthetic-camera-loops",
+            "1"
+        )
+    )
+
+    # --disable-camera: never starts CameraInput, so a scenario meant to
+    # isolate the speech pipeline's load doesn't also carry the camera's.
+    disable_camera = "--disable-camera" in sys.argv
+
+    # Which synthetic sources this run actually has active -- shutdown
+    # waits for all of them to report finished (see
+    # _handle_synthetic_input_finished below), not just the first one, so
+    # a short looping gesture video can't cut a longer voice session short
+    # when both run at once (the combined-load scenario).
+    synthetic_sources_pending = set()
+
+    if synthetic_audio_path is not None:
+        synthetic_sources_pending.add("audio")
+
+    if synthetic_camera_path is not None:
+        synthetic_sources_pending.add("camera")
+
+    # --try-mode: forces Try Mode on at startup (see SignalMapper/
+    # ActionExecutor's try_mode_active) so a synthetic session's simulated
+    # commands never reach the real OSController while unattended.
+    try_mode = "--try-mode" in sys.argv
+
+    # Qt requires its widgets to be created after a QApplication exists, on
+    # the thread that owns it — this must run before PointerOverlay is
+    # constructed below.
+    qt_app = QApplication(sys.argv)
+
+    # Must run before any object that touches camera/microphone/synthetic
+    # input is constructed below — a denied-but-unprompted permission fails
+    # silently (camera never opens, synthetic input never lands) rather
+    # than with a catchable error.
+    ensure_macos_permissions()
+
+    loop_sleep_seconds = load_system_config().get(
+        "app",
+        {}
+    ).get(
+        "loop_sleep_seconds",
+        0.01
+    )
+
+    # Must run before any overlay widget (PointerOverlay, QuickCommandOverlay)
+    # is constructed — see configure_accessory_app for why.
+    configure_accessory_app()
+
+    event_bus = EventBus()
+
+    state_manager = StateManager()
+
+    keyboard_input = KeyboardInput(
+        event_bus
+    )
+
+    keyboard_processor = KeyboardProcessor(
+        event_bus
+    )
+
+    if synthetic_audio_path is not None:
+
+        # Deferred, path-appended import: tests/benchmarks/ deliberately
+        # stays outside src/'s own dependency graph (see
+        # resource_monitor.py's docstring) — this is a QA tool import, not
+        # a production one, so it's only ever reached when a benchmark run
+        # actually asks for it.
+        sys.path.insert(
+            0,
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "tests",
+                "benchmarks"
+            )
+        )
+
+        from synthetic_microphone_input import SyntheticMicrophoneInput
+
+        microphone_input = SyntheticMicrophoneInput(
+            event_bus,
+            source_path=synthetic_audio_path,
+            speed=synthetic_audio_speed,
+            loop_count=synthetic_audio_loops
+        )
+
+    else:
+
+        microphone_input = MicrophoneInput(
+            event_bus
+        )
+
+    speech_recognizer = SpeechRecognizer(
+        event_bus,
+        state_manager,
+        debug=debug_voice
+    )
+
+    intent_model = IntentModel(
+        event_bus,
+        state_manager,
+        debug=debug_voice
+    )
+
+    if synthetic_camera_path is not None:
+
+        # Same deferred, path-appended import as the synthetic mic above.
+        sys.path.insert(
+            0,
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "tests",
+                "benchmarks"
+            )
+        )
+
+        from synthetic_camera_input import SyntheticCameraInput
+
+        camera_input = SyntheticCameraInput(
+            event_bus,
+            source_path=synthetic_camera_path,
+            speed=synthetic_camera_speed,
+            loop_count=synthetic_camera_loops
+        )
+
+    else:
+
+        camera_input = CameraInput(
+            event_bus
+        )
+
+    gesture_recognizer = GestureRecognizer(
+        event_bus
+    )
+
+    gesture_debug_view = None
+
+    if debug_gesture:
+
+        gesture_debug_view = GestureDebugView(
+            event_bus
+        )
+
+    face_recognizer = FaceRecognizer(
+        event_bus
+    )
+
+    face_debug_view = None
+
+    if debug_face:
+
+        face_debug_view = FaceDebugView(
+            event_bus
+        )
+
+    interpreter = CommandInterpreter(
+        event_bus
+    )
+
+    fusion = MultimodalFusion(
+        event_bus
+    )
+
+    signal_mapper = SignalMapper(
+        event_bus
+    )
+
+    # force_dry_run, not just the try_mode_active mirror set further down —
+    # SignalMapper's Try Mode intentionally turns itself back off on "exit
+    # mode"/Esc/UI-exit (see docs/ARCHITECTURE.md), which an unattended synthetic
+    # session's own command set naturally triggers. force_dry_run is
+    # permanent for the life of this process, so real OSController calls
+    # stay blocked regardless of what SignalMapper's own state does later.
+    executor = ActionExecutor(
+        event_bus,
+        force_dry_run=try_mode
+    )
+
+    pointer_overlay = PointerOverlay(
+        event_bus
+    )
+
+    quick_command_overlay = QuickCommandOverlay(
+        event_bus
+    )
+
+    main_window = MainWindow(
+        event_bus
+    )
+
+    floating_status_bar = FloatingStatusBar(
+        event_bus
+    )
+
+    # Set from MainWindow's header close (X) button, via the
+    # "ui_quit_requested" event — the only way to stop the whole pipeline
+    # from the UI without going through a terminal Ctrl-C. FloatingStatusBar
+    # has no close button of its own (only the expand button) — quitting
+    # always goes through MainWindow.
+    shutdown_requested = threading.Event()
+
+    def _handle_quit_requested(event):
+
+        shutdown_requested.set()
+
+    event_bus.subscribe(
+        "ui_quit_requested",
+        _handle_quit_requested
+    )
+
+    # Only SyntheticMicrophoneInput/SyntheticCameraInput ever publish this —
+    # a benchmark run exits on its own once every active synthetic source
+    # has finished playing, instead of running until someone manually stops
+    # it (see tests/benchmarks/run_stress_suite.py, which waits on the process
+    # exiting). Waiting for ALL of them, not just whichever finishes first,
+    # matters for the combined scenario: a short looping gesture video must
+    # not cut a much longer voice session short.
+    def _handle_synthetic_input_finished(event):
+
+        source = event.get(
+            "data",
+            {}
+        ).get(
+            "source"
+        )
+
+        synthetic_sources_pending.discard(source)
+
+        if not synthetic_sources_pending:
+            shutdown_requested.set()
+
+    event_bus.subscribe(
+        "synthetic_input_finished",
+        _handle_synthetic_input_finished
+    )
+
+    # Started in reverse pipeline order so every consumer subscribes before
+    # the producer that could feed it starts running — otherwise an early
+    # event could be published before anything is listening for it.
+    executor.start()
+
+    pointer_overlay.start()
+
+    main_window.start()
+
+    main_window.show()
+
+    # First launch ever (no marker file yet, see utils/app_state.py) —
+    # a short plain-language introduction before the full reference
+    # (InfoWindow, one click away from here or from MainWindow's own
+    # "Functions description" button at any later time). Kept as a local
+    # variable so it isn't garbage-collected before the user closes it —
+    # same reason every other top-level window here is a local of main().
+    welcome_window = None
+
+    if not has_shown_onboarding():
+
+        welcome_window = WelcomeWindow()
+
+        welcome_window.show()
+
+    floating_status_bar.start()
+
+    quick_command_overlay.start()
+
+    signal_mapper.start()
+
+    fusion.start()
+
+    interpreter.start()
+
+    intent_model.start()
+
+    gesture_recognizer.start()
+
+    if gesture_debug_view is not None:
+
+        gesture_debug_view.start()
+
+    face_recognizer.start()
+
+    if face_debug_view is not None:
+
+        face_debug_view.start()
+
+    keyboard_processor.start()
+
+    speech_recognizer.start()
+
+    if not disable_camera:
+
+        camera_input.start()
+
+    microphone_input.start()
+
+    keyboard_input.start()
+
+    if try_mode:
+
+        # Same two effects _set_try_mode(True) would produce, applied
+        # directly here since there's no real trigger signal to simulate —
+        # every subscriber (SignalMapper itself, ActionExecutor, the UI's
+        # Try Mode indicator) is already listening by this point, all
+        # .start() calls above having run.
+        signal_mapper.try_mode_active = True
+
+        event_bus.publish(
+            "try_mode_changed",
+            {"active": True}
+        )
+
+    try:
+
+        while not shutdown_requested.is_set():
+
+            # KeyboardInput only queues events from pynput's callback thread;
+            # this publishes them here on the main thread, where the rest of
+            # the pipeline (and any OSController side effect) is safe to run.
+            keyboard_input.poll()
+
+            # cv2.imshow/cv2.waitKey must run on the main thread, so the
+            # debug windows are drawn here rather than from the capture thread.
+            if gesture_debug_view is not None:
+
+                gesture_debug_view.render()
+
+            if face_debug_view is not None:
+
+                face_debug_view.render()
+
+            # Non-blocking pump for the pointer overlay's QTimer/paintEvent,
+            # without ceding control of the loop the way app.exec() would.
+            qt_app.processEvents()
+
+            if gesture_debug_view is None and face_debug_view is None:
+
+                time.sleep(loop_sleep_seconds)
+
+    except KeyboardInterrupt:
+
+        logger.info("Stopping...")
+
+    finally:
+
+        # Runs whether the loop ended via Ctrl-C or via the floating
+        # status bar's close (X) button setting shutdown_requested.
+        keyboard_input.stop()
+
+        keyboard_processor.stop()
+
+        microphone_input.stop()
+
+        speech_recognizer.stop()
+
+        intent_model.stop()
+
+        camera_input.stop()
+
+        gesture_recognizer.stop()
+
+        if gesture_debug_view is not None:
+
+            gesture_debug_view.stop()
+
+        face_recognizer.stop()
+
+        if face_debug_view is not None:
+
+            face_debug_view.stop()
+
+        interpreter.stop()
+
+        fusion.stop()
+
+        signal_mapper.stop()
+
+        executor.stop()
+
+        pointer_overlay.stop()
+
+        quick_command_overlay.stop()
+
+        main_window.stop()
+
+        floating_status_bar.stop()
+
+        logger.info("System stopped.")
+
+
+if __name__ == "__main__":
+
+    # Required before anything else runs whenever multiprocessing (here:
+    # VoskSpeechModel's open-vocab ProcessPoolExecutor) might use the
+    # 'spawn' start method — the default on macOS since Python 3.8. In a
+    # packaged .app, sys.executable IS the app itself, so a spawned worker
+    # process re-launches the whole app from scratch unless freeze_support()
+    # intercepts it first and hands it off to the multiprocessing bootstrap
+    # instead of falling through to main(). No-op when not frozen and not a
+    # spawned worker, so `python src/main.py` is unaffected.
+    multiprocessing.freeze_support()
+
+    main()

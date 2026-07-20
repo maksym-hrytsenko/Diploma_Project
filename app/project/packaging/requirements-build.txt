@@ -1,0 +1,5 @@
+# Build-time only — installed into the same venv as requirements.txt right
+# before running packaging/build.sh. Kept separate from the app's own
+# requirements.txt since the app itself never imports PyInstaller.
+pyinstaller>=6.10
+pyinstaller-hooks-contrib>=2024.10

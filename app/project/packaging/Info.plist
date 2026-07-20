@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Gesture &amp; Voice Control</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Gesture &amp; Voice Control</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- mlx (0.32.0) is the actual floor here — its wheel is tagged
+         macosx_26_0_arm64, well above what mediapipe/torch/PyQt6 need.
+         See packaging/BUILD.md. -->
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <key>NSCameraUsageDescription</key>
+    <string>The app uses the camera to recognize hand gestures used to control the cursor, presentations and other actions.</string>
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>The app uses the microphone to recognize voice commands for controlling the computer.</string>
+</dict>
+</plist>
