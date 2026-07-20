@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds GestureVoiceControl.app + a drag-to-Applications .dmg.
 #
-# Usage: packaging/build.sh (or via the app/build.sh symlink at the repo root)
+# Usage: packaging/build.sh (or via the build.sh symlink at the repo root)
 #
 # Must be run from a "packaging/*" branch (never from master) with a clean
 # working tree, so a build can never accidentally pick up half-finished
@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-# Resolves through app/build.sh's symlink to this script's real location,
-# so REPO_ROOT (the "project/" directory) is correct either way.
+# Resolves through the build.sh symlink at the repo root to this script's
+# real location, so REPO_ROOT (the "project/" directory) is correct either way.
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT_PATH" ]; do
     SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
