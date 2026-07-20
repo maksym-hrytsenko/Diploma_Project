@@ -495,6 +495,20 @@ CALL_MODE_GESTURE_CAPTIONS = {
     "FOUR_FINGERS": "Toggle background blur"
 }
 
+# How long a command resolved via a source _describe_gesture can't read a
+# live pose from (face+modifier combos, voice control words) stays shown
+# in the caption — longer than GESTURE_SIGNAL_FLASH_SECONDS since there's
+# no held pose keeping the viewer's attention on the preview already.
+COMMAND_FLASH_SECONDS = 1.5
+
+# _describe_command's fallback ("replace underscores, capitalize") reads
+# fine for almost everything (OPEN_BROWSER -> "Open browser",
+# PRESENTATION_MODE -> "Presentation mode") — only the handful below need
+# a specific override.
+COMMAND_DISPLAY_OVERRIDES = {
+    "MEDIA_PLAY_PAUSE": "Play / pause"
+}
+
 # UI-triggered signal per mode, matching config/mapping.json's "ui" section
 MODE_UI_SIGNALS = {
     "flip": "FLIP_MODE",
@@ -528,6 +542,7 @@ class MainWindow(QWidget):
     try_mode_changed_signal = pyqtSignal(bool)
     gesture_debug_signal = pyqtSignal(object)
     face_debug_signal = pyqtSignal(object)
+    command_event_signal = pyqtSignal(object)
 
     # gesture_debug fires up to ~30fps; repainting every one is wasted work
     VIDEO_MIN_INTERVAL_SECONDS = 1.0 / 24.0
@@ -565,6 +580,10 @@ class MainWindow(QWidget):
         self.try_mode_changed_signal.connect(self._on_try_mode_changed_from_bus)
         self.gesture_debug_signal.connect(self._on_gesture_debug)
         self.face_debug_signal.connect(self._on_face_debug)
+        self.command_event_signal.connect(self._on_command_event)
+
+        self._last_command_text = None
+        self._last_command_time = 0.0
 
         # Press D to toggle labeled outlines over every registered
         # button/icon/glow ring — see _build_debug_overlay/keyPressEvent.
@@ -602,6 +621,12 @@ class MainWindow(QWidget):
             self.event_bus.subscribe("gesture_debug", self._handle_gesture_debug)
             self.event_bus.subscribe("face_debug", self._handle_face_debug)
 
+            # Read-only: lets the camera preview's "Detected: ..." caption
+            # flash the resolved command for sources _describe_gesture has
+            # no live hand-pose reading for (face+modifier combos, voice
+            # control words) — see _paint_gesture_caption.
+            self.event_bus.subscribe("command_event", self._handle_command_event)
+
     def stop(self):
 
         if self.event_bus is not None:
@@ -611,6 +636,7 @@ class MainWindow(QWidget):
             self.event_bus.unsubscribe("ui_expand_requested", self._handle_expand_requested)
             self.event_bus.unsubscribe("gesture_debug", self._handle_gesture_debug)
             self.event_bus.unsubscribe("face_debug", self._handle_face_debug)
+            self.event_bus.unsubscribe("command_event", self._handle_command_event)
 
     def _handle_expand_requested(self, event):
 
@@ -713,6 +739,31 @@ class MainWindow(QWidget):
 
         if self.camera_active and self.video_label.isVisible():
             self._refresh_face_status()
+
+    def _handle_command_event(self, event):
+
+        self.command_event_signal.emit(event.get("data", {}))
+
+    def _on_command_event(self, data):
+
+        command = data.get("command")
+
+        if not command:
+            return
+
+        self._last_command_text = self._describe_command(command)
+        self._last_command_time = time.time()
+
+    # Human-readable fallback for command names _describe_gesture has no
+    # mode-specific reading for (face+modifier combos, voice control
+    # words) — see COMMAND_DISPLAY_OVERRIDES for the handful that read
+    # awkwardly as a plain "replace underscores, capitalize" transform.
+    def _describe_command(self, command):
+
+        return COMMAND_DISPLAY_OVERRIDES.get(
+            command,
+            command.replace("_", " ").capitalize()
+        )
 
     def _on_gesture_debug(self, data):
 
@@ -1030,7 +1081,12 @@ class MainWindow(QWidget):
 
         return None, False
 
-    # Detected-command caption, painted directly on the frame
+    # Detected-command caption, painted directly on the frame. Falls back
+    # to the most recently resolved command_event (see _on_command_event)
+    # when _describe_gesture has no live hand-pose reading to show — the
+    # only way anything ever showed here for face+modifier combos (Alt +
+    # head tilt/mouth open/eyebrows) and voice control words, which have
+    # no MediaPipe gesture category of their own to read a caption from.
     def _paint_gesture_caption(self, painter, width, height, data):
 
         description, show_confidence = self._describe_gesture(data)
@@ -1043,6 +1099,12 @@ class MainWindow(QWidget):
                 f" · {confidence * 100:.0f}%" if confidence is not None else ""
             )
             caption_text = f"Detected: {description}{confidence_text}"
+
+        elif (
+            self._last_command_text is not None
+            and time.time() - self._last_command_time < COMMAND_FLASH_SECONDS
+        ):
+            caption_text = f"Detected: {self._last_command_text}"
 
         else:
 

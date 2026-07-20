@@ -479,6 +479,23 @@ ENVIRONMENT_EXIT_NOTE = (
 
 GENERAL_EXIT = 'Say "exit mode", or click the active mode\'s icon again.'
 
+GENERAL_MODE_SWITCHING = (
+    "Every mode below can be entered the same three ways: say its name "
+    "(after the wake word), use its keyboard shortcut, or click its wheel "
+    "icon on the main window — see each mode's own \"Enter\" line for its "
+    "exact phrase and shortcut. Raising an open palm and holding it "
+    "(Quick Circle, below) is a fourth, gesture-only way to jump into "
+    "Flip, Cursor, Presentation or Call Mode without saying anything or "
+    "touching the keyboard."
+)
+
+GENERAL_WAKE_WORD_NOTE = (
+    "Every voice command on this screen — and everywhere else in the app "
+    "— must be preceded by the wake word, by default \"jack\" (e.g. "
+    "\"jack flip mode\", \"jack open browser\"). Configurable in Settings "
+    "under General → Wake word."
+)
+
 GENERAL_GESTURES = (
     (
         "Raise an open palm and hold (Quick Circle)",
@@ -487,7 +504,6 @@ GENERAL_GESTURES = (
     ),
     ("Alt + head tilt right / left", "Next / previous track"),
     ("Alt + mouth open", "Play / pause"),
-    ("Alt + double blink", "Take a screenshot"),
     ("Alt + eyebrows up", "Volume up"),
     ("Ctrl + eyebrows up", "Volume down")
 )
@@ -1233,12 +1249,29 @@ class InfoWindow(QWidget):
         description.setStyleSheet(f"color: {COLOR_TEXT_DARK}; background: transparent; border: none;")
         card_layout.addWidget(description)
 
+        card_layout.addWidget(make_section_label("SWITCHING MODES", card))
+
+        switching = QLabel(GENERAL_MODE_SWITCHING, card)
+        switching.setWordWrap(True)
+        switching.setStyleSheet(
+            f"color: {COLOR_TEXT_DARK}; background: transparent; border: none; font-size: 12px;"
+        )
+        card_layout.addWidget(switching)
+
         card_layout.addWidget(make_section_label("ALWAYS-ON GESTURES", card))
 
         for trigger_text, action_text in GENERAL_GESTURES:
             card_layout.addWidget(self._make_gesture_row(trigger_text, action_text, card))
 
         card_layout.addWidget(make_section_label("VOICE COMMANDS", card))
+
+        wake_word = QLabel(GENERAL_WAKE_WORD_NOTE, card)
+        wake_word.setWordWrap(True)
+        wake_word.setStyleSheet(
+            f"color: {COLOR_TEXT_DARK}; background: transparent; border: none; "
+            "font-size: 12px; font-weight: 600;"
+        )
+        card_layout.addWidget(wake_word)
 
         for line in GENERAL_VOICE_COMMANDS:
 

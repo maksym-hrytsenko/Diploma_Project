@@ -56,6 +56,13 @@ steps; this README is for anyone who hasn't installed or launched it yet.
   [`project/tests/voice_pipeline_fixes_log.md`](project/tests/voice_pipeline_fixes_log.md)
   for the full record of what was found and fixed during real testing,
   including what's still open.
+- **First run needs internet access.** Only the exact-match tier's model
+  (Vosk) ships inside this repository (`models/`). The semantic tier
+  (`all-MiniLM-L6-v2`) and the LLM fallback tier
+  (`mlx-community/Llama-3.2-3B-Instruct-4bit`) are downloaded
+  automatically from Hugging Face the first time they're needed, then
+  cached locally — after that first download, everything runs fully
+  offline.
 
 ## Architecture
 
