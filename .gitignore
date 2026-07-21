@@ -32,3 +32,4 @@ project/docs/*.zip
 # Personal Ukrainian working copy used to review the thesis text against
 # its Czech original — a working aid, not repository content
 project/docs/thesis_ua_review.md
+project/docs/thesis_ua_translation.md
