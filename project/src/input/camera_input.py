@@ -48,6 +48,53 @@ class CameraInput:
             720
         )
 
+        # Below dim_brightness_threshold, MediaPipe's hand/face detectors
+        # (GestureRecognizer/FaceRecognizer) start missing real gestures
+        # more than they catch — below dark_brightness_threshold they
+        # essentially never detect anything at all. Publishing this as a
+        # "camera_lighting" level rather than silently degrading lets the
+        # UI tell the user why nothing is being recognized instead of the
+        # feed just looking dark with no explanation (see MainWindow's
+        # camera preview caption). Deliberately NOT a trigger for any kind
+        # of auto-brightness/screen-backlight compensation — the fix is
+        # telling the user to add light, not the app trying to fake it.
+        self.dim_brightness_threshold = camera_config.get(
+            "dim_brightness_threshold",
+            60
+        )
+
+        self.dark_brightness_threshold = camera_config.get(
+            "dark_brightness_threshold",
+            25
+        )
+
+        # Room lighting doesn't change frame-to-frame — checking it at full
+        # camera framerate (~30x/second) only added cv2.cvtColor+mean() cost
+        # to every single iteration of this thread's tight capture loop for
+        # no benefit, right alongside the synchronous MediaPipe hand/face
+        # inference that same loop triggers via publish("camera_frame", ...)
+        # below (see EventBus.publish — direct, same-thread callback
+        # invocation, no queue). That extra per-frame cost was enough to
+        # push some frames' total processing time past the camera's own
+        # frame interval, backing up cv2.VideoCapture's internal buffer and
+        # making Cursor mode's pointer (a raw, unsmoothed 1:1 mapping — see
+        # GestureRecognizer._update_pointer) track in stale-frame bursts
+        # instead of smoothly. Checking every LIGHTING_CHECK_INTERVAL_FRAMES
+        # frames instead is still far more often than lighting can actually
+        # change.
+        self.LIGHTING_CHECK_INTERVAL_FRAMES = camera_config.get(
+            "lighting_check_interval_frames",
+            10
+        )
+
+        self._frames_since_lighting_check = 0
+
+        # Last level published — publishing only on change (like
+        # mode_changed elsewhere in the pipeline) instead of once per frame
+        # keeps this from spamming subscribers while sitting still in the
+        # same lighting.
+        self._last_lighting_level = None
+
         self.cap = None
 
         self.running = False
@@ -159,7 +206,30 @@ class CameraInput:
 
             self.cap = None
 
+        # So the next start() re-announces the current lighting level from
+        # scratch instead of assuming the previous session's last-known
+        # level still holds (e.g. the room got dark while the camera was
+        # off) — and checks it on that first frame rather than waiting out
+        # whatever was left of the previous session's interval.
+        self._last_lighting_level = None
+        self._frames_since_lighting_check = 0
+
         logger.info("Stopped")
+
+    def _lighting_level(self, frame):
+
+        brightness = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        ).mean()
+
+        if brightness < self.dark_brightness_threshold:
+            return "dark"
+
+        if brightness < self.dim_brightness_threshold:
+            return "dim"
+
+        return "ok"
 
     def _capture_loop(self):
 
@@ -178,6 +248,24 @@ class CameraInput:
                 time.sleep(0.01)
 
                 continue
+
+            if self._frames_since_lighting_check == 0:
+
+                lighting_level = self._lighting_level(frame)
+
+                if lighting_level != self._last_lighting_level:
+
+                    self._last_lighting_level = lighting_level
+
+                    self.event_bus.publish(
+                        "camera_lighting",
+                        {"level": lighting_level}
+                    )
+
+            self._frames_since_lighting_check = (
+                (self._frames_since_lighting_check + 1)
+                % self.LIGHTING_CHECK_INTERVAL_FRAMES
+            )
 
             # Publish frame to EventBus
             self.event_bus.publish(

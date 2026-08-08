@@ -168,6 +168,20 @@ class GestureRecognizer:
             0.7
         )
 
+        # Open_Palm gets its own, looser threshold: live testing found
+        # MediaPipe's bundled classifier's confidence for this specific
+        # category varies more across individuals' natural hand shape
+        # than the other categories do — one tester's Closed_Fist and
+        # Pointing_Up both read comfortably above confidence_threshold,
+        # but Open_Palm needed an unnaturally deliberate, wide finger
+        # spread to cross it, even though the hand itself tracked
+        # (landmarks present) the whole time. confirm_frames below still
+        # guards this the same as every other gesture.
+        self.open_palm_confidence_threshold = config.get(
+            "open_palm_confidence_threshold",
+            0.55
+        )
+
         # A gesture must hold for this many consecutive frames before
         # it is trusted, so a single misclassified frame (motion blur,
         # odd angle) can't end and immediately restart a session.
@@ -921,7 +935,9 @@ class GestureRecognizer:
         Returns:
             (gesture_name, confidence), or (None, None) if there is
             no gesture, it's the "None" category, or confidence is
-            below confidence_threshold.
+            below the threshold for that category (see
+            open_palm_confidence_threshold for why Open_Palm has its
+            own, lower one).
         """
 
         if not result.gestures:
@@ -942,7 +958,13 @@ class GestureRecognizer:
         if gesture_name == "None":
             return None, None
 
-        if confidence < self.confidence_threshold:
+        threshold = (
+            self.open_palm_confidence_threshold
+            if gesture_name == "Open_Palm"
+            else self.confidence_threshold
+        )
+
+        if confidence < threshold:
             return None, None
 
         return gesture_name, confidence

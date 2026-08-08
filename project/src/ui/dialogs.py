@@ -39,11 +39,13 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QGridLayout,
     QLineEdit,
+    QComboBox,
     QTextEdit,
     QSpinBox,
     QDoubleSpinBox,
     QGraphicsDropShadowEffect,
-    QMessageBox
+    QMessageBox,
+    QFileDialog
 )
 
 from config.config_loader import load_system_config
@@ -518,8 +520,49 @@ GENERAL_VOICE_COMMANDS = (
 
 # Every setting field: (label, path, kind, default, extra...)
 # kind "text" -> extra: (description,)
+# kind "app" -> extra: (description,) — like "text", but rendered as a combo
+# box of installed application names (see list_installed_apps) instead of
+# a free-typed field, plus a trailing "Browse..." entry that opens a file
+# dialog on /Applications for anything not picked up by the scan.
 # kind "int"/"float" -> extra: (minimum, maximum, step, decimals, description)
 # decimals is None for "int".
+
+# Sentinel combo-box entry that opens the "choose a .app bundle" file
+# dialog instead of being a selectable value itself (see
+# SettingsWindow._on_app_combo_changed).
+BROWSE_APP_LABEL = "Browse…"
+
+
+def list_installed_apps():
+    """Display names (no ".app" suffix) of every application bundle found
+    directly under the usual install locations — feeds the "Apps" settings
+    cards' combo boxes so app names come from what's actually installed
+    instead of being typed by hand.
+    """
+
+    search_roots = (
+        "/Applications",
+        "/System/Applications",
+        os.path.expanduser("~/Applications"),
+    )
+
+    names = set()
+
+    for root_dir in search_roots:
+
+        for _root, dirs, _files in os.walk(root_dir):
+
+            for entry in dirs:
+
+                if entry.endswith(".app"):
+                    names.add(entry[:-len(".app")])
+
+            # Don't descend into bundles themselves — their Contents/
+            # folders are irrelevant and just slow the walk down.
+            dirs[:] = [d for d in dirs if not d.endswith(".app")]
+
+    return sorted(names, key=str.casefold)
+
 
 SETTING_GROUPS = (
     (
@@ -731,74 +774,74 @@ SETTING_GROUPS = (
         "Apps",
         (
             (
-                "Terminal", ("os_controller", "apps", "terminal"), "text", "Terminal",
+                "Terminal", ("os_controller", "apps", "terminal"), "app", "Terminal",
                 'App name opened by "open terminal".'
             ),
             (
-                "Safari", ("os_controller", "apps", "safari"), "text", "Safari",
+                "Safari", ("os_controller", "apps", "safari"), "app", "Safari",
                 'App name opened by "open safari".'
             ),
             (
-                "Chrome", ("os_controller", "apps", "chrome"), "text", "Google Chrome",
+                "Chrome", ("os_controller", "apps", "chrome"), "app", "Google Chrome",
                 'App name opened by "open chrome", and used for every Work '
                 "Environment's browser windows/tabs below."
             ),
             (
-                "Spotify", ("os_controller", "apps", "spotify"), "text", "Spotify",
+                "Spotify", ("os_controller", "apps", "spotify"), "app", "Spotify",
                 'App name opened by "open spotify", and used by the '
                 "focus-music play/pause actions."
             ),
             (
-                "Slack", ("os_controller", "apps", "slack"), "text", "Slack",
+                "Slack", ("os_controller", "apps", "slack"), "app", "Slack",
                 'App name opened by "open slack".'
             ),
             (
-                "Discord", ("os_controller", "apps", "discord"), "text", "Discord",
+                "Discord", ("os_controller", "apps", "discord"), "app", "Discord",
                 'App name opened by "open discord".'
             ),
             (
-                "Mail", ("os_controller", "apps", "mail"), "text", "Mail",
+                "Mail", ("os_controller", "apps", "mail"), "app", "Mail",
                 'App name opened by "open mail".'
             ),
             (
-                "Calendar", ("os_controller", "apps", "calendar"), "text", "Calendar",
+                "Calendar", ("os_controller", "apps", "calendar"), "app", "Calendar",
                 'App name opened by "open calendar".'
             ),
             (
-                "Notes", ("os_controller", "apps", "notes"), "text", "Notes",
+                "Notes", ("os_controller", "apps", "notes"), "app", "Notes",
                 'App name opened by "open notes".'
             ),
             (
-                "Telegram", ("os_controller", "apps", "telegram"), "text", "Telegram",
+                "Telegram", ("os_controller", "apps", "telegram"), "app", "Telegram",
                 'App name opened by "open telegram".'
             ),
             (
-                "Finder", ("os_controller", "apps", "finder"), "text", "Finder",
+                "Finder", ("os_controller", "apps", "finder"), "app", "Finder",
                 'App name opened by "open finder".'
             ),
             (
-                "Notion", ("os_controller", "apps", "notion"), "text", "Notion",
+                "Notion", ("os_controller", "apps", "notion"), "app", "Notion",
                 'App name opened by "open notion".'
             ),
             (
-                "Photos", ("os_controller", "apps", "photos"), "text", "Photos",
+                "Photos", ("os_controller", "apps", "photos"), "app", "Photos",
                 'App name opened by "open photos".'
             ),
             (
-                "Preview", ("os_controller", "apps", "preview"), "text", "Preview",
+                "Preview", ("os_controller", "apps", "preview"), "app", "Preview",
                 'App name opened by "open preview".'
             ),
             (
-                "System Settings", ("os_controller", "apps", "settings"), "text", "System Settings",
+                "System Settings", ("os_controller", "apps", "settings"), "app", "System Settings",
                 'App name opened by "open settings".'
             ),
             (
-                "TV", ("os_controller", "apps", "tv"), "text", "TV",
+                "TV", ("os_controller", "apps", "tv"), "app", "TV",
                 'App name opened when entering the Movie environment '
                 '("movie mode").'
             ),
             (
-                "News app", ("os_controller", "apps", "news"), "text", "News",
+                "News app", ("os_controller", "apps", "news"), "app", "News",
                 'App name for the "open news app" action — not currently '
                 "reachable by any voice/gesture command. Not the same as "
                 "the News environment's browser tabs below."
@@ -868,6 +911,8 @@ class SettingsWindow(QWidget):
 
         self._fields = []
         self._window_group_fields = {}
+        self._initial_window_group_text = {}
+        self._installed_apps = list_installed_apps()
 
         config = load_system_config()
 
@@ -957,20 +1002,28 @@ class SettingsWindow(QWidget):
 
                 default_value, description = spec[3], spec[4]
 
-                field = QLineEdit(str(get_nested(config, path, default_value)), card)
+                initial_value = str(get_nested(config, path, default_value))
+                field = QLineEdit(initial_value, card)
                 field.setStyleSheet(
                     f"background-color: {COLOR_PANEL}; color: {COLOR_TEXT_DARK};"
                     f" border: 1px solid rgba(139, 61, 255, 90); border-radius: 8px; padding: 4px 8px;"
                 )
 
+            elif kind == "app":
+
+                default_value, description = spec[3], spec[4]
+
+                initial_value = str(get_nested(config, path, default_value))
+                field = self._make_app_combo(card, initial_value)
+
             else:
 
                 default_value, minimum, maximum, step, decimals, description = spec[3:]
 
-                value = get_nested(config, path, default_value)
-                field = make_number_field(card, value, minimum, maximum, step, decimals)
+                initial_value = get_nested(config, path, default_value)
+                field = make_number_field(card, initial_value, minimum, maximum, step, decimals)
 
-            self._fields.append((path, field, default_value))
+            self._fields.append((path, field, default_value, initial_value))
 
             info_button = make_info_button(card, label_text, description)
 
@@ -981,6 +1034,66 @@ class SettingsWindow(QWidget):
         card_layout.addLayout(grid)
 
         return card
+
+    def _make_app_combo(self, card, current_value):
+        """A QComboBox listing every scanned application name, plus a
+        trailing BROWSE_APP_LABEL entry that opens a file dialog on
+        /Applications — replaces free-typed app names with either picking
+        from what's actually installed or browsing to a .app bundle by
+        hand, so a typo can no longer silently break "open <app>".
+        """
+
+        combo = QComboBox(card)
+        combo.setStyleSheet(
+            f"QComboBox {{ background-color: {COLOR_PANEL}; color: {COLOR_TEXT_DARK};"
+            f" border: 1px solid rgba(139, 61, 255, 90); border-radius: 8px; padding: 4px 8px; }}"
+        )
+
+        combo.addItems(self._installed_apps)
+        combo.insertSeparator(combo.count())
+        combo.addItem(BROWSE_APP_LABEL)
+
+        self._set_app_combo_value(combo, current_value)
+
+        combo.currentIndexChanged.connect(
+            lambda _index, combo=combo: self._on_app_combo_changed(combo)
+        )
+
+        return combo
+
+    def _set_app_combo_value(self, combo, value):
+        """Selects `value` in `combo`, inserting it as an extra entry first
+        if the app scan didn't find it (e.g. it's a currently configured
+        app that isn't installed on this machine, or lives somewhere the
+        scan doesn't look) — so an existing/default value is never silently
+        swapped for something else just because it's off-list.
+        """
+
+        if combo.findText(value) == -1:
+            combo.insertItem(0, value)
+
+        combo.setCurrentText(value)
+        combo.setProperty("last_value", value)
+
+    def _on_app_combo_changed(self, combo):
+
+        if combo.currentText() != BROWSE_APP_LABEL:
+            combo.setProperty("last_value", combo.currentText())
+            return
+
+        chosen_path, _ = QFileDialog.getOpenFileName(
+            self, "Choose Application", "/Applications", "Applications (*.app)"
+        )
+
+        if chosen_path:
+            app_name = os.path.splitext(os.path.basename(chosen_path))[0]
+            self._set_app_combo_value(combo, app_name)
+
+        else:
+            # Cancelled — fall back to whatever was selected before
+            # "Browse..." was picked, instead of leaving the sentinel
+            # itself as the (invalid) current value.
+            self._set_app_combo_value(combo, combo.property("last_value"))
 
     # Each window group is a list of browser-window tab-groups: the first
     # URL of every line-group opens a new window, the rest join it as
@@ -1022,6 +1135,7 @@ class SettingsWindow(QWidget):
             card_layout.addWidget(text_edit)
 
             self._window_group_fields[group_key] = text_edit
+            self._initial_window_group_text[group_key] = text_edit.toPlainText()
 
         return card
 
@@ -1044,32 +1158,62 @@ class SettingsWindow(QWidget):
 
         return tab_groups
 
+    @staticmethod
+    def _field_value(field):
+
+        if isinstance(field, QLineEdit):
+            return field.text()
+
+        if isinstance(field, QComboBox):
+            return field.currentText()
+
+        return field.value()
+
+    def _has_changes(self):
+        """Whether anything on screen actually differs from what the
+        window loaded at open time — drives whether Save && Restart
+        actually restarts, since relaunching the app over an unchanged
+        config just costs the user a camera/mic reinit for nothing.
+        """
+
+        for _, field, _, initial_value in self._fields:
+
+            if self._field_value(field) != initial_value:
+                return True
+
+        for group_key, text_edit in self._window_group_fields.items():
+
+            if text_edit.toPlainText() != self._initial_window_group_text.get(group_key, ""):
+                return True
+
+        return False
+
     def _on_reset_clicked(self):
 
-        for _, field, default_value in self._fields:
+        for _, field, default_value, _ in self._fields:
 
             if isinstance(field, QLineEdit):
                 field.setText(str(default_value))
+
+            elif isinstance(field, QComboBox):
+                self._set_app_combo_value(field, str(default_value))
 
             else:
                 field.setValue(default_value)
 
     def _on_save_clicked(self):
 
+        if not self._has_changes():
+            self.close()
+            return
+
         try:
 
             with open(SYSTEM_CONFIG_PATH, "r", encoding="utf-8") as config_file:
                 config = json.load(config_file)
 
-            for path, field, _ in self._fields:
-
-                if isinstance(field, QLineEdit):
-                    value = field.text()
-
-                else:
-                    value = field.value()
-
-                set_nested(config, path, value)
+            for path, field, _, _ in self._fields:
+                set_nested(config, path, self._field_value(field))
 
             for group_key, text_edit in self._window_group_fields.items():
 

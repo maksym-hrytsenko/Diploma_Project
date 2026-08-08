@@ -25,7 +25,10 @@
   "camera": {
     "index": 0,
     "width": 1280,
-    "height": 720
+    "height": 720,
+    "dim_brightness_threshold": 60,
+    "dark_brightness_threshold": 25,
+    "lighting_check_interval_frames": 10
   },
   "speech": {
     "vosk_model_path": "models/vosk-model-small-en-us-0.15",
@@ -43,6 +46,7 @@
   },
   "gesture": {
     "confidence_threshold": 0.7,
+    "open_palm_confidence_threshold": 0.55,
     "confirm_frames": 4,
     "hand_lost_frames": 5,
     "freeze_duration": 0.3,
@@ -142,7 +146,12 @@
       "finder": "Finder",
       "notion": "Notion",
       "photos": "Photos",
-      "settings": "System Settings"
+      "settings": "System Settings",
+      "slack": "Slack",
+      "mail": "Mail",
+      "preview": "Preview",
+      "tv": "TV",
+      "news": "News"
     },
     "shortcuts": {
       "enable_dnd": "Enable Do Not Disturb",

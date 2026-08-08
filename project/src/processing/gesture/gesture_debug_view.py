@@ -248,9 +248,16 @@ class GestureDebugView:
 
     def _draw_text(self, display, data):
 
+        confidence = data.get("confidence")
+
         lines = [
             "gesture: {}".format(
                 data.get("gesture_name")
+            ),
+            "confidence: {}".format(
+                "{:.2f}".format(confidence)
+                if confidence is not None
+                else None
             ),
             "last_gesture: {}".format(
                 data.get("last_gesture")

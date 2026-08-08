@@ -101,6 +101,12 @@ ICON_CENTERS = {
 MODULE_NAMES = ("camera", "microphone", "keyboard")
 MODE_NAMES = ("flip", "presentation", "call", "cursor")
 
+# The three tiers of the hybrid voice recognizer (see the matching
+# SPEECH_TIERS_REQUIRED comment in main_window.py) — the microphone icon
+# only sheds its dim chip once every one of these has reported ready via
+# "speech_model_ready" events, even if the mic toggle itself is on.
+SPEECH_TIERS_REQUIRED = frozenset(("exact", "semantic", "llm"))
+
 # DIM CHIP — the grey "not active/not working" wash (see _build_dim_chips
 # and _refresh_state). SIZE is the square box's side length in px;
 # RADIUS is edited to match SIZE // 2 so it renders as a full circle,
@@ -129,6 +135,7 @@ class FloatingStatusBar(QWidget):
     camera_toggle_signal = pyqtSignal(bool)
     microphone_toggle_signal = pyqtSignal(bool)
     keyboard_toggle_signal = pyqtSignal(bool)
+    speech_model_ready_signal = pyqtSignal(str)
 
     def __init__(self, event_bus=None):
 
@@ -145,6 +152,10 @@ class FloatingStatusBar(QWidget):
         self.active_mode = None
         self.try_mode_active = False
 
+        # Mirrors MainWindow's own speech_ready_tiers — see this module's
+        # SPEECH_TIERS_REQUIRED comment.
+        self.speech_ready_tiers = set()
+
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -158,6 +169,7 @@ class FloatingStatusBar(QWidget):
         self.camera_toggle_signal.connect(self._on_camera_toggled_from_bus)
         self.microphone_toggle_signal.connect(self._on_microphone_toggled_from_bus)
         self.keyboard_toggle_signal.connect(self._on_keyboard_toggled_from_bus)
+        self.speech_model_ready_signal.connect(self._on_speech_model_ready_from_bus)
 
         self._build_background()
         self._build_dim_chips()
@@ -194,6 +206,10 @@ class FloatingStatusBar(QWidget):
             self.event_bus.subscribe("ui_microphone_toggle", self._handle_microphone_toggle)
             self.event_bus.subscribe("ui_keyboard_toggle", self._handle_keyboard_toggle)
 
+            # Same per-tier readiness events MainWindow listens for — see
+            # this module's SPEECH_TIERS_REQUIRED comment.
+            self.event_bus.subscribe("speech_model_ready", self._handle_speech_model_ready)
+
     def stop(self):
 
         if self.event_bus is not None:
@@ -208,6 +224,7 @@ class FloatingStatusBar(QWidget):
             self.event_bus.unsubscribe("ui_camera_toggle", self._handle_camera_toggle)
             self.event_bus.unsubscribe("ui_microphone_toggle", self._handle_microphone_toggle)
             self.event_bus.unsubscribe("ui_keyboard_toggle", self._handle_keyboard_toggle)
+            self.event_bus.unsubscribe("speech_model_ready", self._handle_speech_model_ready)
 
     def _handle_minimize_requested(self, event):
 
@@ -266,10 +283,30 @@ class FloatingStatusBar(QWidget):
         self.keyboard_active = active
         self._refresh_state()
 
+    def _handle_speech_model_ready(self, event):
+
+        tier = event.get("data", {}).get("tier")
+
+        if tier:
+            self.speech_model_ready_signal.emit(tier)
+
+    def _on_speech_model_ready_from_bus(self, tier):
+
+        self.speech_ready_tiers.add(tier)
+        self._refresh_state()
+
     def _refresh_state(self):
 
+        # Same gate as MainWindow's microphone card — "on" per the user's
+        # own toggle isn't enough, every recognition tier must also have
+        # reported ready (see SPEECH_TIERS_REQUIRED).
+        microphone_ready = (
+            self.microphone_active
+            and SPEECH_TIERS_REQUIRED <= self.speech_ready_tiers
+        )
+
         self.dim_chips["camera"].setVisible(not self.camera_active)
-        self.dim_chips["microphone"].setVisible(not self.microphone_active)
+        self.dim_chips["microphone"].setVisible(not microphone_ready)
         self.dim_chips["keyboard"].setVisible(not self.keyboard_active)
 
         for mode_name in MODE_NAMES:
@@ -290,7 +327,7 @@ class FloatingStatusBar(QWidget):
             name
             for name, active in (
                 ("Camera", self.camera_active),
-                ("Microphone", self.microphone_active),
+                ("Microphone", microphone_ready),
                 ("Keyboard", self.keyboard_active)
             )
             if active

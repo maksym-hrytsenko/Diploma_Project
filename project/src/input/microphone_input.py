@@ -61,8 +61,54 @@ class MicrophoneInput:
 
         self.thread = None
 
-        # None means: use the OS default input device
+        # None (the default, when the caller doesn't pin a specific
+        # device) means: prefer the MacBook's own built-in microphone over
+        # whatever the OS currently considers the default input device.
+        # macOS silently switches the default input to a connected
+        # Bluetooth headset (e.g. AirPods) the moment it's paired, and its
+        # HFP mic is quiet/narrowband enough that Silero VAD's speech
+        # threshold (system.json's vad_threshold) never trips — confirmed
+        # against real app.log sessions where an AirPods-sourced session
+        # produced zero recognized utterances end to end, while the same
+        # pipeline on the built-in mic recognized dozens in the same
+        # timeframe. Resolved lazily in start(), not here, since
+        # sd.query_devices() talks to the audio backend and a constructor
+        # shouldn't have that side effect.
         self.device = device
+
+    def _resolve_device(self):
+
+        if self.device is not None:
+            return self.device
+
+        try:
+
+            devices = sd.query_devices()
+
+        except Exception:
+
+            logger.warning(
+                "Could not query audio devices; falling back to the OS "
+                "default input device",
+                exc_info=True
+            )
+
+            return None
+
+        for index, device_info in enumerate(devices):
+
+            if (
+                device_info.get("max_input_channels", 0) > 0
+                and "macbook" in device_info.get("name", "").lower()
+            ):
+                return index
+
+        logger.warning(
+            "No built-in MacBook microphone found among input devices; "
+            "falling back to the OS default input device"
+        )
+
+        return None
 
     def _audio_callback(
         self,
@@ -86,8 +132,10 @@ class MicrophoneInput:
 
         self.running = True
 
+        resolved_device = self._resolve_device()
+
         device_info = sd.query_devices(
-            self.device,
+            resolved_device,
             "input"
         )
 
@@ -106,7 +154,7 @@ class MicrophoneInput:
 
             channels=self.channels,
 
-            device=self.device,
+            device=resolved_device,
 
             callback=self._audio_callback
         )

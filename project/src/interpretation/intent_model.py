@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 from interpretation.nlu_fallback_worker import (
+    warmup_task,
     semantic_match_task,
     llm_interpret_task
 )
@@ -158,6 +159,8 @@ class IntentModel:
             "voice_activity",
             self._handle_voice_activity
         )
+
+        self._start_nlu_warmup()
 
     def stop(self):
 
@@ -448,6 +451,76 @@ class IntentModel:
             )
 
         return self.nlu_executor
+
+    # Warms the semantic and LLM fallback tiers in the background the
+    # moment the pipeline starts, instead of leaving each to cold-load on
+    # whichever spoken phrase first needs it. Also what lets the UI's
+    # microphone-ready indicator (MainWindow/FloatingStatusBar's
+    # SPEECH_TIERS_REQUIRED) wait for genuine readiness of all three
+    # recognition tiers, not just the exact-match one — see
+    # speech_recognizer.py's matching "speech_model_ready" publish, which
+    # fires immediately since VoskSpeechModel loads synchronously.
+    def _start_nlu_warmup(self):
+
+        if not self.nlu_fallback_enabled:
+
+            # Neither tier will ever be dispatched (see process_text) —
+            # nothing to warm up, and the combined "all 3 tiers ready"
+            # signal must not wait forever on a fallback that's off.
+            self.event_bus.publish(
+                "speech_model_ready",
+                {"tier": "semantic"}
+            )
+
+            self.event_bus.publish(
+                "speech_model_ready",
+                {"tier": "llm"}
+            )
+
+            return
+
+        executor = self._get_nlu_executor()
+
+        future = executor.submit(
+            warmup_task,
+            self.voice_commands,
+            self.llm_model_id
+        )
+
+        future.add_done_callback(
+            self._handle_warmup_future
+        )
+
+    def _handle_warmup_future(
+        self,
+        future
+    ):
+
+        try:
+
+            future.result()
+
+        except Exception:
+
+            # Warmup failing doesn't block the pipeline — semantic/LLM
+            # would just cold-load on first real use instead, same as
+            # before this warmup existed. Still reported as "ready" below
+            # so the UI doesn't wait forever on a fallback that's already
+            # known broken; the exception itself is what makes the
+            # underlying problem visible.
+            logger.exception(
+                "NLU fallback warmup failed"
+            )
+
+        self.event_bus.publish(
+            "speech_model_ready",
+            {"tier": "semantic"}
+        )
+
+        self.event_bus.publish(
+            "speech_model_ready",
+            {"tier": "llm"}
+        )
 
     # Fire-and-forget: submits semantic matching and returns immediately
     # instead of blocking the caller (previously the speech pipeline's own

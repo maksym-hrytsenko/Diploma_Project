@@ -60,6 +60,18 @@ class SpeechRecognizer:
             self.on_audio
         )
 
+        # VoskSpeechModel (grammar + both Silero VAD instances) already
+        # finished loading synchronously in __init__ above, before start()
+        # could even be called — so the exact-match tier is ready the
+        # instant the pipeline is up, unlike the semantic/LLM tiers IntentModel
+        # warms up in the background (see IntentModel._start_nlu_warmup).
+        # Consumed by the UI's microphone-ready indicator — see
+        # MainWindow/FloatingStatusBar's SPEECH_TIERS_REQUIRED.
+        self.event_bus.publish(
+            "speech_model_ready",
+            {"tier": "exact"}
+        )
+
     def stop(self):
 
         self.event_bus.unsubscribe(

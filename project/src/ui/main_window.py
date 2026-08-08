@@ -534,6 +534,16 @@ CARD_STATE_ANCHORS = {
     "keyboard": (735, 825)
 }
 
+# The three tiers of the hybrid voice recognizer (IntentModel/
+# speech_recognizer.py's exact/semantic/llm — see docs/thesis chapter
+# 4.3.2). The microphone card only shows "Active" once every one of these
+# has reported ready via "speech_model_ready" events — see
+# _handle_speech_model_ready — even if the toggle itself is on and
+# MicrophoneInput is already capturing audio, since a cold semantic/LLM
+# model load previously left the mic looking ready for several seconds
+# before a non-exact-match phrase could actually be understood.
+SPEECH_TIERS_REQUIRED = frozenset(("exact", "semantic", "llm"))
+
 
 class MainWindow(QWidget):
     """Main control panel — draws over images/01_main_menu.png."""
@@ -543,6 +553,8 @@ class MainWindow(QWidget):
     gesture_debug_signal = pyqtSignal(object)
     face_debug_signal = pyqtSignal(object)
     command_event_signal = pyqtSignal(object)
+    speech_model_ready_signal = pyqtSignal(str)
+    camera_lighting_signal = pyqtSignal(str)
 
     # gesture_debug fires up to ~30fps; repainting every one is wasted work
     VIDEO_MIN_INTERVAL_SECONDS = 1.0 / 24.0
@@ -559,6 +571,21 @@ class MainWindow(QWidget):
         self.camera_active = True
         self.microphone_active = True
         self.keyboard_active = True
+
+        # Populated as "speech_model_ready" events arrive for each tier
+        # (see SPEECH_TIERS_REQUIRED) — starts empty, so the microphone
+        # card reads "Disabled" at launch even though microphone_active
+        # itself defaults to True, until every tier has actually loaded.
+        self.speech_ready_tiers = set()
+
+        # "ok"/"dim"/"dark" — mirrors CameraInput's own per-frame
+        # brightness check (see camera_input.py's _lighting_level).
+        # Overrides the camera preview's caption (see
+        # _paint_gesture_caption) instead of triggering any kind of
+        # automatic screen-brightness/backlight compensation — the fix
+        # for real insufficient lighting is telling the user to add
+        # light, not the app faking it.
+        self.camera_lighting_level = "ok"
 
         # Reused so a second click on gear/Functions-description raises
         # the existing window instead of opening a duplicate.
@@ -581,6 +608,8 @@ class MainWindow(QWidget):
         self.gesture_debug_signal.connect(self._on_gesture_debug)
         self.face_debug_signal.connect(self._on_face_debug)
         self.command_event_signal.connect(self._on_command_event)
+        self.speech_model_ready_signal.connect(self._on_speech_model_ready_from_bus)
+        self.camera_lighting_signal.connect(self._on_camera_lighting_from_bus)
 
         self._last_command_text = None
         self._last_command_time = 0.0
@@ -627,12 +656,23 @@ class MainWindow(QWidget):
             # control words) — see _paint_gesture_caption.
             self.event_bus.subscribe("command_event", self._handle_command_event)
 
+            # Published once per tier by SpeechRecognizer (exact, ready the
+            # instant Vosk finishes loading) and IntentModel (semantic/llm,
+            # warmed in the background — see IntentModel._start_nlu_warmup).
+            self.event_bus.subscribe("speech_model_ready", self._handle_speech_model_ready)
+
+            # Published by CameraInput only when the brightness level
+            # actually changes — see camera_input.py's _lighting_level.
+            self.event_bus.subscribe("camera_lighting", self._handle_camera_lighting)
+
     def stop(self):
 
         if self.event_bus is not None:
 
             self.event_bus.unsubscribe("mode_changed", self._handle_mode_changed)
             self.event_bus.unsubscribe("try_mode_changed", self._handle_try_mode_changed)
+            self.event_bus.unsubscribe("speech_model_ready", self._handle_speech_model_ready)
+            self.event_bus.unsubscribe("camera_lighting", self._handle_camera_lighting)
             self.event_bus.unsubscribe("ui_expand_requested", self._handle_expand_requested)
             self.event_bus.unsubscribe("gesture_debug", self._handle_gesture_debug)
             self.event_bus.unsubscribe("face_debug", self._handle_face_debug)
@@ -671,6 +711,30 @@ class MainWindow(QWidget):
             self._refresh_face_status()
 
         self._refresh_mode_buttons()
+
+    def _handle_speech_model_ready(self, event):
+
+        tier = event.get("data", {}).get("tier")
+
+        if tier:
+            self.speech_model_ready_signal.emit(tier)
+
+    def _on_speech_model_ready_from_bus(self, tier):
+
+        self.speech_ready_tiers.add(tier)
+
+        self._refresh_toggle_states()
+
+    def _handle_camera_lighting(self, event):
+
+        level = event.get("data", {}).get("level")
+
+        if level:
+            self.camera_lighting_signal.emit(level)
+
+    def _on_camera_lighting_from_bus(self, level):
+
+        self.camera_lighting_level = level
 
     def _handle_try_mode_changed(self, event):
 
@@ -1089,26 +1153,44 @@ class MainWindow(QWidget):
     # no MediaPipe gesture category of their own to read a caption from.
     def _paint_gesture_caption(self, painter, width, height, data):
 
-        description, show_confidence = self._describe_gesture(data)
+        # Insufficient light overrides whatever _describe_gesture/the last
+        # resolved command would otherwise say — below dark_brightness_
+        # threshold (CameraInput's own check) MediaPipe essentially never
+        # detects a hand or face at all, so "Detected: —" would just be
+        # confusing; telling the user WHY nothing is detected is more
+        # useful than a generic empty reading. Deliberately text-only, no
+        # automatic screen-brightness/backlight compensation — see
+        # camera_lighting_level's own comment in __init__.
+        if self.camera_lighting_level == "dark":
 
-        confidence = data.get("confidence") if show_confidence else None
+            caption_text = "Too dark — gestures won't work"
 
-        if description:
+        elif self.camera_lighting_level == "dim":
 
-            confidence_text = (
-                f" · {confidence * 100:.0f}%" if confidence is not None else ""
-            )
-            caption_text = f"Detected: {description}{confidence_text}"
-
-        elif (
-            self._last_command_text is not None
-            and time.time() - self._last_command_time < COMMAND_FLASH_SECONDS
-        ):
-            caption_text = f"Detected: {self._last_command_text}"
+            caption_text = "Too dark — improve lighting"
 
         else:
 
-            caption_text = "Detected: —"
+            description, show_confidence = self._describe_gesture(data)
+
+            confidence = data.get("confidence") if show_confidence else None
+
+            if description:
+
+                confidence_text = (
+                    f" · {confidence * 100:.0f}%" if confidence is not None else ""
+                )
+                caption_text = f"Detected: {description}{confidence_text}"
+
+            elif (
+                self._last_command_text is not None
+                and time.time() - self._last_command_time < COMMAND_FLASH_SECONDS
+            ):
+                caption_text = f"Detected: {self._last_command_text}"
+
+            else:
+
+                caption_text = "Detected: —"
 
         caption_height = 36
 
@@ -1770,6 +1852,17 @@ class MainWindow(QWidget):
 
     def _refresh_toggle_states(self):
 
+        # The toggle switch itself always reflects the user's own on/off
+        # intent (self.microphone_active) — only the "Active"/"Disabled"
+        # label and dim overlay additionally require every recognition
+        # tier to have reported ready, so this card doesn't read "Active"
+        # while a spoken command would still silently wait on a cold
+        # semantic/LLM model load underneath (see SPEECH_TIERS_REQUIRED).
+        microphone_ready = (
+            self.microphone_active
+            and SPEECH_TIERS_REQUIRED <= self.speech_ready_tiers
+        )
+
         cards = (
             (
                 "camera",
@@ -1780,7 +1873,7 @@ class MainWindow(QWidget):
             ),
             (
                 "microphone",
-                self.microphone_active,
+                microphone_ready,
                 self.dim_toggle_microphone,
                 self.state_patch_microphone,
                 self.label_state_microphone
