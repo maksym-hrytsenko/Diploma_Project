@@ -162,6 +162,14 @@ class FloatingStatusBar(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        # Showing/raising this bar must never activate this app — it stays
+        # on top of a full-screen presentation by design (see
+        # configure_overlay_window below), and activating on show would
+        # un-frontmost that presentation the same way an activating click
+        # would (see setBecomesKeyOnlyIfNeeded_ in native_window.py).
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
         self.mode_changed_signal.connect(self._on_mode_changed_from_bus)

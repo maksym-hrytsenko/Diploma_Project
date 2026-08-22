@@ -208,7 +208,14 @@
         0,
         220
       ],
-      "mirror_x": true
+      "mirror_x": true,
+      "primary_preview": {
+        "enabled": true,
+        "x_fraction": 0.016,
+        "y_fraction": 0.114,
+        "width_fraction": 0.567,
+        "height_fraction": 0.491
+      }
     },
     "quick_circle": {
       "display_size": 280

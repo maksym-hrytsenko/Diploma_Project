@@ -79,6 +79,25 @@ def configure_overlay_window(widget):
             False
         )
 
+        # Root cause of a presentation losing keyboard focus (and its
+        # slide-switching hotkeys going nowhere) the moment Cursor mode's
+        # real, hand-driven pointer clicks anywhere near one of these
+        # overlays — FloatingStatusBar sits pinned to a fixed corner of the
+        # primary screen and stays on top of every Space, including a
+        # full-screen presentation app's own Space, by design (see the
+        # collectionBehavior above). Without this, a single AppKit click on
+        # its expand button makes this window key and activates this
+        # process, which un-frontmosts the presentation app; the reported
+        # symptom ("need one click back on the presentation to restore
+        # slide-switching") is exactly that recovery step. With
+        # becomesKeyOnlyIfNeeded, an ordinary button click is still
+        # delivered to the view without the window ever claiming key
+        # status, so this app never activates and the presentation stays
+        # frontmost throughout.
+        native_window.setBecomesKeyOnlyIfNeeded_(
+            True
+        )
+
     except Exception:
 
         logger.exception(
